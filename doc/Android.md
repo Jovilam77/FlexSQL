@@ -2,8 +2,8 @@
 
 ###### 1.引入Gradle依赖
 
-	implementation 'cn.vonce:flexsql-android:1.7.0'
-    annotationProcessor 'cn.vonce:flexsql-android:1.7.0'
+	implementation 'cn.vonce:flexsql-android:1.7.1-beta1'
+    annotationProcessor 'cn.vonce:flexsql-android:1.7.1-beta1'
 
 ###### 2.标注实体类
 

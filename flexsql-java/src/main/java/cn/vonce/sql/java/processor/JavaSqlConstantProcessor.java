@@ -10,7 +10,11 @@ import javax.lang.model.SourceVersion;
 import javax.lang.model.element.Element;
 import javax.lang.model.element.PackageElement;
 import javax.lang.model.element.TypeElement;
+import javax.tools.Diagnostic;
 import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.List;
 import java.util.Set;
 
@@ -26,53 +30,129 @@ import java.util.Set;
 @SupportedSourceVersion(SourceVersion.RELEASE_8)
 public class JavaSqlConstantProcessor extends SqlConstantProcessor {
 
-    private List<FieldDeclaration> fieldDeclarationList = null;
+    private Messager messager;
+    // 使用ThreadLocal存储字段声明，避免多线程问题
+    private final ThreadLocal<List<FieldDeclaration>> fieldDeclarationList = ThreadLocal.withInitial(() -> null);
+    private String sourceRootCache;  // 缓存源码根目录路径
+    private boolean isWindows;       // 缓存系统类型判断结果
 
     @Override
     public synchronized void init(ProcessingEnvironment processingEnv) {
         super.init(processingEnv);
+        messager = processingEnv.getMessager();
+        // 初始化系统类型判断，只需执行一次
+        isWindows = System.getProperty("os.name").toLowerCase().contains("windows");
     }
 
     @Override
     public boolean process(Set<? extends TypeElement> annotations, RoundEnvironment env) {
-        return super.process(annotations, env);
+        try {
+            return super.process(annotations, env);
+        } finally {
+            // 清理线程本地变量，避免内存泄漏
+            fieldDeclarationList.remove();
+        }
     }
 
     @Override
     public String getTableRemarks(Element element) {
         try {
-            //获取当前模块路径
-            String path = getClass().getClassLoader().getResource("").getFile();
-            if (new File(path).exists()) {
-                // 将URL编码的空格转回正常显示
-                path = path.replaceAll("%20", " ").substring(0, path.lastIndexOf("/target/classes/"));
-                //判断是否为Windows系统
-                if (System.getProperty("os.name").toLowerCase().contains("windows")) {
-                    // 去掉前导的斜杠（在Windows上）
-                    path = path.replaceFirst("^/", "").replace("/", "\\");
-                }
-            } else {
-                path = new File("").getAbsolutePath();
+            // 获取源码根目录（缓存结果，避免重复计算）
+            String sourceRoot = getSourceRoot();
+            if (sourceRoot == null) {
+                return "";
             }
-            String sourceRoot = path + File.separator + "src" + File.separator + "main" + File.separator + "java" + File.separator;
-            String javaFilePath = sourceRoot + ((PackageElement) element.getEnclosingElement()).getQualifiedName().toString().replace(".", File.separator) + File.separator + element.getSimpleName().toString() + ".java";
-            if (new File(javaFilePath).exists()) {
-                JavaParserUtil.Declaration declaration = JavaParserUtil.getFieldDeclarationList(sourceRoot, javaFilePath);
-                TypeDeclaration<?> typeDeclaration = declaration.getTypeDeclaration();
-                fieldDeclarationList = declaration.getFieldDeclarationList();
-                if (typeDeclaration != null && typeDeclaration.getComment().isPresent()) {
-                    return JavaParserUtil.getCommentContent(typeDeclaration.getComment().get().getContent());
-                }
+
+            // 构建Java文件路径
+            Path javaFilePath = buildJavaFilePath(element, sourceRoot);
+            if (!Files.exists(javaFilePath)) {
+                return "";
+            }
+
+            // 解析Java文件获取声明信息
+            JavaParserUtil.Declaration declaration = JavaParserUtil.getFieldDeclarationList(
+                    sourceRoot, javaFilePath.toString());
+
+            TypeDeclaration<?> typeDeclaration = declaration.getTypeDeclaration();
+            fieldDeclarationList.set(declaration.getFieldDeclarationList());
+
+            // 提取类注释
+            if (typeDeclaration != null && typeDeclaration.getComment().isPresent()) {
+                return JavaParserUtil.getCommentContent(
+                        typeDeclaration.getComment().get().getContent());
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            // 使用父类的messager输出错误信息
+            messager.printMessage(Diagnostic.Kind.ERROR,
+                    "获取表注释失败: " + e.getMessage());
         }
         return "";
     }
 
     @Override
     public String getFieldRemarks(String sqlFieldName) {
-        return JavaParserUtil.getFieldCommentContent(sqlFieldName, fieldDeclarationList);
+        try {
+            List<FieldDeclaration> fields = fieldDeclarationList.get();
+            if (fields != null) {
+                return JavaParserUtil.getFieldCommentContent(sqlFieldName, fields);
+            }
+        } catch (Exception e) {
+            messager.printMessage(Diagnostic.Kind.WARNING,
+                    "获取字段注释失败: " + e.getMessage());
+        }
+        return "";
     }
 
+    /**
+     * 获取源码根目录并缓存
+     */
+    private String getSourceRoot() {
+        if (sourceRootCache != null) {
+            return sourceRootCache;
+        }
+
+        try {
+            // 尝试通过类加载器获取路径
+            String path = getClass().getClassLoader().getResource("").getFile();
+            path = java.net.URLDecoder.decode(path, "UTF-8"); // 正确解码URL
+
+            File classDir = new File(path);
+            if (classDir.exists()) {
+                String targetClasses = isWindows ? "\\target\\classes\\" : "/target/classes/";
+                int index = path.indexOf(targetClasses);
+                if (index != -1) {
+                    sourceRootCache = path.substring(0, index);
+                }
+            }
+
+            // 如果未找到，使用当前工作目录
+            if (sourceRootCache == null) {
+                sourceRootCache = new File("").getAbsolutePath();
+            }
+
+            // 构建源码根目录路径
+            Path srcRootPath = Paths.get(sourceRootCache, "src", "main", "java");
+            if (Files.exists(srcRootPath)) {
+                sourceRootCache = srcRootPath.toString();
+                return sourceRootCache;
+            }
+        } catch (Exception e) {
+            messager.printMessage(Diagnostic.Kind.WARNING,
+                    "获取源码根目录失败: " + e.getMessage());
+        }
+
+        return null;
+    }
+
+    /**
+     * 构建Java文件的完整路径
+     */
+    private Path buildJavaFilePath(Element element, String sourceRoot) {
+        PackageElement packageElement = (PackageElement) element.getEnclosingElement();
+        String packagePath = packageElement.getQualifiedName()
+                .toString()
+                .replace(".", File.separator);
+
+        return Paths.get(sourceRoot, packagePath, element.getSimpleName() + ".java");
+    }
 }
