@@ -108,7 +108,7 @@
 
     <groupId>cn.vonce</groupId>
     <artifactId>flexsql-core</artifactId>
-    <version>1.7.1-beta1</version>
+    <version>1.7.1-beta2</version>
     <packaging>jar</packaging>
 
     <dependencies>

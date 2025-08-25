@@ -173,7 +173,7 @@ public abstract class SqlConstantProcessor extends AbstractProcessor {
                     sqlFieldName = StringUtil.humpToUnderline(fieldName);
                 }
 
-                String sqlFieldRemarks = getFieldRemarks(sqlFieldName);
+                String sqlFieldRemarks = getFieldRemarks(fieldName);
 
                 // 添加字段常量
                 code.append("\tpublic static final String ")

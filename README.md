@@ -24,17 +24,17 @@
 	<dependency>
 		<groupId>cn.vonce</groupId>
 		<artifactId>flexsql-spring</artifactId>
-		<version>1.7.1-beta1</version>
+		<version>1.7.1-beta2</version>
 	</dependency>
 ###### Solon项目
 	<dependency>
 		<groupId>cn.vonce</groupId>
 		<artifactId>flexsql-solon</artifactId>
-		<version>1.7.1-beta1</version>
+		<version>1.7.1-beta2</version>
 	</dependency>
 ###### Android项目（[Android项目详细使用文档](doc/Android.md "Android项目详细使用文档")）
-	implementation 'cn.vonce:flexsql-android:1.7.1-beta1'
-    annotationProcessor 'cn.vonce:flexsql-android:1.7.1-beta1'
+	implementation 'cn.vonce:flexsql-android:1.7.1-beta2'
+    annotationProcessor 'cn.vonce:flexsql-android:1.7.1-beta2'
 ##### 2.标注实体类
 
 ```java
