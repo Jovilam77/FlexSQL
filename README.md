@@ -10,7 +10,7 @@
 
 ###### 💻Solon环境: JDK8+, Solon2.6+, Mybatis3.4.0+
 
-###### 📱Android环境: JDK8+, Android 8.0+
+###### 📱Android环境: JDK8+, Android 5.0+
 
 ###### 💿数据库: Mysql, MariaDB, Oracle, Sqlserver2008+, Postgresql, DB2, Derby, Sqlite, HSQL, H2
 
@@ -24,17 +24,17 @@
 	<dependency>
 		<groupId>cn.vonce</groupId>
 		<artifactId>flexsql-spring</artifactId>
-		<version>1.7.1-beta2</version>
+		<version>1.7.1-beta3</version>
 	</dependency>
 ###### Solon项目
 	<dependency>
 		<groupId>cn.vonce</groupId>
 		<artifactId>flexsql-solon</artifactId>
-		<version>1.7.1-beta2</version>
+		<version>1.7.1-beta3</version>
 	</dependency>
 ###### Android项目（[Android项目详细使用文档](doc/Android.md "Android项目详细使用文档")）
-	implementation 'cn.vonce:flexsql-android:1.7.1-beta2'
-    annotationProcessor 'cn.vonce:flexsql-android:1.7.1-beta2'
+	implementation 'cn.vonce:flexsql-android:1.7.1-beta3'
+    annotationProcessor 'cn.vonce:flexsql-android:1.7.1-beta3'
 ##### 2.标注实体类
 
 ```java
@@ -173,13 +173,13 @@ public class UserController {
     public RS select() {
         //查询列表
         List<User> list = userService.select();
-        list = userService.selectBy(Wrapper.where(Cond.gt(User::getId, 10)).and(Cond.lt(User::getId, 20)));
+        list = userService.selectBy(condition -> condition.gt(User::getId, 10).and().lt(User::getId, 20));
         //指定查询
         list = userService.select(new Select().column(User::getId, User::getUserName, User::getMobilePhone).where().gt(User::getId, 10));
 
         //查询一条
         User user = userService.selectById(1L);
-        user = userService.selectOneBy(Wrapper.where(eq(User::getId, 1001)));
+        user = userService.selectOneBy(condition -> condition.eq(User::getId, 1001));
 
         //sql语义化查询《20岁且是女性的用户根据创建时间倒序，获取前10条》
         list = userService.select(new Select().column(User::getId, User::getUserName, User::getMobilePhone).where().eq(User::getAge, 20).and().eq(User::getGender, 0).back().orderByDesc(User::getCreateTime).page(0, 10));
@@ -205,7 +205,7 @@ public class UserController {
         // 查询对象
         Select select = new Select();
         ReqPageHelper<User> pageHelper = new ReqPageHelper<>(request);
-        pageHelper.paging(select, userService);
+        userService.paging(select, pageHelper);
         return pageHelper.toResult("获取列表成功");
     }
     

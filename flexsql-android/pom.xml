@@ -29,8 +29,8 @@
     <!-- 版本信息 -->
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <flexsql.version>1.7.1-beta2</flexsql.version>
-        <android.version>26</android.version>
+        <flexsql.version>1.7.1-beta3</flexsql.version>
+        <android.version>21</android.version>
     </properties>
 
 
@@ -136,7 +136,7 @@
 
     <groupId>cn.vonce</groupId>
     <artifactId>flexsql-android</artifactId>
-    <version>1.7.1-beta2</version>
+    <version>1.7.1-beta3</version>
     <packaging>jar</packaging>
 
     <dependencies>
