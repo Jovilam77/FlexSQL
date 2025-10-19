@@ -181,7 +181,17 @@ public class JSONParser {
                         JSONObject jsonObject = (JSONObject) item;
                         resultList.add(BeanUtil.toBean(clazz, jsonObject));
                     } else {
-                        resultList.add((T) item);
+                        if (clazz.isEnum()) {
+                            for (T enumValue : clazz.getEnumConstants()) {
+                                Enum<?> enumValueObj = (Enum<?>) enumValue;
+                                if (enumValueObj.name().equals(item.toString())) {
+                                    resultList.add(enumValue);
+                                    break;
+                                }
+                            }
+                        } else {
+                            resultList.add((T) item);
+                        }
                     }
                 }
                 return resultList;
@@ -237,7 +247,7 @@ public class JSONParser {
     }
 
     private static boolean isDate(Object obj) {
-        if (!SqlBeanUtil.isAndroidEnv()){
+        if (!SqlBeanUtil.isAndroidEnv()) {
             return (obj instanceof Date || obj instanceof java.time.LocalDate || obj instanceof java.time.LocalDateTime || obj instanceof java.time.LocalTime);
         }
         return (obj instanceof Date);
