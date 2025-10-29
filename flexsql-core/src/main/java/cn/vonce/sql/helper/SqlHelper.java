@@ -643,9 +643,11 @@ public class SqlHelper {
                 if (update.isOptimisticLock() && sqlVersion != null) {
                     Object o = SqlBeanUtil.updateVersion(field.getType(), objectValue);
                     setSql.append(SqlBeanUtil.getSqlValue(update, o));
-                } else if (objectValue == null && sqlDefaultValue != null && (sqlDefaultValue.with() == FillWith.UPDATE || sqlDefaultValue.with() == FillWith.TOGETHER)) {
-                    Object defaultValue = SqlHelper.setDefaultValue(bean.getClass(), bean, field);
-                    setSql.append(SqlBeanUtil.getSqlValue(update, defaultValue));
+                } else if (sqlDefaultValue != null) {
+                    if (sqlDefaultValue.with() == FillWith.UPDATE_EVERYTIME || (objectValue == null && (sqlDefaultValue.with() == FillWith.UPDATE || sqlDefaultValue.with() == FillWith.TOGETHER))) {
+                        Object defaultValue = SqlHelper.setDefaultValue(bean.getClass(), bean, field);
+                        setSql.append(SqlBeanUtil.getSqlValue(update, defaultValue));
+                    }
                 } else {
                     setSql.append(SqlBeanUtil.getSqlValue(update, objectValue));
                 }
@@ -654,7 +656,7 @@ public class SqlHelper {
             setSql.deleteCharAt(setSql.length() - SqlConstant.COMMA.length());
         } else {
             List<SetInfo> setInfoList = update.getSetInfoList();
-            if (setInfoList != null && setInfoList.size() > 0) {
+            if (setInfoList != null && !setInfoList.isEmpty()) {
                 for (SetInfo setInfo : setInfoList) {
                     if (StringUtil.isNotBlank(setInfo.getTableAlias())) {
                         setSql.append(escape);

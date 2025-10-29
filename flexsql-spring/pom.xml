@@ -32,7 +32,7 @@
     <!-- 版本信息 -->
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <flexsql.version>1.7.1-beta3</flexsql.version>
+        <flexsql.version>1.7.1-beta4</flexsql.version>
         <com.esotericsoftware.version>1.11.9</com.esotericsoftware.version>
         <servlet-api.version>4.0.1</servlet-api.version>
         <spring.version>4.1.2.RELEASE</spring.version>
@@ -118,7 +118,7 @@
 
     <groupId>cn.vonce</groupId>
     <artifactId>flexsql-spring</artifactId>
-    <version>1.7.1-beta3</version>
+    <version>1.7.1-beta4</version>
     <packaging>jar</packaging>
 
     <dependencies>
