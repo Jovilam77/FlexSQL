@@ -643,11 +643,9 @@ public class SqlHelper {
                 if (update.isOptimisticLock() && sqlVersion != null) {
                     Object o = SqlBeanUtil.updateVersion(field.getType(), objectValue);
                     setSql.append(SqlBeanUtil.getSqlValue(update, o));
-                } else if (sqlDefaultValue != null) {
-                    if (sqlDefaultValue.with() == FillWith.UPDATE_EVERYTIME || (objectValue == null && (sqlDefaultValue.with() == FillWith.UPDATE || sqlDefaultValue.with() == FillWith.TOGETHER))) {
-                        Object defaultValue = SqlHelper.setDefaultValue(bean.getClass(), bean, field);
-                        setSql.append(SqlBeanUtil.getSqlValue(update, defaultValue));
-                    }
+                } else if (sqlDefaultValue != null && (sqlDefaultValue.with() == FillWith.UPDATE_EVERYTIME || (objectValue == null && (sqlDefaultValue.with() == FillWith.UPDATE || sqlDefaultValue.with() == FillWith.TOGETHER)))) {
+                    Object defaultValue = SqlHelper.setDefaultValue(bean.getClass(), bean, field);
+                    setSql.append(SqlBeanUtil.getSqlValue(update, defaultValue));
                 } else {
                     setSql.append(SqlBeanUtil.getSqlValue(update, objectValue));
                 }
