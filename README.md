@@ -138,21 +138,21 @@ public class User extends BaseEntity {
 }
 ```
 
-##### 3.无需Dao层，Service层接口只需继承FlexSQLService<实体类, id类型>
+##### 3.无需Dao层，Service层接口只需继承SqlBeanService<实体类, id类型>
 
 ```java
-public interface UserService extends FlexSQLService<User, Long> {
+public interface UserService extends SqlBeanService<User, Long> {
     //这里可以写自己封装的方法
 
 }
 ```
 
-##### 4.Service实现类只需继承MybatisFlexSQLServiceImpl<实体类, id类型>和实现你的Service接口
+##### 4.Service实现类只需继承MybatisSqlBeanServiceImpl<实体类, id类型>和实现你的Service接口
 
 ```java
-//使用Spring Jdbc的话将继承的父类改成SpringJdbcFlexSQLServiceImpl即可
+//使用Spring Jdbc的话将继承的父类改成SpringJdbcSqlBeanServiceImpl即可
 @Service
-public class UserServiceImpl extends MybatisFlexSQLServiceImpl<User, Long> implements UserService {
+public class UserServiceImpl extends MybatisSqlBeanServiceImpl<User, Long> implements UserService {
 
 }
 ```
