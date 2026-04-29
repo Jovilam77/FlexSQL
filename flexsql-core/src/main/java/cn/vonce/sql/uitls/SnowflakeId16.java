@@ -10,6 +10,7 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.RunnableFuture;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -45,39 +46,47 @@ public final class SnowflakeId16 implements Serializable {
     //private static final long OFFSET = LocalDate.of(2000, 1, 1).atStartOfDay(ZoneId.of("Z")).toEpochSecond();
     private static final long OFFSET = 946684800;
 
-    private static final long MAX_NEXT = 0b11111_11111111_111L;
+    private static final long MAX_NEXT = 0b1111111111111111111L;
 
     private static final long SHARD_ID = getServerIdAsLong();
 
-    private static long offset = 0;
-
-    private static long lastEpoch = 0;
+    private static final AtomicLong offset = new AtomicLong(0);
+    private static final AtomicLong lastEpoch = new AtomicLong(0);
 
     public static long nextId() {
         return nextId(System.currentTimeMillis() / 1000);
     }
 
-    private static synchronized long nextId(long epochSecond) {
-        if (epochSecond < lastEpoch) {
-            // warning: clock is turn back:
-//            logger.warn("clock is back: " + epochSecond + " from previous:" + lastEpoch);
-            epochSecond = lastEpoch;
+    private static long nextId(long epochSecond) {
+        long currentEpoch = epochSecond;
+        long last;
+        
+        while (true) {
+            last = lastEpoch.get();
+            
+            if (currentEpoch < last) {
+                // Clock is backwards, wait until clock catches up
+                currentEpoch = System.currentTimeMillis() / 1000;
+                continue;
+            }
+            
+            if (currentEpoch == last) {
+                // Same epoch, try to get next sequence
+                long next = offset.incrementAndGet();
+                if (next <= MAX_NEXT) {
+                    return generateId(currentEpoch, next, SHARD_ID);
+                }
+                // Sequence exhausted, need to wait for next epoch
+            }
+            
+            // Try to advance to next epoch
+            if (lastEpoch.compareAndSet(last, currentEpoch)) {
+                offset.set(1);
+                return generateId(currentEpoch, 1, SHARD_ID);
+            }
+            // CAS failed, another thread advanced the epoch, retry
+            currentEpoch = System.currentTimeMillis() / 1000;
         }
-        if (lastEpoch != epochSecond) {
-            lastEpoch = epochSecond;
-            reset();
-        }
-        offset++;
-        long next = offset & MAX_NEXT;
-        if (next == 0) {
-//            logger.warn("maximum id reached in 1 second in epoch: " + epochSecond);
-            return nextId(epochSecond + 1);
-        }
-        return generateId(epochSecond, next, SHARD_ID);
-    }
-
-    private static void reset() {
-        offset = 0;
     }
 
     private static long generateId(long epochSecond, long next, long shardId) {
@@ -85,8 +94,8 @@ public final class SnowflakeId16 implements Serializable {
     }
 
     private static long getServerIdAsLong() {
+        // 首先尝试从主机名解析机器ID（兼容安卓异步调用）
         try {
-            //为照顾安卓版需异步调用
             RunnableFuture<String> runnableFuture = new FutureTask<>(new Callable<String>() {
                 @Override
                 public String call() throws UnknownHostException {
@@ -99,16 +108,53 @@ public final class SnowflakeId16 implements Serializable {
             if (matcher.matches()) {
                 long n = Long.parseLong(matcher.group(1));
                 if (n >= 0 && n < 8) {
-//                    logger.info("detect server id from host name {}: {}.", hostname, n);
                     return n;
                 }
             }
         } catch (ExecutionException e) {
-            e.printStackTrace();
+            // 继续尝试其他方式
         } catch (InterruptedException e) {
-            e.printStackTrace();
+            Thread.currentThread().interrupt();
+            // 继续尝试其他方式
         }
-        return 0;
+        
+        // 尝试使用IP地址哈希
+        try {
+            RunnableFuture<Long> ipFuture = new FutureTask<>(new Callable<Long>() {
+                @Override
+                public Long call() throws UnknownHostException {
+                    InetAddress localHost = InetAddress.getLocalHost();
+                    byte[] address = localHost.getAddress();
+                    
+                    // 使用IP地址哈希计算机器ID
+                    int hash = 0;
+                    for (byte b : address) {
+                        hash = 31 * hash + (b & 0xFF);
+                    }
+                    
+                    // 确保结果在0-31范围内
+                    return Math.abs((long) hash) % 32;
+                }
+            });
+            new Thread(ipFuture).start();
+            return ipFuture.get();
+            
+        } catch (ExecutionException e) {
+            // 继续尝试默认值
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            // 继续尝试默认值
+        }
+        
+        // 如果以上方法都失败，使用一个合理的默认值
+        // 基于系统属性或其他标识符生成一个相对唯一的值
+        String pid = System.getProperty("pid", "0");
+        String hostname = System.getenv("HOSTNAME");
+        if (hostname == null) {
+            hostname = "unknown";
+        }
+        int hash = (pid + hostname).hashCode();
+        return Math.abs((long) hash) % 32;
     }
 
     public static long stringIdToLongId(String stringId) {

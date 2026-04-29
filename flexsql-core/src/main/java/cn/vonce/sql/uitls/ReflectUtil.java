@@ -1,6 +1,7 @@
 package cn.vonce.sql.uitls;
 
 import java.lang.reflect.Field;
+import java.util.logging.Logger;
 
 /**
  * 反射工具抽象类
@@ -12,19 +13,23 @@ import java.lang.reflect.Field;
  */
 public abstract class ReflectUtil {
 
-    private static Reflect reflect;
+    private static final Logger logger = Logger.getLogger(ReflectUtil.class.getName());
+    private static volatile Reflect reflect;
 
     public static Reflect instance() {
-        return reflect;
-    }
-
-    static {
-        try {
-            Class.forName("android.content.Context");
-            reflect = ReflectJdkUtil.instance();
-        } catch (ClassNotFoundException e) {
-            reflect = ReflectAsmUtil.instance();
+        if (reflect == null) {
+            synchronized (ReflectUtil.class) {
+                if (reflect == null) {
+                    try {
+                        Class.forName("android.content.Context");
+                        reflect = ReflectJdkUtil.instance();
+                    } catch (ClassNotFoundException e) {
+                        reflect = ReflectAsmUtil.instance();
+                    }
+                }
+            }
         }
+        return reflect;
     }
 
     /**
@@ -43,9 +48,9 @@ public abstract class ReflectUtil {
             try {
                 result = field.get(obj);
             } catch (IllegalArgumentException e) {
-                e.printStackTrace();
+                logger.warning("获取字段值失败(参数错误): " + e.getMessage());
             } catch (IllegalAccessException e) {
-                e.printStackTrace();
+                logger.warning("获取字段值失败(访问受限): " + e.getMessage());
             }
         }
         return (T) result;
@@ -85,9 +90,9 @@ public abstract class ReflectUtil {
                 field.setAccessible(true);
                 field.set(obj, fieldValue);
             } catch (IllegalArgumentException e) {
-                e.printStackTrace();
+                logger.warning("设置字段值失败(参数错误): " + e.getMessage());
             } catch (IllegalAccessException e) {
-                e.printStackTrace();
+                logger.warning("设置字段值失败(访问受限): " + e.getMessage());
             }
         }
     }

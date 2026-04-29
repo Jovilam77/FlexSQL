@@ -19,6 +19,7 @@ import java.lang.reflect.*;
 import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Logger;
 
 /**
@@ -46,7 +47,7 @@ public class SqlBeanUtil {
     /**
      * 保存SqlTable缓存
      */
-    private static final WeakHashMap<Class<?>, SqlTable> sqlTableMap = new WeakHashMap<>();
+    private static final ConcurrentHashMap<Class<?>, SqlTable> sqlTableMap = new ConcurrentHashMap<>();
 
     /**
      * 获取SqlTable注解
@@ -55,30 +56,27 @@ public class SqlBeanUtil {
      * @return
      */
     public static SqlTable getSqlTable(Class<?> clazz) {
-        if (sqlTableMap.containsKey(clazz)) {
-            return sqlTableMap.get(clazz);
-        }
-        SqlTable sqlTable = clazz.getAnnotation(SqlTable.class);
-        if (sqlTable == null) {
-            Class<?> superClass = clazz.getSuperclass();
-            if (superClass == null) {
-                return null;
+        return sqlTableMap.computeIfAbsent(clazz, key -> {
+            SqlTable sqlTable = key.getAnnotation(SqlTable.class);
+            if (sqlTable == null) {
+                Class<?> superClass = key.getSuperclass();
+                if (superClass != null) {
+                    do {
+                        if (superClass != java.lang.Object.class) {
+                            sqlTable = superClass.getAnnotation(SqlTable.class);
+                            if (sqlTable != null) {
+                                break;
+                            }
+                            superClass = superClass.getSuperclass();
+                        }
+                        if (superClass == java.lang.Object.class) {
+                            break;
+                        }
+                    } while (superClass != java.lang.Object.class);
+                }
             }
-            do {
-                if (superClass != java.lang.Object.class) {
-                    sqlTable = superClass.getAnnotation(SqlTable.class);
-                    if (sqlTable != null) {
-                        break;
-                    }
-                    superClass = superClass.getSuperclass();
-                }
-                if (superClass == java.lang.Object.class) {
-                    break;
-                }
-            } while (superClass != java.lang.Object.class);
-        }
-        sqlTableMap.put(clazz, sqlTable);
-        return sqlTable;
+            return sqlTable;
+        });
     }
 
     /**
@@ -237,6 +235,12 @@ public class SqlBeanUtil {
      * @return
      */
     public static String getTableFieldFullName(Common common, String tableAlias, String tableFieldName) {
+        if (common == null) {
+            throw new IllegalArgumentException("common cannot be null");
+        }
+        if (tableFieldName == null) {
+            throw new IllegalArgumentException("tableFieldName cannot be null");
+        }
         String escape = getEscape(common);
         StringBuffer fullName = new StringBuffer();
         if (StringUtil.isNotEmpty(tableAlias)) {
@@ -259,6 +263,12 @@ public class SqlBeanUtil {
      * @return
      */
     public static String getTableFieldFullName(Common common, Column column) {
+        if (common == null) {
+            throw new IllegalArgumentException("common cannot be null");
+        }
+        if (column == null) {
+            throw new IllegalArgumentException("column cannot be null");
+        }
         String escape = getEscape(common);
         StringBuffer fullName = new StringBuffer();
         if (StringUtil.isNotEmpty(column.getTableAlias())) {
@@ -321,6 +331,9 @@ public class SqlBeanUtil {
      * @return
      */
     public static Field getIdField(Class<?> clazz) throws SqlBeanException {
+        if (clazz == null) {
+            throw new IllegalArgumentException("clazz cannot be null");
+        }
         List<Field> fieldList = getBeanAllField(clazz);
         Field idField = null;
         int existId = 0;
@@ -347,6 +360,9 @@ public class SqlBeanUtil {
      * @return
      */
     public static Field getLogicallyField(Class<?> clazz) throws SqlBeanException {
+        if (clazz == null) {
+            throw new IllegalArgumentException("clazz cannot be null");
+        }
         List<Field> fieldList = getBeanAllField(clazz);
         Field logicallyField = null;
         int existLogicallyField = 0;
@@ -1148,7 +1164,36 @@ public class SqlBeanUtil {
      * @return
      */
     public static String filterSQLInject(String str) {
-        return str.replace("\'", "\\'");
+        if (str == null) {
+            return "";
+        }
+        // 过滤常见SQL注入字符
+        return str.replace("\\", "\\\\")
+                  .replace("'", "\\'")
+                  .replace("\"", "\\\"")
+                  .replace("\0", "\\0")
+                  .replace("\n", "\\n")
+                  .replace("\r", "\\r")
+                  .replace("\t", "\\t")
+                  .replace("\b", "\\b")
+                  .replace("\u001a", "\\u001a");
+    }
+
+    /**
+     * 过滤LIKE查询中的通配符，防止通配符注入
+     *
+     * @param str
+     * @return
+     */
+    public static String filterLikeWildcard(String str) {
+        if (str == null) {
+            return "";
+        }
+        // 先进行SQL注入过滤
+        str = filterSQLInject(str);
+        // 转义LIKE通配符：% 和 _
+        return str.replace("%", "\\%")
+                  .replace("_", "\\_");
     }
 
     /**
@@ -1550,7 +1595,7 @@ public class SqlBeanUtil {
         } catch (ClassNotFoundException e) {
             throw new SqlBeanException("找不到类：" + e.getMessage());
         } catch (NoSuchFieldException e) {
-            e.printStackTrace();
+            logger.warning("找不到字段: " + getter + ", " + e.getMessage());
             throw new SqlBeanException("找不到字段,请检查:" + getter + "方法名与所对应的字段名是否符合标准,如：id字段对应的get方法名应该为getId()");
         }
     }
@@ -1586,7 +1631,7 @@ public class SqlBeanUtil {
             ObjectInputStream ois = new ObjectInputStream(new ByteArrayInputStream(bos.toByteArray()));
             return (T) ois.readObject();
         } catch (IOException | ClassNotFoundException e) {
-            e.printStackTrace();
+            logger.warning("对象复制失败: " + e.getMessage());
         }
         return null;
     }
@@ -1760,11 +1805,11 @@ public class SqlBeanUtil {
             try {
                 jsonConvert = sqlJSON.convert().getDeclaredConstructor().newInstance();
             } catch (InstantiationException e) {
-                e.printStackTrace();
+                logger.warning("JSON转换器实例化失败: " + e.getMessage());
             } catch (IllegalAccessException | NoSuchMethodException e) {
-                e.printStackTrace();
+                logger.warning("JSON转换器访问失败: " + e.getMessage());
             } catch (InvocationTargetException e) {
-                e.printStackTrace();
+                logger.warning("JSON转换器调用失败: " + e.getMessage());
             }
         } else {
             jsonConvert = new JSONConvertImpl();

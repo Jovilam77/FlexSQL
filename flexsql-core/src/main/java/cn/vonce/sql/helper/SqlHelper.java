@@ -1087,13 +1087,17 @@ public class SqlHelper {
             value = conditionInfo.getValue();
             //对like操作符处理
             if (operator.indexOf(SqlConstant.LIKE) > -1) {
+                // 转义用户输入中的通配符，防止通配符注入
+                String originalValue = value != null ? value.toString() : "";
+                String escapedValue = SqlBeanUtil.filterLikeWildcard(originalValue);
+                
                 if (conditionInfo.getSqlOperator() == SqlOperator.LIKE || conditionInfo.getSqlOperator() == SqlOperator.LIKE_L || conditionInfo.getSqlOperator() == SqlOperator.NOT_LIKE || conditionInfo.getSqlOperator() == SqlOperator.NOT_LIKE_L) {
-                    value = SqlConstant.PERCENT + value;
+                    escapedValue = SqlConstant.PERCENT + escapedValue;
                 }
                 if (conditionInfo.getSqlOperator() == SqlOperator.LIKE || conditionInfo.getSqlOperator() == SqlOperator.LIKE_R || conditionInfo.getSqlOperator() == SqlOperator.NOT_LIKE || conditionInfo.getSqlOperator() == SqlOperator.NOT_LIKE_R) {
-                    value = value + SqlConstant.PERCENT;
+                    escapedValue = escapedValue + SqlConstant.PERCENT;
                 }
-                value = SqlConstant.SINGLE_QUOTATION_MARK + value + SqlConstant.SINGLE_QUOTATION_MARK;
+                value = SqlConstant.SINGLE_QUOTATION_MARK + escapedValue + SqlConstant.SINGLE_QUOTATION_MARK;
             } else {
                 value = SqlBeanUtil.getActualValue(common, value);
             }
