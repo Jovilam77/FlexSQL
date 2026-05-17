@@ -3,6 +3,7 @@ package cn.vonce.sql.dialect;
 import cn.vonce.sql.annotation.SqlJSON;
 import cn.vonce.sql.bean.Alter;
 import cn.vonce.sql.bean.ColumnInfo;
+import cn.vonce.sql.bean.Select;
 import cn.vonce.sql.config.SqlBeanMeta;
 import cn.vonce.sql.constant.SqlConstant;
 import cn.vonce.sql.enumerate.AlterDifference;
@@ -201,6 +202,26 @@ public class DB2Dialect extends AbstractDialect<JavaMapDB2Type> {
         recastSql.append("'");
         recastSql.append(SqlConstant.END_BRACKET);
         return recastSql.toString();
+    }
+
+    @Override
+    public void appendPageSuffix(StringBuilder sqlSb, Select select, String orderSql, Integer[] pageParam) {
+        //DB2 count查询不进行分页处理
+        if (select.isCount()) {
+            return;
+        }
+        String sql = sqlSb.toString();
+        sqlSb.setLength(0);
+        sqlSb.append(SqlConstant.SELECT + SqlConstant.ALL + SqlConstant.FROM + SqlConstant.BEGIN_BRACKET);
+        sqlSb.append(SqlConstant.SELECT + SqlConstant.T + SqlConstant.POINT + SqlConstant.ALL + SqlConstant.COMMA + SqlConstant.ROWNUMBER);
+        sqlSb.append(SqlConstant.OVER + SqlConstant.BEGIN_BRACKET + SqlConstant.SPACES + SqlConstant.END_BRACKET + SqlConstant.AS + SqlConstant.RN + SqlConstant.FROM + SqlConstant.BEGIN_BRACKET);
+        sqlSb.append(sql);
+        sqlSb.append(SqlConstant.END_BRACKET + SqlConstant.T + SqlConstant.SPACES + SqlConstant.END_BRACKET + SqlConstant.TB);
+        sqlSb.append(SqlConstant.WHERE + SqlConstant.BEGIN_BRACKET + SqlConstant.TB + SqlConstant.POINT + SqlConstant.RN + SqlConstant.LESS_THAN_OR_EQUAL_TO);
+        sqlSb.append(pageParam[1]);
+        sqlSb.append(SqlConstant.AND + SqlConstant.TB + SqlConstant.POINT + SqlConstant.RN + SqlConstant.GREATER_THAN);
+        sqlSb.append(pageParam[0]);
+        sqlSb.append(SqlConstant.END_BRACKET);
     }
 
     @Override

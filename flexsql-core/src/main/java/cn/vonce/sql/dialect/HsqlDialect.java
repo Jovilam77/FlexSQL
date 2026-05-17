@@ -2,6 +2,7 @@ package cn.vonce.sql.dialect;
 
 import cn.vonce.sql.annotation.SqlJSON;
 import cn.vonce.sql.bean.Alter;
+import cn.vonce.sql.bean.Select;
 import cn.vonce.sql.config.SqlBeanMeta;
 import cn.vonce.sql.constant.SqlConstant;
 import cn.vonce.sql.enumerate.AlterType;
@@ -146,6 +147,18 @@ public class HsqlDialect extends AbstractDialect<JavaMapHsqlType> {
         modifySql.append(SqlConstant.COLUMN);
         modifySql.append(SqlBeanUtil.addColumn(alter, alter.getColumnInfo(), alter.getAfterColumnName()));
         return modifySql;
+    }
+
+    @Override
+    public void appendPageSuffix(StringBuilder sqlSb, Select select, String orderSql, Integer[] pageParam) {
+        //Hsql count查询不进行分页处理
+        if (select.isCount()) {
+            return;
+        }
+        sqlSb.append(SqlConstant.LIMIT);
+        sqlSb.append(pageParam[1]);
+        sqlSb.append(SqlConstant.OFFSET);
+        sqlSb.append(pageParam[0]);
     }
 
     @Override

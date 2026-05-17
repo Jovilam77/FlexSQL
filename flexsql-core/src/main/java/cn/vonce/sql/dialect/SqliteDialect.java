@@ -138,6 +138,18 @@ public class SqliteDialect extends AbstractDialect<JavaMapSqliteType> {
     }
 
     @Override
+    public void appendPageSuffix(StringBuilder sqlSb, Select select, String orderSql, Integer[] pageParam) {
+        //SQLite count查询不进行分页处理
+        if (select.isCount()) {
+            return;
+        }
+        sqlSb.append(SqlConstant.LIMIT);
+        sqlSb.append(pageParam[1]);
+        sqlSb.append(SqlConstant.OFFSET);
+        sqlSb.append(pageParam[0]);
+    }
+
+    @Override
     public String addRemarks(boolean isTable, Alter item, String escape) {
         return null;
     }

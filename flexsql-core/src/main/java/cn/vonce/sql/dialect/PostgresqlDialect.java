@@ -3,6 +3,7 @@ package cn.vonce.sql.dialect;
 import cn.vonce.sql.annotation.SqlJSON;
 import cn.vonce.sql.bean.Alter;
 import cn.vonce.sql.bean.ColumnInfo;
+import cn.vonce.sql.bean.Select;
 import cn.vonce.sql.bean.Table;
 import cn.vonce.sql.config.SqlBeanMeta;
 import cn.vonce.sql.constant.SqlConstant;
@@ -222,6 +223,18 @@ public class PostgresqlDialect extends AbstractDialect<JavaMapPostgresqlType> {
             }
         }
         return modifySql.toString();
+    }
+
+    @Override
+    public void appendPageSuffix(StringBuilder sqlSb, Select select, String orderSql, Integer[] pageParam) {
+        //Postgresql count查询不进行分页处理
+        if (select.isCount()) {
+            return;
+        }
+        sqlSb.append(SqlConstant.LIMIT);
+        sqlSb.append(pageParam[1]);
+        sqlSb.append(SqlConstant.OFFSET);
+        sqlSb.append(pageParam[0]);
     }
 
     @Override

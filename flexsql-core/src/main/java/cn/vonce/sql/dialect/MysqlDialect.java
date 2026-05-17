@@ -2,6 +2,7 @@ package cn.vonce.sql.dialect;
 
 import cn.vonce.sql.annotation.SqlJSON;
 import cn.vonce.sql.bean.Alter;
+import cn.vonce.sql.bean.Select;
 import cn.vonce.sql.bean.Table;
 import cn.vonce.sql.config.SqlBeanMeta;
 import cn.vonce.sql.constant.SqlConstant;
@@ -156,6 +157,18 @@ public class MysqlDialect extends AbstractDialect<JavaMapMySqlType> {
         remarksSql.append(StringUtil.isNotBlank(item.getColumnInfo().getRemarks()) ? item.getColumnInfo().getRemarks() : "''");
         remarksSql.append(SqlConstant.SINGLE_QUOTATION_MARK);
         return remarksSql.toString();
+    }
+
+    @Override
+    public void appendPageSuffix(StringBuilder sqlSb, Select select, String orderSql, Integer[] pageParam) {
+        //MySQL count查询不进行分页处理
+        if (select.isCount()) {
+            return;
+        }
+        sqlSb.append(SqlConstant.LIMIT);
+        sqlSb.append(pageParam[0]);
+        sqlSb.append(SqlConstant.COMMA);
+        sqlSb.append(pageParam[1]);
     }
 
     @Override

@@ -7,6 +7,7 @@ import cn.vonce.sql.uitls.ReflectUtil;
 import cn.vonce.sql.uitls.StringUtil;
 import cn.vonce.sql.bean.*;
 import cn.vonce.sql.constant.SqlConstant;
+import cn.vonce.sql.dialect.SqlDialect;
 import cn.vonce.sql.enumerate.*;
 import cn.vonce.sql.exception.SqlBeanException;
 import cn.vonce.sql.uitls.SqlBeanUtil;
@@ -38,26 +39,26 @@ public class SqlHelper {
         StringBuilder sqlSb = new StringBuilder();
         Integer[] pageParam = null;
         String orderSql = orderBySql(select);
-        //SQLServer2008 分页处理
-        if (select.getSqlBeanMeta().getDbType() == DbType.SQLServer) {
-            if (SqlBeanUtil.isUsePage(select)) {
-                pageParam = pageParam(select);
-                sqlSb.append(SqlConstant.SELECT);
-                sqlSb.append(SqlConstant.ALL);
-                sqlSb.append(SqlConstant.FROM);
-                sqlSb.append(SqlConstant.BEGIN_BRACKET);
-            }
+        SqlDialect dialect = select.getSqlBeanMeta().getDbType().getSqlDialect();
+
+        //计算分页参数
+        if (SqlBeanUtil.isUsePage(select)) {
+            pageParam = pageParam(select);
         }
+
+        //方言分页前缀（在SELECT关键字之前插入）
+        if (pageParam != null) {
+            dialect.appendPageBeforePrefix(sqlSb, select, orderSql, pageParam);
+        }
+
         //标准Sql
         sqlSb.append(select.isDistinct() ? SqlConstant.SELECT_DISTINCT : SqlConstant.SELECT);
-        //SqlServer 分页处理
-        if (select.getSqlBeanMeta().getDbType() == DbType.SQLServer) {
-            if (SqlBeanUtil.isUsePage(select)) {
-                sqlSb.append(SqlConstant.TOP);
-                sqlSb.append(pageParam[0]);
-                sqlSb.append(SqlConstant.ROW_NUMBER + SqlConstant.OVER + SqlConstant.BEGIN_BRACKET + orderSql + SqlConstant.END_BRACKET + SqlConstant.ROWNUM + SqlConstant.COMMA);
-            }
+
+        //方言分页SELECT列前缀（在SELECT关键字之后、列字段列表之前插入）
+        if (pageParam != null) {
+            dialect.appendPageAfterSelect(sqlSb, select, orderSql, pageParam);
         }
+
         //标准Sql
         if (select.isCount() && !select.isDistinct()) {
             sqlSb.append(SqlConstant.COUNT + SqlConstant.BEGIN_BRACKET + SqlConstant.ALL + SqlConstant.END_BRACKET);
@@ -74,42 +75,14 @@ public class SqlHelper {
         if (!select.isCount()) {
             sqlSb.append(orderSql);
         }
-        //SQLServer2008 分页处理
-        if (select.getSqlBeanMeta().getDbType() == DbType.SQLServer) {
-            // 主要逻辑 结束
-            if (SqlBeanUtil.isUsePage(select)) {
-                sqlSb.append(SqlConstant.END_BRACKET);
-                sqlSb.append(SqlConstant.T);
-                sqlSb.append(SqlConstant.WHERE);
-                sqlSb.append(SqlConstant.T + SqlConstant.POINT + SqlConstant.ROWNUM);
-                sqlSb.append(SqlConstant.GREATER_THAN);
-                sqlSb.append(pageParam[1]);
-            }
+        //方言分页后缀（在COUNT包裹之前处理，以保持SQL Server原始行为）
+        if (pageParam != null) {
+            dialect.appendPageSuffix(sqlSb, select, orderSql, pageParam);
         }
         //标准Sql 如果是克隆的select则为分页时的count
         if ((select.isCount() && select.isDistinct()) || (select.isCount() && StringUtil.isNotEmpty(groupBySql))) {
             sqlSb.insert(0, SqlConstant.SELECT + SqlConstant.COUNT + SqlConstant.BEGIN_BRACKET + SqlConstant.ALL + SqlConstant.END_BRACKET + SqlConstant.FROM + SqlConstant.BEGIN_BRACKET);
             sqlSb.append(SqlConstant.END_BRACKET + SqlConstant.AS + SqlConstant.T);
-        }
-        //MySQL,MariaDB,H2 分页处理
-        if (!select.isCount() && (select.getSqlBeanMeta().getDbType() == DbType.MySQL || select.getSqlBeanMeta().getDbType() == DbType.MariaDB || select.getSqlBeanMeta().getDbType() == DbType.H2)) {
-            mysqlPageDispose(select, sqlSb);
-        }
-        //Postgresql,SQLite,Hsql 分页处理
-        else if (!select.isCount() && (select.getSqlBeanMeta().getDbType() == DbType.Postgresql || select.getSqlBeanMeta().getDbType() == DbType.SQLite || select.getSqlBeanMeta().getDbType() == DbType.Hsql)) {
-            postgresqlPageDispose(select, sqlSb);
-        }
-        //Oracle 分页处理
-        else if (!select.isCount() && select.getSqlBeanMeta().getDbType() == DbType.Oracle) {
-            oraclePageDispose(select, sqlSb);
-        }
-        //DB2 分页处理
-        else if (!select.isCount() && select.getSqlBeanMeta().getDbType() == DbType.DB2) {
-            db2PageDispose(select, sqlSb);
-        }
-        //Derby 分页处理
-        else if (!select.isCount() && select.getSqlBeanMeta().getDbType() == DbType.Derby) {
-            derbyPageDispose(select, sqlSb);
         }
         return sqlSb.toString();
     }
@@ -1124,104 +1097,6 @@ public class SqlHelper {
             sql.append(SqlConstant.END_BRACKET);
         }
         return sql;
-    }
-
-    /**
-     * 返回MySQL,MariaDB,H2 分页语句
-     *
-     * @param select
-     * @return
-     */
-    private static void mysqlPageDispose(Select select, StringBuilder sqlSb) {
-        if (SqlBeanUtil.isUsePage(select)) {
-            Integer[] param = pageParam(select);
-            sqlSb.append(SqlConstant.LIMIT);
-            sqlSb.append(param[0]);
-            sqlSb.append(SqlConstant.COMMA);
-            sqlSb.append(param[1]);
-        }
-    }
-
-    /**
-     * 返回Postgresql,Sqlite,Hsql 分页语句
-     *
-     * @param select
-     * @return
-     */
-    private static void postgresqlPageDispose(Select select, StringBuilder sqlSb) {
-        if (SqlBeanUtil.isUsePage(select)) {
-            Integer[] param = pageParam(select);
-            sqlSb.append(SqlConstant.LIMIT);
-            sqlSb.append(param[1]);
-            sqlSb.append(SqlConstant.OFFSET);
-            sqlSb.append(param[0]);
-        }
-    }
-
-    /**
-     * Oracle 分页处理
-     *
-     * @param select
-     * @param sqlSb
-     */
-    private static void oraclePageDispose(Select select, StringBuilder sqlSb) {
-        //oracle 分页语句前缀
-        if (SqlBeanUtil.isUsePage(select)) {
-            Integer[] param = pageParam(select);
-            StringBuilder beginSqlSb = new StringBuilder();
-            beginSqlSb.append(SqlConstant.SELECT + SqlConstant.ALL + SqlConstant.FROM + SqlConstant.BEGIN_BRACKET);
-            beginSqlSb.append(SqlConstant.SELECT + SqlConstant.TB + SqlConstant.POINT + SqlConstant.ALL + SqlConstant.COMMA + SqlConstant.ROWNUM + SqlConstant.RN + SqlConstant.FROM + SqlConstant.BEGIN_BRACKET);
-            sqlSb.insert(0, beginSqlSb);
-            StringBuilder endSb = new StringBuilder();
-            endSb.append(SqlConstant.END_BRACKET + SqlConstant.TB + SqlConstant.WHERE + SqlConstant.ROWNUM + SqlConstant.LESS_THAN_OR_EQUAL_TO);
-            endSb.append(param[1]);
-            endSb.append(SqlConstant.END_BRACKET + SqlConstant.WHERE + SqlConstant.RN + SqlConstant.GREATER_THAN);
-            endSb.append(param[0]);
-            sqlSb.append(endSb);
-        }
-    }
-
-    /**
-     * DB2 分页处理
-     *
-     * @param select
-     * @param sqlSb
-     */
-    private static void db2PageDispose(Select select, StringBuilder sqlSb) {
-        //db2 分页语句前缀
-        if (SqlBeanUtil.isUsePage(select)) {
-            Integer[] param = pageParam(select);
-            StringBuilder beginSqlSb = new StringBuilder();
-            beginSqlSb.append(SqlConstant.SELECT + SqlConstant.ALL + SqlConstant.FROM + SqlConstant.BEGIN_BRACKET);
-            beginSqlSb.append(SqlConstant.SELECT + SqlConstant.T + SqlConstant.POINT + SqlConstant.ALL + SqlConstant.COMMA + SqlConstant.ROWNUMBER);
-            beginSqlSb.append(SqlConstant.OVER + SqlConstant.BEGIN_BRACKET + SqlConstant.SPACES + SqlConstant.END_BRACKET + SqlConstant.AS + SqlConstant.RN + SqlConstant.FROM + SqlConstant.BEGIN_BRACKET);
-            sqlSb.insert(0, beginSqlSb);
-            StringBuilder endSb = new StringBuilder();
-            endSb.append(SqlConstant.END_BRACKET + SqlConstant.T + SqlConstant.SPACES + SqlConstant.END_BRACKET + SqlConstant.TB);
-            endSb.append(SqlConstant.WHERE + SqlConstant.BEGIN_BRACKET + SqlConstant.TB + SqlConstant.POINT + SqlConstant.RN + SqlConstant.LESS_THAN_OR_EQUAL_TO);
-            endSb.append(param[1]);
-            endSb.append(SqlConstant.AND + SqlConstant.TB + SqlConstant.POINT + SqlConstant.RN + SqlConstant.GREATER_THAN);
-            endSb.append(param[0]);
-            endSb.append(SqlConstant.END_BRACKET);
-            sqlSb.append(endSb);
-        }
-    }
-
-    /**
-     * 返回Derby 分页语句
-     *
-     * @param select
-     * @return
-     */
-    private static void derbyPageDispose(Select select, StringBuilder sqlSb) {
-        if (SqlBeanUtil.isUsePage(select)) {
-            Integer[] param = pageParam(select);
-            sqlSb.append(SqlConstant.OFFSET);
-            sqlSb.append(param[0]);
-            sqlSb.append(" ROWS FETCH NEXT ");
-            sqlSb.append(param[1]);
-            sqlSb.append(" ROWS ONLY");
-        }
     }
 
     /**

@@ -1,6 +1,7 @@
 package cn.vonce.sql.dialect;
 
 import cn.vonce.sql.bean.Alter;
+import cn.vonce.sql.bean.Select;
 import cn.vonce.sql.config.SqlBeanMeta;
 import cn.vonce.sql.enumerate.JdbcType;
 import cn.vonce.sql.uitls.SqlBeanUtil;
@@ -107,6 +108,42 @@ public interface SqlDialect<T> {
      */
     default String getSchemaName(SqlBeanMeta sqlBeanMeta, String schemaName) {
         return (SqlBeanUtil.isToUpperCase(sqlBeanMeta) ? schemaName.toUpperCase() : schemaName);
+    }
+
+    /**
+     * 构建分页SQL前缀（在SELECT关键字之前插入）
+     * 用于SQL Server的 SELECT ALL FROM ( 外层包裹
+     *
+     * @param sqlSb     SQL构建器
+     * @param select    查询对象
+     * @param orderSql  排序语句
+     * @param pageParam 分页参数[offset/startIndex, limit/endIndex]
+     */
+    default void appendPageBeforePrefix(StringBuilder sqlSb, Select select, String orderSql, Integer[] pageParam) {
+    }
+
+    /**
+     * 构建分页SELECT列前缀（在SELECT关键字之后、列字段列表之前插入）
+     * 用于SQL Server的 TOP n ROW_NUMBER() OVER(order) AS rownum,
+     *
+     * @param sqlSb     SQL构建器
+     * @param select    查询对象
+     * @param orderSql  排序语句
+     * @param pageParam 分页参数[offset/startIndex, limit/endIndex]
+     */
+    default void appendPageAfterSelect(StringBuilder sqlSb, Select select, String orderSql, Integer[] pageParam) {
+    }
+
+    /**
+     * 构建分页SQL后缀（在完整SQL构建完成后调用）
+     * 用于追加 LIMIT/OFFSET 或包裹已有SQL（Oracle/DB2嵌套查询）
+     *
+     * @param sqlSb     SQL构建器
+     * @param select    查询对象
+     * @param orderSql  排序语句
+     * @param pageParam 分页参数[offset/startIndex, limit/endIndex]
+     */
+    default void appendPageSuffix(StringBuilder sqlSb, Select select, String orderSql, Integer[] pageParam) {
     }
 
 }

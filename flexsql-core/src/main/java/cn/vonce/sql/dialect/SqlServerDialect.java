@@ -3,6 +3,7 @@ package cn.vonce.sql.dialect;
 import cn.vonce.sql.annotation.SqlJSON;
 import cn.vonce.sql.bean.Alter;
 import cn.vonce.sql.bean.ColumnInfo;
+import cn.vonce.sql.bean.Select;
 import cn.vonce.sql.bean.Table;
 import cn.vonce.sql.config.SqlBeanMeta;
 import cn.vonce.sql.constant.SqlConstant;
@@ -249,6 +250,31 @@ public class SqlServerDialect extends AbstractDialect<JavaMapSqlServerType> {
         remarksSql.append("'MS_Description', N'" + remarks + "', 'SCHEMA', N'" + schema + "', 'TABLE', N'" + item.getTable().getName() + "'" + (!isTable ? (", 'COLUMN', N'" + item.getColumnInfo().getName() + "'") : ""));
         remarksSql.append(SqlConstant.SEMICOLON);
         return remarksSql.toString();
+    }
+
+    @Override
+    public void appendPageBeforePrefix(StringBuilder sqlSb, Select select, String orderSql, Integer[] pageParam) {
+        sqlSb.append(SqlConstant.SELECT);
+        sqlSb.append(SqlConstant.ALL);
+        sqlSb.append(SqlConstant.FROM);
+        sqlSb.append(SqlConstant.BEGIN_BRACKET);
+    }
+
+    @Override
+    public void appendPageAfterSelect(StringBuilder sqlSb, Select select, String orderSql, Integer[] pageParam) {
+        sqlSb.append(SqlConstant.TOP);
+        sqlSb.append(pageParam[0]);
+        sqlSb.append(SqlConstant.ROW_NUMBER + SqlConstant.OVER + SqlConstant.BEGIN_BRACKET + orderSql + SqlConstant.END_BRACKET + SqlConstant.ROWNUM + SqlConstant.COMMA);
+    }
+
+    @Override
+    public void appendPageSuffix(StringBuilder sqlSb, Select select, String orderSql, Integer[] pageParam) {
+        sqlSb.append(SqlConstant.END_BRACKET);
+        sqlSb.append(SqlConstant.T);
+        sqlSb.append(SqlConstant.WHERE);
+        sqlSb.append(SqlConstant.T + SqlConstant.POINT + SqlConstant.ROWNUM);
+        sqlSb.append(SqlConstant.GREATER_THAN);
+        sqlSb.append(pageParam[1]);
     }
 
     @Override

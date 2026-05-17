@@ -3,6 +3,7 @@ package cn.vonce.sql.dialect;
 import cn.vonce.sql.annotation.SqlJSON;
 import cn.vonce.sql.bean.Alter;
 import cn.vonce.sql.bean.ColumnInfo;
+import cn.vonce.sql.bean.Select;
 import cn.vonce.sql.bean.Table;
 import cn.vonce.sql.config.SqlBeanMeta;
 import cn.vonce.sql.constant.SqlConstant;
@@ -171,6 +172,23 @@ public class OracleDialect extends AbstractDialect<JavaMapOracleType> {
         modifySql.append(SqlConstant.END_BRACKET);
         modifySql.append(SqlConstant.SPACES);
         return modifySql.toString();
+    }
+
+    @Override
+    public void appendPageSuffix(StringBuilder sqlSb, Select select, String orderSql, Integer[] pageParam) {
+        //Oracle count查询不进行分页处理
+        if (select.isCount()) {
+            return;
+        }
+        String sql = sqlSb.toString();
+        sqlSb.setLength(0);
+        sqlSb.append(SqlConstant.SELECT + SqlConstant.ALL + SqlConstant.FROM + SqlConstant.BEGIN_BRACKET);
+        sqlSb.append(SqlConstant.SELECT + SqlConstant.TB + SqlConstant.POINT + SqlConstant.ALL + SqlConstant.COMMA + SqlConstant.ROWNUM + SqlConstant.RN + SqlConstant.FROM + SqlConstant.BEGIN_BRACKET);
+        sqlSb.append(sql);
+        sqlSb.append(SqlConstant.END_BRACKET + SqlConstant.TB + SqlConstant.WHERE + SqlConstant.ROWNUM + SqlConstant.LESS_THAN_OR_EQUAL_TO);
+        sqlSb.append(pageParam[1]);
+        sqlSb.append(SqlConstant.END_BRACKET + SqlConstant.WHERE + SqlConstant.RN + SqlConstant.GREATER_THAN);
+        sqlSb.append(pageParam[0]);
     }
 
     @Override
