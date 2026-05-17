@@ -6,10 +6,13 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.List;
+import java.util.logging.Logger;
 
 import dalvik.system.DexFile;
 
 public class PackageUtil {
+
+    private static final Logger logger = Logger.getLogger(PackageUtil.class.getName());
 
     public static List<String> getClasses(Context mContext, String packageName) {
         List<String> classes = new ArrayList<>();
@@ -25,7 +28,7 @@ public class PackageUtil {
                 }
             }
         } catch (IOException e) {
-            e.printStackTrace();
+            logger.warning("Failed to get classes from package '" + packageName + "': " + e.getMessage());
         }
         return classes;
     }

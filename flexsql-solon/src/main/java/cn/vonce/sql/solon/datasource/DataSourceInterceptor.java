@@ -10,6 +10,7 @@ import org.noear.solon.core.aspect.Interceptor;
 import org.noear.solon.core.aspect.Invocation;
 import java.lang.reflect.Method;
 import java.util.Random;
+import java.util.logging.Logger;
 
 /**
  * 数据源切换切点
@@ -20,6 +21,8 @@ import java.util.Random;
  * @date 2020/10/29 21:24
  */
 public class DataSourceInterceptor implements Interceptor {
+
+    private static final Logger logger = Logger.getLogger(DataSourceInterceptor.class.getName());
 
     @Override
     public Object doIntercept(Invocation inv) throws Throwable {
@@ -43,7 +46,7 @@ public class DataSourceInterceptor implements Interceptor {
                     dataSource = dbSource.master();
                 }
             } catch (Exception e) {
-                e.printStackTrace();
+                logger.warning("Failed to resolve data source: " + e.getMessage());
             }
             DataSourceContextHolder.setDataSource(dataSource);
         }

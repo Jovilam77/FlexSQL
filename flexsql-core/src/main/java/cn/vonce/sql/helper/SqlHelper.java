@@ -97,7 +97,7 @@ public class SqlHelper {
         }
         //Postgresql,SQLite,Hsql 分页处理
         else if (!select.isCount() && (select.getSqlBeanMeta().getDbType() == DbType.Postgresql || select.getSqlBeanMeta().getDbType() == DbType.SQLite || select.getSqlBeanMeta().getDbType() == DbType.Hsql)) {
-            PostgresqlPageDispose(select, sqlSb);
+            postgresqlPageDispose(select, sqlSb);
         }
         //Oracle 分页处理
         else if (!select.isCount() && select.getSqlBeanMeta().getDbType() == DbType.Oracle) {
@@ -188,7 +188,7 @@ public class SqlHelper {
         List<Field> fieldList = SqlBeanUtil.getBeanAllField(create.getBeanClass());
         SqlTable sqlTable = SqlBeanUtil.getSqlTable(create.getBeanClass());
         DbType dbType = create.getSqlBeanMeta().getDbType();
-        Class constantClass = SqlBeanUtil.getConstantClass(create.getBeanClass());
+        Class<?> constantClass = SqlBeanUtil.getConstantClass(create.getBeanClass());
         String remarks = sqlTable.remarks();
         //如果没有设置表注释，则从类上获取
         if (StringUtil.isEmpty(remarks)) {
@@ -448,7 +448,7 @@ public class SqlHelper {
         StringBuilder valueSql = new StringBuilder();
         StringBuilder fieldAndValuesSql = new StringBuilder();
         List<String> valueSqlList = new ArrayList<>();
-        List objectList = insert.getBean();
+        List<?> objectList = insert.getBean();
         SqlTable sqlTable = SqlBeanUtil.getSqlTable(insert.getBeanClass());
         //获取bean的全部字段
         List<Field> fieldList = SqlBeanUtil.getBeanAllField(insert.getBeanClass());
@@ -1148,7 +1148,7 @@ public class SqlHelper {
      * @param select
      * @return
      */
-    private static void PostgresqlPageDispose(Select select, StringBuilder sqlSb) {
+    private static void postgresqlPageDispose(Select select, StringBuilder sqlSb) {
         if (SqlBeanUtil.isUsePage(select)) {
             Integer[] param = pageParam(select);
             sqlSb.append(SqlConstant.LIMIT);

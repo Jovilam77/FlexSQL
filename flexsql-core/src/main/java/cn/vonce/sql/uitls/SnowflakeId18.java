@@ -7,6 +7,7 @@ import java.util.Enumeration;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.RunnableFuture;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.logging.Logger;
 import java.util.regex.Pattern;
 
 /**
@@ -48,6 +49,7 @@ import java.util.regex.Pattern;
  */
 public class SnowflakeId18 {
 
+    private static final Logger logger = Logger.getLogger(SnowflakeId18.class.getName());
 //    private static final Logger log = LoggerFactory.getLogger(Sequence.class);
 
     /**
@@ -156,8 +158,7 @@ public class SnowflakeId18 {
                 }
             }
         } catch (Exception e) {
-            e.printStackTrace();
-            //log.warn(" getDatacenterId: " + e.getMessage());
+            logger.warning("Failed to get datacenter ID: " + e.getMessage());
         }
 
         return id;
@@ -266,8 +267,7 @@ public class SnowflakeId18 {
                 return localAddress;
             }
         } catch (Throwable e) {
-            e.printStackTrace();
-            //log.warn("Failed to retrieving ip address, " + e.getMessage(), e);
+            logger.warning("Failed to retrieve local IP address: " + e.getMessage());
         }
 
         try {
@@ -284,19 +284,16 @@ public class SnowflakeId18 {
                                     return address;
                                 }
                             } catch (Throwable e) {
-                                e.printStackTrace();
-                                //log.warn("Failed to retrieving ip address, " + e.getMessage(), e);
+                                logger.warning("Failed to retrieve IP address from enumeration: " + e.getMessage());
                             }
                         }
                     } catch (Throwable e) {
-                        e.printStackTrace();
-                        //log.warn("Failed to retrieving ip address, " + e.getMessage(), e);
+                        logger.warning("Failed to process network interface: " + e.getMessage());
                     }
                 }
             }
         } catch (Throwable e) {
-            e.printStackTrace();
-            //log.warn("Failed to retrieving ip address, " + e.getMessage(), e);
+            logger.warning("Failed to enumerate network interfaces: " + e.getMessage());
         }
 
         //log.error("Could not get local host ip address, will use 127.0.0.1 instead.");

@@ -1,6 +1,7 @@
 package cn.vonce.sql.json;
 
 import java.util.List;
+import java.util.logging.Logger;
 
 /**
  * 默认的JSON转换器
@@ -11,12 +12,14 @@ import java.util.List;
  */
 public class JSONConvertImpl implements JSONConvert {
 
+    private static final Logger logger = Logger.getLogger(JSONConvertImpl.class.getName());
+
     @Override
     public Object parse(String json) {
         try {
             return JSONParser.parse(json);
         } catch (Exception e) {
-            e.printStackTrace();
+            logger.warning("Failed to parse JSON: " + e.getMessage());
         }
         return null;
     }

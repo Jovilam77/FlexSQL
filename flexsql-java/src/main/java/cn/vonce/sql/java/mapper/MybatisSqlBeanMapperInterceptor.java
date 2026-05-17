@@ -116,7 +116,7 @@ public class MybatisSqlBeanMapperInterceptor extends SqlBeanMapper implements In
                     resultList.add(super.beanHandleResultSet(clazz, resultSetDelegate, columnNameList));
                 }
             } catch (SQLException e) {
-                e.printStackTrace();
+                logger.warning("Failed to process bean result set: " + e.getMessage());
             } finally {
                 closeResultSet(resultSetDelegate);
             }

@@ -7,6 +7,7 @@ import cn.vonce.sql.exception.SqlBeanException;
 import java.lang.invoke.SerializedLambda;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.util.logging.Logger;
 
 /**
  * Lambda工具类
@@ -16,6 +17,8 @@ import java.lang.reflect.Method;
  * @date 2022/12/7 19:18
  */
 public class LambdaUtil {
+
+    private static final Logger logger = Logger.getLogger(LambdaUtil.class.getName());
 
     /**
      * 获取列字段对象
@@ -35,11 +38,11 @@ public class LambdaUtil {
             method.setAccessible(Boolean.TRUE);
             lambda = (SerializedLambda) method.invoke(column);
         } catch (NoSuchMethodException e) {
-            e.printStackTrace();
+            logger.warning("No writeReplace method found for lambda: " + e.getMessage());
         } catch (InvocationTargetException e) {
-            e.printStackTrace();
+            logger.warning("Failed to invoke writeReplace on lambda: " + e.getMessage());
         } catch (IllegalAccessException e) {
-            e.printStackTrace();
+            logger.warning("Illegal access invoking writeReplace on lambda: " + e.getMessage());
         }
         return SqlBeanUtil.getColumnByLambda(lambda);
     }

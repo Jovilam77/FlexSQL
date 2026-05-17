@@ -16,6 +16,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
 /**
@@ -27,6 +28,8 @@ import java.util.stream.Collectors;
  * @date 2018年5月15日下午2:23:47
  */
 public class SqlBeanProvider {
+
+    private static final Logger logger = Logger.getLogger(SqlBeanProvider.class.getName());
 
     /**
      * 根据id条件查询
@@ -61,7 +64,7 @@ public class SqlBeanProvider {
             select = newSelect(sqlBeanMeta, clazz, false);
             idField = SqlBeanUtil.getIdField(clazz);
         } catch (SqlBeanException e) {
-            e.printStackTrace();
+            logger.warning("Failed to build select by ID SQL: " + e.getMessage());
             return null;
         }
         Column column = SqlBeanUtil.getColumnByField(idField, clazz);
@@ -153,7 +156,7 @@ public class SqlBeanProvider {
                 select.getPage().setIdName(SqlBeanUtil.getTableFieldName(SqlBeanUtil.getIdField(clazz), sqlTable));
             }
         } catch (SqlBeanException e) {
-            e.printStackTrace();
+            logger.warning("Failed to build select SQL: " + e.getMessage());
             return null;
         }
         return setSelectAndBuild(clazz, select);
@@ -196,7 +199,7 @@ public class SqlBeanProvider {
             try {
                 throw new SqlBeanException("deleteByIdSql id不能为空");
             } catch (SqlBeanException e) {
-                e.printStackTrace();
+                logger.warning("deleteByIdSql id is empty: " + e.getMessage());
                 return null;
             }
         }
@@ -209,7 +212,7 @@ public class SqlBeanProvider {
         try {
             idField = SqlBeanUtil.getIdField(clazz);
         } catch (SqlBeanException e) {
-            e.printStackTrace();
+            logger.warning("Failed to get ID field for delete: " + e.getMessage());
             return null;
         }
         SqlTable sqlTable = SqlBeanUtil.getSqlTable(clazz);
@@ -274,7 +277,7 @@ public class SqlBeanProvider {
             try {
                 throw new SqlBeanException("该delete sql未设置where条件，如果确实不需要where条件，请使用delete(Select select, boolean ignore)");
             } catch (SqlBeanException e) {
-                e.printStackTrace();
+                logger.warning("Delete SQL has no WHERE condition: " + e.getMessage());
                 return null;
             }
         }
@@ -298,7 +301,7 @@ public class SqlBeanProvider {
             update.where().in(SqlBeanUtil.getTableFieldName(idField, sqlTable), id);
             setSchema(update, clazz);
         } catch (SqlBeanException e) {
-            e.printStackTrace();
+            logger.warning("Failed to build logically delete by ID SQL: " + e.getMessage());
             return null;
         }
         return SqlHelper.buildUpdateSql(update);
@@ -321,7 +324,7 @@ public class SqlBeanProvider {
             update.where(where, args);
             setSchema(update, clazz);
         } catch (SqlBeanException e) {
-            e.printStackTrace();
+            logger.warning("Failed to build logically delete by SQL (where/args): " + e.getMessage());
             return null;
         }
         return SqlHelper.buildUpdateSql(update);
@@ -343,7 +346,7 @@ public class SqlBeanProvider {
             update.where(wrapper);
             setSchema(update, clazz);
         } catch (SqlBeanException e) {
-            e.printStackTrace();
+            logger.warning("Failed to build logically delete by wrapper: " + e.getMessage());
             return null;
         }
         return SqlHelper.buildUpdateSql(update);
@@ -375,7 +378,7 @@ public class SqlBeanProvider {
             try {
                 throw new SqlBeanException("该update sql未设置where条件，如果确实不需要where条件，请使用update(Select select, boolean ignore)");
             } catch (SqlBeanException e) {
-                e.printStackTrace();
+                logger.warning("Update SQL has no WHERE condition: " + e.getMessage());
             }
             return null;
         }
@@ -397,7 +400,7 @@ public class SqlBeanProvider {
             try {
                 throw new SqlBeanException("updateByIdSql id不能为空");
             } catch (SqlBeanException e) {
-                e.printStackTrace();
+                logger.warning("updateByIdSql id is empty: " + e.getMessage());
                 return null;
             }
         }
@@ -407,7 +410,7 @@ public class SqlBeanProvider {
         try {
             idField = SqlBeanUtil.getIdField(bean.getClass());
         } catch (SqlBeanException e) {
-            e.printStackTrace();
+            logger.warning("Failed to get ID field for updateById: " + e.getMessage());
             return null;
         }
         SqlTable sqlTable = SqlBeanUtil.getSqlTable(clazz);
@@ -437,14 +440,14 @@ public class SqlBeanProvider {
                 try {
                     throw new SqlBeanException("updateByBeanIdSql id不能为空");
                 } catch (SqlBeanException e) {
-                    e.printStackTrace();
+                    logger.warning("updateByBeanIdSql id is empty: " + e.getMessage());
                     return null;
                 }
             }
             SqlTable sqlTable = SqlBeanUtil.getSqlTable(clazz);
             update.where().eq(SqlBeanUtil.getTableFieldName(idField, sqlTable), id);
         } catch (SqlBeanException e) {
-            e.printStackTrace();
+            logger.warning("Failed to process updateByBeanId: " + e.getMessage());
             return null;
         }
         return SqlHelper.buildUpdateSql(update);
@@ -818,12 +821,12 @@ public class SqlBeanProvider {
             SqlBeanUtil.setJoin(select, clazz);
             setSchema(select, clazz);
         } catch (SqlBeanException | InstantiationException | IllegalAccessException e) {
-            e.printStackTrace();
+            logger.warning("Failed to initialize select: " + e.getMessage());
             return null;
         } catch (InvocationTargetException e) {
-            e.printStackTrace();
+            logger.warning("Failed to invoke method during select init: " + e.getMessage());
         } catch (NoSuchMethodException e) {
-            e.printStackTrace();
+            logger.warning("Method not found during select init: " + e.getMessage());
         }
         return select;
     }
@@ -851,7 +854,7 @@ public class SqlBeanProvider {
         try {
             SqlBeanUtil.setJoin(select, clazz);
         } catch (SqlBeanException | InstantiationException | IllegalAccessException | NoSuchMethodException | InvocationTargetException e) {
-            e.printStackTrace();
+            logger.warning("Failed to build select SQL: " + e.getMessage());
             return null;
         }
         return SqlHelper.buildSelectSql(select);
@@ -869,9 +872,9 @@ public class SqlBeanProvider {
         try {
             bean = clazz.newInstance();
         } catch (IllegalAccessException e) {
-            e.printStackTrace();
+            logger.warning("Failed to access instance for logical delete bean: " + e.getMessage());
         } catch (InstantiationException e) {
-            e.printStackTrace();
+            logger.warning("Failed to instantiate logical delete bean: " + e.getMessage());
         }
         Field field = SqlBeanUtil.getLogicallyField(clazz);
         ReflectUtil.instance().set(bean.getClass(), bean, field.getName(), field.getType() == Boolean.class || field.getType() == boolean.class ? true : 1);
@@ -912,7 +915,7 @@ public class SqlBeanProvider {
                     SqlTable sqlTable = SqlBeanUtil.getSqlTable(clazz);
                     select.page(SqlBeanUtil.getTableFieldName(SqlBeanUtil.getIdField(clazz), sqlTable), paging.getPagenum(), paging.getPagesize(), paging.getStartByZero());
                 } catch (SqlBeanException e) {
-                    e.printStackTrace();
+                    logger.warning("Failed to set paging for SQLServer: " + e.getMessage());
                 }
             } else {
                 select.page(null, paging.getPagenum(), paging.getPagesize(), paging.getStartByZero());

@@ -10,6 +10,7 @@ import cn.vonce.sql.uitls.SqlBeanUtil;
 import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
+import java.util.logging.Logger;
 
 /**
  * 数据库连接助手
@@ -17,6 +18,8 @@ import java.util.WeakHashMap;
  * @author Jovi
  */
 public class SQLiteHelper {
+
+    private static final Logger logger = Logger.getLogger(SQLiteHelper.class.getName());
 
     private volatile static SQLiteHelper defaultSqLiteHelper;
     private final static Map<String, SQLiteHelper> sqLiteHelperMap = new WeakHashMap<>();
@@ -120,7 +123,7 @@ public class SQLiteHelper {
                     }
                 }
             } catch (ClassNotFoundException e) {
-                e.printStackTrace();
+                logger.warning("Failed to load class during table initialization: " + e.getMessage());
                 Log.e("flexsql", e.getMessage(), e);
             }
         }).start();

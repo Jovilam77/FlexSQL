@@ -1680,7 +1680,8 @@ public class SqlBeanUtil {
                     Class<?> trueTypeClass = (Class<?>) t;
                     try {
                         classes.add(SqlBeanUtil.class.getClassLoader().loadClass(trueTypeClass.getName()));
-                    } catch (ClassNotFoundException ignored) {
+                    } catch (ClassNotFoundException e) {
+                        logger.fine("Class not found while resolving generic type: " + e.getMessage());
                     }
                 }
             }

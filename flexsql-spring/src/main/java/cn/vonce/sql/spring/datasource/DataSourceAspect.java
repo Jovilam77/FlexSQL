@@ -16,6 +16,7 @@ import org.springframework.stereotype.Repository;
 
 import java.lang.reflect.Method;
 import java.util.Random;
+import java.util.logging.Logger;
 
 /**
  * 数据源切换切点
@@ -28,6 +29,8 @@ import java.util.Random;
 @Aspect
 @Repository
 public class DataSourceAspect {
+
+    private static final Logger logger = Logger.getLogger(DataSourceAspect.class.getName());
 
     @Pointcut("target(cn.vonce.sql.service.SqlBeanService)")
     public void pointcut() {
@@ -55,7 +58,7 @@ public class DataSourceAspect {
                     dataSource = dbSource.master();
                 }
             } catch (Exception e) {
-                e.printStackTrace();
+                logger.warning("Failed to resolve data source: " + e.getMessage());
             }
             DataSourceContextHolder.setDataSource(dataSource);
         }

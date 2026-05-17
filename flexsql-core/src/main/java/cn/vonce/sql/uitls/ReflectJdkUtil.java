@@ -5,6 +5,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.Map;
 import java.util.WeakHashMap;
+import java.util.logging.Logger;
 
 /**
  * 反射工具类 JDK
@@ -15,6 +16,8 @@ import java.util.WeakHashMap;
  * @date 2020/7/24 18:30
  */
 public class ReflectJdkUtil implements Reflect {
+
+    private static final Logger logger = Logger.getLogger(ReflectJdkUtil.class.getName());
 
     private final Map<String, Method> methodMap = new WeakHashMap<>();
     private final Map<Class<?>, Constructor<?>> constructorMap = new WeakHashMap<>();
@@ -43,7 +46,7 @@ public class ReflectJdkUtil implements Reflect {
                 constructor = clazz.getDeclaredConstructor();
                 constructorMap.put(clazz, constructor);
             } catch (NoSuchMethodException e) {
-                e.printStackTrace();
+                logger.warning("No default constructor found for " + clazz.getName() + ": " + e.getMessage());
             }
         }
         try {
@@ -82,11 +85,11 @@ public class ReflectJdkUtil implements Reflect {
             }
             return method.invoke(instance);
         } catch (IllegalAccessException e) {
-            e.printStackTrace();
+            logger.warning("Illegal access invoking " + name + " on " + clazz.getName() + ": " + e.getMessage());
         } catch (InvocationTargetException e) {
-            e.printStackTrace();
+            logger.warning("Invocation target exception invoking " + name + " on " + clazz.getName() + ": " + e.getMessage());
         } catch (NoSuchMethodException e) {
-            e.printStackTrace();
+            logger.warning("No such method " + name + " on " + clazz.getName() + ": " + e.getMessage());
         }
         return null;
     }
@@ -101,9 +104,9 @@ public class ReflectJdkUtil implements Reflect {
             }
             return method.invoke(instance, value);
         } catch (IllegalAccessException e) {
-            e.printStackTrace();
+            logger.warning("Illegal access invoking " + name + " on " + clazz.getName() + ": " + e.getMessage());
         } catch (InvocationTargetException e) {
-            e.printStackTrace();
+            logger.warning("Invocation target exception invoking " + name + " on " + clazz.getName() + ": " + e.getMessage());
         }
         return null;
     }
@@ -119,11 +122,11 @@ public class ReflectJdkUtil implements Reflect {
             }
             return method.invoke(instance, values);
         } catch (IllegalAccessException e) {
-            e.printStackTrace();
+            logger.warning("Illegal access invoking " + name + " on " + clazz.getName() + ": " + e.getMessage());
         } catch (InvocationTargetException e) {
-            e.printStackTrace();
+            logger.warning("Invocation target exception invoking " + name + " on " + clazz.getName() + ": " + e.getMessage());
         } catch (NoSuchMethodException e) {
-            e.printStackTrace();
+            logger.warning("No such method " + name + " on " + clazz.getName() + ": " + e.getMessage());
         }
         return null;
     }

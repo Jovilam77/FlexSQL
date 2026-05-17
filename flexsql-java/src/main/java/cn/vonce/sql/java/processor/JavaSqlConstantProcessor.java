@@ -13,6 +13,7 @@ import javax.lang.model.element.TypeElement;
 import java.io.File;
 import java.util.List;
 import java.util.Set;
+import java.util.logging.Logger;
 
 /**
  * 生成表字段常量处理器
@@ -25,6 +26,8 @@ import java.util.Set;
 @SupportedAnnotationTypes({"cn.vonce.sql.annotation.SqlTable"})
 @SupportedSourceVersion(SourceVersion.RELEASE_8)
 public class JavaSqlConstantProcessor extends SqlConstantProcessor {
+
+    private static final Logger logger = Logger.getLogger(JavaSqlConstantProcessor.class.getName());
 
     private List<FieldDeclaration> fieldDeclarationList = null;
 
@@ -65,7 +68,7 @@ public class JavaSqlConstantProcessor extends SqlConstantProcessor {
                 }
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            logger.warning("Failed to get table remarks: " + e.getMessage());
         }
         return "";
     }

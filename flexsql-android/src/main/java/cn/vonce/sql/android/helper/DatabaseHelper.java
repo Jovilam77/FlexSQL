@@ -5,6 +5,7 @@ import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteOpenHelper;
 
 import java.util.List;
+import java.util.logging.Logger;
 
 import android.util.Log;
 import cn.vonce.sql.android.util.PackageUtil;
@@ -24,6 +25,8 @@ import cn.vonce.sql.uitls.StringUtil;
  * @author Jovi
  */
 public class DatabaseHelper extends SQLiteOpenHelper {
+
+    private static final Logger logger = Logger.getLogger(DatabaseHelper.class.getName());
 
     private String dbName;
     private Class<?> clazz;
@@ -78,7 +81,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                 }
             }
         } catch (ClassNotFoundException e) {
-            e.printStackTrace();
+            logger.warning("Failed to load class or create table: " + e.getMessage());
             Log.e("flexsql", e.getMessage(), e);
         }
     }

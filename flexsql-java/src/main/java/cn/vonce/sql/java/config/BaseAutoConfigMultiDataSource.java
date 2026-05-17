@@ -8,6 +8,7 @@ import cn.vonce.sql.uitls.StringUtil;
 import javax.sql.DataSource;
 import java.lang.reflect.Field;
 import java.util.*;
+import java.util.logging.Logger;
 
 /**
  * 自动配置多数据源 抽象类
@@ -17,6 +18,8 @@ import java.util.*;
  * @date 2024/9/24 16:53
  */
 public abstract class BaseAutoConfigMultiDataSource {
+
+    private static final Logger logger = Logger.getLogger(BaseAutoConfigMultiDataSource.class.getName());
 
     protected final static Map<String, String> fieldMap = new HashMap<>(8);
     protected final static String DRUID_DATA_SOURCE_CLASS = "com.alibaba.druid.pool.DruidDataSource";
@@ -71,9 +74,9 @@ public abstract class BaseAutoConfigMultiDataSource {
             try {
                 dataSource = (DataSource) typeClass.newInstance();
             } catch (IllegalAccessException e) {
-                e.printStackTrace();
+                logger.warning("Failed to instantiate data source: " + e.getMessage());
             } catch (InstantiationException e) {
-                e.printStackTrace();
+                logger.warning("Failed to instantiate data source: " + e.getMessage());
             }
             for (Map.Entry<String, Object> property : this.getPropertyMap().entrySet()) {
                 String prefix = dataSourcePrefix + "." + dataSourceName;
@@ -97,7 +100,7 @@ public abstract class BaseAutoConfigMultiDataSource {
                             field.setAccessible(true);
                             field.set(dataSource, SqlBeanUtil.getValueConvert(field.getType(), property.getValue()));
                         } catch (IllegalAccessException e) {
-                            e.printStackTrace();
+                            logger.warning("Failed to set field value '" + field.getName() + "': " + e.getMessage());
                         }
                     }
                 }

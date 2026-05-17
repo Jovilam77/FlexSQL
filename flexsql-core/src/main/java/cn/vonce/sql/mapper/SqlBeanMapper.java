@@ -39,7 +39,7 @@ public class SqlBeanMapper extends BaseMapper<ResultSet> {
                 columnNameList.add(resultSetMetaData.getColumnLabel(i));
             }
         } catch (SQLException e) {
-            e.printStackTrace();
+            logger.warning("Failed to get column name list: " + e.getMessage());
         }
         return columnNameList;
     }
@@ -88,10 +88,8 @@ public class SqlBeanMapper extends BaseMapper<ResultSet> {
         try {
             SqlJSON sqlJSON = field.getAnnotation(SqlJSON.class);
             if (sqlJSON != null && sqlJSON.convert() != JSONConvert.class) {
-                if (sqlJSON != null && sqlJSON.convert() != JSONConvert.class) {
-                    String json = resultSet.getString(columnName);
-                    return SqlBeanUtil.convertJSON(sqlJSON.convert().newInstance(), json, field);
-                }
+                String json = resultSet.getString(columnName);
+                return SqlBeanUtil.convertJSON(sqlJSON.convert().newInstance(), json, field);
             }
             switch (field.getType().getName()) {
                 case "byte":
@@ -196,9 +194,9 @@ public class SqlBeanMapper extends BaseMapper<ResultSet> {
         } catch (SQLException e) {
             logger.warning("Failed to get value for field '" + field.getName() + "': " + e.getMessage());
         } catch (InstantiationException e) {
-            e.printStackTrace();
+            logger.warning("Failed to instantiate JSON converter for field '" + field.getName() + "': " + e.getMessage());
         } catch (IllegalAccessException e) {
-            e.printStackTrace();
+            logger.warning("Illegal access for field '" + field.getName() + "': " + e.getMessage());
         }
         return value;
     }

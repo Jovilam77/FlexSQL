@@ -16,6 +16,7 @@ import javax.lang.model.element.PackageElement;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.util.*;
+import java.util.logging.Logger;
 
 /**
  * Java解析工具
@@ -25,6 +26,8 @@ import java.util.*;
  * @date 2024/7/15 12:05
  */
 public class JavaParserUtil {
+
+    private static final Logger logger = Logger.getLogger(JavaParserUtil.class.getName());
 
     public static String getCommentContent(String rawComment) {
         String[] texts = getCommentTexts(rawComment);
@@ -104,7 +107,7 @@ public class JavaParserUtil {
                 CompilationUnit superCompilationUnit = result.getResult().get();
                 fieldDeclarationList.addAll(Objects.requireNonNull(getAllFieldDeclaration(sourceRoot, superCompilationUnit, superCompilationUnit.getTypes().get(0))));
             } catch (FileNotFoundException e) {
-                e.printStackTrace();
+                logger.warning("File not found for super class path: " + e.getMessage());
             }
         }
         return fieldDeclarationList;

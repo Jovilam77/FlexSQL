@@ -18,6 +18,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.logging.Logger;
 
 /**
  * SqlBean 结果映射
@@ -25,6 +26,8 @@ import java.util.Map;
  * @author Jovi
  */
 public class SqlBeanMapper<T> extends BaseMapper<Cursor> implements RowMapper<T> {
+
+    private static final Logger logger = Logger.getLogger(SqlBeanMapper.class.getName());
 
     public Class<?> clazz;
     public Class<?> returnType;
@@ -165,7 +168,7 @@ public class SqlBeanMapper<T> extends BaseMapper<Cursor> implements RowMapper<T>
                     break;
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            logger.warning("Failed to get value from field '" + field.getName() + "': " + e.getMessage());
         }
         return value;
     }

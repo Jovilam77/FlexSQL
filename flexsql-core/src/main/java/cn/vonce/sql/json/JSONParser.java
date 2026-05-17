@@ -6,6 +6,7 @@ import cn.vonce.sql.uitls.SqlBeanUtil;
 
 import java.math.BigDecimal;
 import java.util.*;
+import java.util.logging.Logger;
 
 /**
  * JSON解析器
@@ -15,6 +16,8 @@ import java.util.*;
  * @date 2024/11/22 19:04
  */
 public class JSONParser {
+
+    private static final Logger logger = Logger.getLogger(JSONParser.class.getName());
 
     public static Object parse(String json) throws Exception {
         if (json == null || json.isEmpty()) {
@@ -162,7 +165,7 @@ public class JSONParser {
         try {
             return (JSONArray) parse(json);
         } catch (Exception e) {
-            e.printStackTrace();
+            logger.warning("Failed to parse JSON array: " + e.getMessage());
         }
         return null;
     }
@@ -197,7 +200,7 @@ public class JSONParser {
                 return resultList;
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            logger.warning("Failed to parse JSON array to typed list: " + e.getMessage());
         }
         return null;
     }
@@ -206,7 +209,7 @@ public class JSONParser {
         try {
             return (JSONObject) parse(json);
         } catch (Exception e) {
-            e.printStackTrace();
+            logger.warning("Failed to parse JSON object: " + e.getMessage());
         }
         return null;
     }
@@ -221,7 +224,7 @@ public class JSONParser {
                 return BeanUtil.toBean(clazz, (Map<String, Object>) object);
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            logger.warning("Failed to parse JSON object to typed bean: " + e.getMessage());
         }
         return null;
     }

@@ -14,6 +14,7 @@ import java.io.Serializable;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.List;
+import java.util.logging.Logger;
 
 /**
  * 分页助手，使用该分页助手必须实现PagingService 接口
@@ -25,6 +26,8 @@ import java.util.List;
  * @date 2017年3月14日上午11:59:50
  */
 public class PageHelper<T> implements Serializable {
+
+    private static final Logger logger = Logger.getLogger(PageHelper.class.getName());
 
     public static final String SELECT = "select";
     public static final String COUNT = "count";
@@ -306,7 +309,7 @@ public class PageHelper<T> implements Serializable {
             // 分页数据列表
             this.setDataList((List<T>) ReflectUtil.instance().invoke(clazz, pageService, this.getPagingMethod().getSelect(), paramClasses, listParams));
         } catch (Exception e) {
-            e.printStackTrace();
+            logger.warning("Failed to execute paging query: " + e.getMessage());
         }
         return this;
     }

@@ -5,6 +5,7 @@ import cn.vonce.sql.uitls.StringUtil;
 import java.sql.SQLException;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.logging.Logger;
 
 /**
  * 数据连接持有者
@@ -14,6 +15,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * @date 2022/12/15 14:19
  */
 public class ConnectionContextHolder {
+
+    private static final Logger logger = Logger.getLogger(ConnectionContextHolder.class.getName());
 
     private static final ThreadLocal<ConcurrentHashMap<String, ConnectionProxy>> contextHolder = ThreadLocal.withInitial(() -> new ConcurrentHashMap<>());
 
@@ -29,7 +32,7 @@ public class ConnectionContextHolder {
             try {
                 connectionProxy.setAutoCommit(false);
             } catch (SQLException e) {
-                e.printStackTrace();
+                logger.warning("Failed to set auto commit to false: " + e.getMessage());
             }
             map.put(ds, connectionProxy);
         }
@@ -79,7 +82,7 @@ public class ConnectionContextHolder {
                 }
             }
         } catch (SQLException e) {
-            e.printStackTrace();
+            logger.warning("Failed to commit or rollback: " + e.getMessage());
         }
     }
 
@@ -114,7 +117,7 @@ public class ConnectionContextHolder {
         try {
             connectionProxy.setReadOnly(readOnly);
         } catch (SQLException e) {
-            e.printStackTrace();
+            logger.warning("Failed to set read only: " + e.getMessage());
         }
     }
 
