@@ -300,6 +300,9 @@ public class SqlHelper {
      * @return
      */
     public static String buildDrop(Drop drop) {
+        // 校验表名和schema名（仅允许安全标识符字符，防止SQL注入）
+        validateTableName(drop.getTable());
+
         StringBuilder dropSql = new StringBuilder();
         String tableName = SqlBeanUtil.getTableName(drop.getTable(), drop);
         if (drop.getSqlBeanMeta().getDbType() == DbType.MySQL || drop.getSqlBeanMeta().getDbType() == DbType.MariaDB || drop.getSqlBeanMeta().getDbType() == DbType.Postgresql || drop.getSqlBeanMeta().getDbType() == DbType.H2) {
@@ -313,6 +316,25 @@ public class SqlHelper {
             dropSql.append(tableName);
         }
         return dropSql.toString();
+    }
+
+    /**
+     * 校验表名和schema名是否安全
+     * <p>
+     * 只允许字母、数字、下划线、$、#等安全标识符字符，防止SQL注入。
+     *
+     * @param table 表信息
+     * @throws SqlBeanException 当表名或schema名包含非法字符时抛出
+     */
+    private static void validateTableName(Table table) {
+        String schema = table.getSchema();
+        String name = table.getName();
+        if (StringUtil.isNotEmpty(schema) && !schema.matches("[a-zA-Z_$#][a-zA-Z0-9_$#]*")) {
+            throw new SqlBeanException("Schema name in DROP statement contains invalid characters: " + schema);
+        }
+        if (StringUtil.isNotEmpty(name) && !name.matches("[a-zA-Z_$#][a-zA-Z0-9_$#]*")) {
+            throw new SqlBeanException("Table name in DROP statement contains invalid characters: " + name);
+        }
     }
 
     /**
@@ -417,154 +439,189 @@ public class SqlHelper {
      */
     private static String fieldAndValuesSql(Insert insert) throws IllegalArgumentException {
         String tableName = SqlBeanUtil.getTableName(insert.getTable(), insert);
-        StringBuilder fieldSql = new StringBuilder();
-        StringBuilder valueSql = new StringBuilder();
-        StringBuilder fieldAndValuesSql = new StringBuilder();
-        List<String> valueSqlList = new ArrayList<>();
         List<?> objectList = insert.getBean();
-        SqlTable sqlTable = SqlBeanUtil.getSqlTable(insert.getBeanClass());
-        //获取bean的全部字段
         List<Field> fieldList = SqlBeanUtil.getBeanAllField(insert.getBeanClass());
-        if (insert.getSqlBeanMeta().getDbType() == DbType.Oracle) {
-            if (objectList != null && objectList.size() > 1) {
-                fieldAndValuesSql.append(SqlConstant.INSERT_ALL_INTO);
-            } else {
-                fieldAndValuesSql.append(SqlConstant.INSERT_INTO);
-            }
+        StringBuilder sql = new StringBuilder();
+        appendInsertPrefix(sql, insert, objectList);
+        StringBuilder fieldSql = new StringBuilder();
+        List<String> valueSqlList = buildInsertValues(insert, objectList, fieldList, fieldSql);
+        assembleInsertBody(sql, tableName, fieldSql, valueSqlList, insert, objectList);
+        return sql.toString();
+    }
+
+    /**
+     * 追加INSERT前缀（Oracle多行使用INSERT ALL INTO）
+     */
+    private static void appendInsertPrefix(StringBuilder sql, Insert insert, List<?> objectList) {
+        if (insert.getSqlBeanMeta().getDbType() == DbType.Oracle && objectList != null && objectList.size() > 1) {
+            sql.append(SqlConstant.INSERT_ALL_INTO);
         } else {
-            fieldAndValuesSql.append(SqlConstant.INSERT_INTO);
+            sql.append(SqlConstant.INSERT_INTO);
         }
-        //如果是Bean模式
-        if (objectList != null && objectList.size() > 0) {
-            for (int i = 0; i < objectList.size(); i++) {
-                //每次必须清空
-                valueSql.delete(0, valueSql.length());
+    }
+
+    /**
+     * 构建字段SQL和值SQL列表（选择Bean模式或Column模式）
+     */
+    private static List<String> buildInsertValues(Insert insert, List<?> objectList,
+                                                  List<Field> fieldList, StringBuilder fieldSql) {
+        StringBuilder valueSql = new StringBuilder();
+        List<String> valueSqlList = new ArrayList<>();
+        if (objectList != null && !objectList.isEmpty()) {
+            SqlTable sqlTable = SqlBeanUtil.getSqlTable(insert.getBeanClass());
+            buildBeanValues(insert, objectList, fieldList, sqlTable, fieldSql, valueSql, valueSqlList);
+        } else {
+            buildColumnValues(insert, fieldSql, valueSql, valueSqlList);
+        }
+        return valueSqlList;
+    }
+
+    /**
+     * Bean模式：从实体对象列表构建字段SQL和值SQL
+     */
+    private static void buildBeanValues(Insert insert, List<?> objectList, List<Field> fieldList,
+                                        SqlTable sqlTable, StringBuilder fieldSql,
+                                        StringBuilder valueSql, List<String> valueSqlList) {
+        for (int i = 0; i < objectList.size(); i++) {
+            //每次必须清空
+            valueSql.delete(0, valueSql.length());
+            //只有在循环第一遍的时候才会处理
+            if (i == 0) {
+                fieldSql.append(SqlConstant.BEGIN_BRACKET);
+            }
+            valueSql.append(SqlConstant.BEGIN_BRACKET);
+            int existId = 0;
+            for (Field field : fieldList) {
+                if (SqlBeanUtil.isIgnore(field)) {
+                    continue;
+                }
+                SqlId sqlId = field.getAnnotation(SqlId.class);
+                SqlDefaultValue sqlDefaultValue = field.getAnnotation(SqlDefaultValue.class);
+                SqlJSON sqlJSON = field.getAnnotation(SqlJSON.class);
+                JdbcType jdbcType = SqlBeanUtil.getJdbcType(insert.getSqlBeanMeta(), field);
+                if (sqlId != null) {
+                    existId++;
+                }
+                if (existId > 1) {
+                    throw new SqlBeanException("请正确的标识id字段，id字段只能标识一个，但我们在'" + field.getDeclaringClass().getName() + "'此实体类或其父类找到了不止一处");
+                }
                 //只有在循环第一遍的时候才会处理
                 if (i == 0) {
-                    fieldSql.append(SqlConstant.BEGIN_BRACKET);
+                    String tableFieldName = SqlBeanUtil.getTableFieldName(insert, field, sqlTable);
+                    //如果此字段非id字段 或者 此字段为id字段但是不是自增的id则生成该字段的insert语句
+                    if (sqlId == null || (sqlId != null && sqlId.type() != IdType.AUTO)) {
+                        fieldSql.append(tableFieldName);
+                        fieldSql.append(SqlConstant.COMMA);
+                    }
                 }
-                valueSql.append(SqlConstant.BEGIN_BRACKET);
-                int existId = 0;
-                for (Field field : fieldList) {
-                    if (SqlBeanUtil.isIgnore(field)) {
-                        continue;
+                if (sqlId != null && sqlId.type() == IdType.AUTO) {
+                    continue;
+                }
+                Object value = ReflectUtil.instance().get(objectList.get(i).getClass(), objectList.get(i), field.getName());
+                if (sqlJSON != null) {
+                    value = SqlBeanUtil.getJSONValue(sqlJSON, value);
+                }
+                //如果此字段为id且需要生成唯一id
+                if (sqlId != null && sqlId.type() != IdType.AUTO && sqlId.type() != IdType.NORMAL) {
+                    if (StringUtil.isEmpty(value)) {
+                        value = insert.getSqlBeanMeta().getSqlBeanConfig().getUniqueIdProcessor().uniqueId(sqlId.type());
+                        ReflectUtil.instance().set(objectList.get(i).getClass(), objectList.get(i), field.getName(), value);
                     }
-                    SqlId sqlId = field.getAnnotation(SqlId.class);
-                    SqlDefaultValue sqlDefaultValue = field.getAnnotation(SqlDefaultValue.class);
-                    SqlJSON sqlJSON = field.getAnnotation(SqlJSON.class);
-                    JdbcType jdbcType = SqlBeanUtil.getJdbcType(insert.getSqlBeanMeta(), field);
-                    if (sqlId != null) {
-                        existId++;
-                    }
-                    if (existId > 1) {
-                        throw new SqlBeanException("请正确的标识id字段，id字段只能标识一个，但我们在'" + field.getDeclaringClass().getName() + "'此实体类或其父类找到了不止一处");
-                    }
-                    //只有在循环第一遍的时候才会处理
-                    if (i == 0) {
-                        String tableFieldName = SqlBeanUtil.getTableFieldName(insert, field, sqlTable);
-                        //如果此字段非id字段 或者 此字段为id字段但是不是自增的id则生成该字段的insert语句
-                        if (sqlId == null || (sqlId != null && sqlId.type() != IdType.AUTO)) {
-                            fieldSql.append(tableFieldName);
-                            fieldSql.append(SqlConstant.COMMA);
-                        }
-                    }
-                    if (sqlId != null && sqlId.type() == IdType.AUTO) {
-                        continue;
-                    }
-                    Object value = ReflectUtil.instance().get(objectList.get(i).getClass(), objectList.get(i), field.getName());
-                    if (sqlJSON != null) {
-                        value = SqlBeanUtil.getJSONValue(sqlJSON, value);
-                    }
-                    //如果此字段为id且需要生成唯一id
-                    if (sqlId != null && sqlId.type() != IdType.AUTO && sqlId.type() != IdType.NORMAL) {
-                        if (StringUtil.isEmpty(value)) {
-                            value = insert.getSqlBeanMeta().getSqlBeanConfig().getUniqueIdProcessor().uniqueId(sqlId.type());
-                            ReflectUtil.instance().set(objectList.get(i).getClass(), objectList.get(i), field.getName(), value);
-                        }
-                        valueSql.append(SqlBeanUtil.getSqlValue(insert, value, jdbcType));
-                    } else if (field.isAnnotationPresent(SqlLogically.class) && value == null) {
-                        //如果标识逻辑删除的字段为空则自动填充
-                        Object defaultValue = SqlBeanUtil.assignInitialValue(SqlBeanUtil.getEntityClassFieldType(field));
-                        valueSql.append(SqlBeanUtil.getSqlValue(insert, defaultValue, jdbcType));
-                        ReflectUtil.instance().set(objectList.get(i).getClass(), objectList.get(i), field.getName(), field.getType() == Boolean.class || field.getType() == boolean.class ? false : 0);
-                    } else if (value == null && sqlDefaultValue != null && (sqlDefaultValue.with() == FillWith.INSERT || sqlDefaultValue.with() == FillWith.TOGETHER)) {
-                        Object defaultValue = SqlHelper.setDefaultValue(objectList.get(i).getClass(), objectList.get(i), field);
-                        valueSql.append(SqlBeanUtil.getSqlValue(insert, defaultValue, jdbcType));
-                    } else {
-                        valueSql.append(SqlBeanUtil.getSqlValue(insert, value, jdbcType));
-                    }
+                    valueSql.append(SqlBeanUtil.getSqlValue(insert, value, jdbcType));
+                } else if (field.isAnnotationPresent(SqlLogically.class) && value == null) {
+                    //如果标识逻辑删除的字段为空则自动填充
+                    Object defaultValue = SqlBeanUtil.assignInitialValue(SqlBeanUtil.getEntityClassFieldType(field));
+                    valueSql.append(SqlBeanUtil.getSqlValue(insert, defaultValue, jdbcType));
+                    ReflectUtil.instance().set(objectList.get(i).getClass(), objectList.get(i), field.getName(), field.getType() == Boolean.class || field.getType() == boolean.class ? false : 0);
+                } else if (value == null && sqlDefaultValue != null && (sqlDefaultValue.with() == FillWith.INSERT || sqlDefaultValue.with() == FillWith.TOGETHER)) {
+                    Object defaultValue = SqlHelper.setDefaultValue(objectList.get(i).getClass(), objectList.get(i), field);
+                    valueSql.append(SqlBeanUtil.getSqlValue(insert, defaultValue, jdbcType));
+                } else {
+                    valueSql.append(SqlBeanUtil.getSqlValue(insert, value, jdbcType));
+                }
+                valueSql.append(SqlConstant.COMMA);
+            }
+            valueSql.deleteCharAt(valueSql.length() - SqlConstant.COMMA.length());
+            valueSql.append(SqlConstant.END_BRACKET);
+            valueSqlList.add(valueSql.toString());
+            //只有在循环第一遍的时候才会处理
+            if (i == 0) {
+                fieldSql.deleteCharAt(fieldSql.length() - SqlConstant.COMMA.length());
+                fieldSql.append(SqlConstant.END_BRACKET);
+            }
+        }
+    }
+
+    /**
+     * Column模式：从显式指定的列和值列表构建字段SQL和值SQL
+     */
+    private static void buildColumnValues(Insert insert, StringBuilder fieldSql,
+                                          StringBuilder valueSql, List<String> valueSqlList) {
+        List<Column> columnList = insert.getColumnList();
+        List<List<Object>> valuesList = insert.getValuesList();
+        if (columnList == null || columnList.size() == 0) {
+            throw new SqlBeanException("如果你不使用Bean对象的方式用作Insert，请指定Insert的字段");
+        }
+        if (valuesList == null || valuesList.size() == 0) {
+            throw new SqlBeanException("请指定Insert的字段对应的值");
+        }
+        fieldSql.append(SqlConstant.BEGIN_BRACKET);
+        for (int i = 0; i < columnList.size(); i++) {
+            fieldSql.append(SqlBeanUtil.getTableFieldName(insert, columnList.get(i).getName()));
+            if (i < columnList.size() - 1) {
+                fieldSql.append(SqlConstant.COMMA);
+            }
+        }
+        fieldSql.append(SqlConstant.END_BRACKET);
+        for (int i = 0; i < valuesList.size(); i++) {
+            //每次必须清空
+            valueSql.delete(0, valueSql.length());
+            List<Object> valueList = valuesList.get(i);
+            if (valueList.size() != columnList.size()) {
+                throw new SqlBeanException("指定Insert的value数量与column数量不一致");
+            }
+            valueSql.append(SqlConstant.BEGIN_BRACKET);
+            for (int j = 0; j < valueList.size(); j++) {
+                valueSql.append(SqlBeanUtil.getSqlValue(insert, valueList.get(j)));
+                if (j < columnList.size() - 1) {
                     valueSql.append(SqlConstant.COMMA);
                 }
-                valueSql.deleteCharAt(valueSql.length() - SqlConstant.COMMA.length());
-                valueSql.append(SqlConstant.END_BRACKET);
-                valueSqlList.add(valueSql.toString());
-                //只有在循环第一遍的时候才会处理
-                if (i == 0) {
-                    fieldSql.deleteCharAt(fieldSql.length() - SqlConstant.COMMA.length());
-                    fieldSql.append(SqlConstant.END_BRACKET);
-                }
             }
-        } else {
-            List<Column> columnList = insert.getColumnList();
-            List<List<Object>> valuesList = insert.getValuesList();
-            if (columnList == null || columnList.size() == 0) {
-                throw new SqlBeanException("如果你不使用Bean对象的方式用作Insert，请指定Insert的字段");
-            }
-            if (valuesList == null || valuesList.size() == 0) {
-                throw new SqlBeanException("请指定Insert的字段对应的值");
-            }
-            fieldSql.append(SqlConstant.BEGIN_BRACKET);
-            for (int i = 0; i < columnList.size(); i++) {
-                fieldSql.append(SqlBeanUtil.getTableFieldName(insert, columnList.get(i).getName()));
-                if (i < columnList.size() - 1) {
-                    fieldSql.append(SqlConstant.COMMA);
-                }
-            }
-            fieldSql.append(SqlConstant.END_BRACKET);
-            for (int i = 0; i < valuesList.size(); i++) {
-                //每次必须清空
-                valueSql.delete(0, valueSql.length());
-                List<Object> valueList = valuesList.get(i);
-                if (valueList.size() != columnList.size()) {
-                    throw new SqlBeanException("指定Insert的value数量与column数量不一致");
-                }
-                valueSql.append(SqlConstant.BEGIN_BRACKET);
-                for (int j = 0; j < valueList.size(); j++) {
-                    valueSql.append(SqlBeanUtil.getSqlValue(insert, valueList.get(j)));
-                    if (j < columnList.size() - 1) {
-                        valueSql.append(SqlConstant.COMMA);
-                    }
-                }
-                valueSql.append(SqlConstant.END_BRACKET);
-                valueSqlList.add(valueSql.toString());
-            }
+            valueSql.append(SqlConstant.END_BRACKET);
+            valueSqlList.add(valueSql.toString());
         }
+    }
+
+    /**
+     * 组装完整的INSERT语句（Oracle走多表插入语法）
+     */
+    private static void assembleInsertBody(StringBuilder sql, String tableName, StringBuilder fieldSql,
+                                           List<String> valueSqlList, Insert insert, List<?> objectList) {
         if (insert.getSqlBeanMeta().getDbType() == DbType.Oracle) {
             for (int k = 0; k < valueSqlList.size(); k++) {
                 if (k > 0) {
-                    fieldAndValuesSql.append(SqlConstant.INTO);
+                    sql.append(SqlConstant.INTO);
                 }
-                fieldAndValuesSql.append(tableName);
-                fieldAndValuesSql.append(fieldSql);
-                fieldAndValuesSql.append(SqlConstant.VALUES);
-                fieldAndValuesSql.append(valueSqlList.get(k));
+                sql.append(tableName);
+                sql.append(fieldSql);
+                sql.append(SqlConstant.VALUES);
+                sql.append(valueSqlList.get(k));
             }
             if (objectList != null && objectList.size() > 1) {
-                fieldAndValuesSql.append(SqlConstant.SELECT_DUAL);
+                sql.append(SqlConstant.SELECT_DUAL);
             }
         } else {
             for (int k = 0; k < valueSqlList.size(); k++) {
                 if (k == 0) {
-                    fieldAndValuesSql.append(tableName);
-                    fieldAndValuesSql.append(fieldSql);
-                    fieldAndValuesSql.append(SqlConstant.VALUES);
+                    sql.append(tableName);
+                    sql.append(fieldSql);
+                    sql.append(SqlConstant.VALUES);
                 }
-                fieldAndValuesSql.append(valueSqlList.get(k));
-                fieldAndValuesSql.append(SqlConstant.COMMA);
+                sql.append(valueSqlList.get(k));
+                sql.append(SqlConstant.COMMA);
             }
-            fieldAndValuesSql.deleteCharAt(fieldAndValuesSql.length() - SqlConstant.COMMA.length());
+            sql.deleteCharAt(sql.length() - SqlConstant.COMMA.length());
         }
-        return fieldAndValuesSql.toString();
     }
 
     /**
