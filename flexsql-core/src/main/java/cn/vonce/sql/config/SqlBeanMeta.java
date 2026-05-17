@@ -173,7 +173,7 @@ public class SqlBeanMeta implements Serializable {
         sqlBeanMeta.setDatabaseProductVersion(metaData.getDatabaseProductVersion());
         sqlBeanMeta.setJdbcMajorVersion(metaData.getJDBCMajorVersion());
         sqlBeanMeta.setJdbcMinorVersion(metaData.getJDBCMinorVersion());
-        sqlBeanMeta.setDriverMajorVersion(metaData.getDatabaseMajorVersion());
+        sqlBeanMeta.setDriverMajorVersion(metaData.getDriverMajorVersion());
         sqlBeanMeta.setDriverMinorVersion(metaData.getDriverMinorVersion());
         sqlBeanMeta.setDriverVersion(metaData.getDriverVersion());
         sqlBeanMeta.setDriverName(metaData.getDriverName());

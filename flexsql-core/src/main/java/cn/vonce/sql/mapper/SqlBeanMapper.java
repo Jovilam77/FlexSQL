@@ -12,11 +12,14 @@ import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.util.*;
+import java.util.logging.Logger;
 
 /**
  * SqlBean 结果映射
  */
 public class SqlBeanMapper extends BaseMapper<ResultSet> {
+
+    private static final Logger logger = Logger.getLogger(SqlBeanMapper.class.getName());
 
     /**
      * 获取所有列名
@@ -191,6 +194,7 @@ public class SqlBeanMapper extends BaseMapper<ResultSet> {
                     break;
             }
         } catch (SQLException e) {
+            logger.warning("Failed to get value for field '" + field.getName() + "': " + e.getMessage());
         } catch (InstantiationException e) {
             e.printStackTrace();
         } catch (IllegalAccessException e) {
@@ -242,6 +246,7 @@ public class SqlBeanMapper extends BaseMapper<ResultSet> {
                     break;
             }
         } catch (SQLException e) {
+            logger.warning("Failed to get value by jdbcType '" + jdbcType + "': " + e.getMessage());
         }
         return value;
     }

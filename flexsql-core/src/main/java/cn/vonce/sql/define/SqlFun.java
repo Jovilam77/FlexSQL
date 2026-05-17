@@ -4,6 +4,7 @@ import cn.vonce.sql.bean.Column;
 import cn.vonce.sql.bean.RawValue;
 import cn.vonce.sql.enumerate.TimeUnit;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
@@ -395,7 +396,7 @@ public class SqlFun extends Column {
      * @return
      */
     public static SqlFun dateDiff(Object startDate, Object endDate) {
-        return new SqlFun("dateDiff", new Object[]{endDate, endDate});
+        return new SqlFun("dateDiff", new Object[]{startDate, endDate});
     }
 
     /**
@@ -562,9 +563,10 @@ public class SqlFun extends Column {
      * @return
      */
     public static SqlFun concat_ws(String separator, Object... str) {
-        List<Object> objectList = Arrays.asList(str);
-        objectList.add(0, separator);
-        return new SqlFun("concat", objectList.toArray());
+        List<Object> objectList = new ArrayList<>();
+        objectList.add(separator);
+        objectList.addAll(Arrays.asList(str));
+        return new SqlFun("concat_ws", objectList.toArray());
     }
 
     /**

@@ -306,7 +306,7 @@ public class SqlHelper {
             }
             targetColumnSql.delete(targetColumnSql.length() - SqlConstant.COMMA.length(), targetColumnSql.length());
             copySql.append(targetColumnSql);
-        } else if (copy.getTargetColumns() != null && copy.getTargetColumns().length > 0) {
+        } else if (columnSql.length() > 0) {
             copySql.append(columnSql);
         } else {
             copySql.append(SqlConstant.ALL);
@@ -329,7 +329,7 @@ public class SqlHelper {
         if (drop.getSqlBeanMeta().getDbType() == DbType.MySQL || drop.getSqlBeanMeta().getDbType() == DbType.MariaDB || drop.getSqlBeanMeta().getDbType() == DbType.Postgresql || drop.getSqlBeanMeta().getDbType() == DbType.H2) {
             dropSql.append("DROP TABLE IF EXISTS ");
             dropSql.append(tableName);
-        } else if (drop.getSqlBeanMeta().getDbType() == DbType.MySQL) {
+        } else if (drop.getSqlBeanMeta().getDbType() == DbType.SQLServer) {
             dropSql.append("IF OBJECT_ID(N'" + tableName + "', N'U') IS NOT NULL ");
             dropSql.append("DROP TABLE " + tableName + " ");
         } else {

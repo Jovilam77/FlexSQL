@@ -1423,7 +1423,7 @@ public class SqlBeanUtil {
             return Integer.parseInt(value.toString());
         }
         if (type == Long.class || type == long.class) {
-            return Integer.parseInt(value.toString());
+            return Long.parseLong(value.toString());
         }
         if (type == Float.class || type == float.class) {
             return Float.parseFloat(value.toString());
