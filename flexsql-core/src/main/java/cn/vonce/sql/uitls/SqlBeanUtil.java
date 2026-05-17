@@ -13,7 +13,6 @@ import cn.vonce.sql.json.JSONConvertImpl;
 import cn.vonce.sql.json.JSONConvert;
 
 import java.beans.Introspector;
-import java.io.*;
 import java.lang.invoke.SerializedLambda;
 import java.lang.reflect.*;
 import java.math.BigDecimal;
@@ -1625,23 +1624,120 @@ public class SqlBeanUtil {
     }
 
     /**
-     * 复制对象
+     * 复制对象（基于反射的深拷贝，无需实现 Serializable）
      *
-     * @return
-     * @throws IOException
-     * @throws ClassNotFoundException
+     * @param target 要复制的对象
+     * @return 复制后的对象，如果 target 为 null 则返回 null
      */
+    @SuppressWarnings("unchecked")
     public static <T> T copy(T target) {
-        try {
-            ByteArrayOutputStream bos = new ByteArrayOutputStream();
-            ObjectOutputStream oos = new ObjectOutputStream(bos);
-            oos.writeObject(target);
-            ObjectInputStream ois = new ObjectInputStream(new ByteArrayInputStream(bos.toByteArray()));
-            return (T) ois.readObject();
-        } catch (IOException | ClassNotFoundException e) {
-            logger.warning("对象复制失败: " + e.getMessage());
+        if (target == null) {
+            return null;
         }
-        return null;
+        try {
+            return (T) deepCopy(target, new IdentityHashMap<>());
+        } catch (Exception e) {
+            logger.warning("对象复制失败: " + e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * 递归深拷贝
+     */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static Object deepCopy(Object obj, IdentityHashMap<Object, Object> copied) throws Exception {
+        if (obj == null) {
+            return null;
+        }
+
+        // 检查是否已复制（处理循环引用）
+        Object existing = copied.get(obj);
+        if (existing != null) {
+            return existing;
+        }
+
+        Class<?> clazz = obj.getClass();
+
+        // 不可变类型直接返回原引用
+        if (isImmutableForCopy(clazz)) {
+            return obj;
+        }
+
+        // 数组拷贝
+        if (clazz.isArray()) {
+            int length = Array.getLength(obj);
+            Object arrayCopy = Array.newInstance(clazz.getComponentType(), length);
+            copied.put(obj, arrayCopy);
+            for (int i = 0; i < length; i++) {
+                Array.set(arrayCopy, i, deepCopy(Array.get(obj, i), copied));
+            }
+            return arrayCopy;
+        }
+
+        // List 拷贝
+        if (obj instanceof List) {
+            List<Object> listCopy = new ArrayList<>(((List<?>) obj).size());
+            copied.put(obj, listCopy);
+            for (Object item : (List<?>) obj) {
+                listCopy.add(deepCopy(item, copied));
+            }
+            return listCopy;
+        }
+
+        // Map 拷贝
+        if (obj instanceof Map) {
+            Map<Object, Object> mapCopy = new LinkedHashMap<>();
+            copied.put(obj, mapCopy);
+            for (Map.Entry<?, ?> entry : ((Map<?, ?>) obj).entrySet()) {
+                mapCopy.put(deepCopy(entry.getKey(), copied), deepCopy(entry.getValue(), copied));
+            }
+            return mapCopy;
+        }
+
+        // POJO 拷贝：创建新实例，递归复制所有字段
+        Object pojoCopy = ReflectUtil.instance().newObject(clazz);
+        copied.put(obj, pojoCopy);
+
+        List<Field> fields = getBeanAllField(clazz);
+        for (Field field : fields) {
+            if (Modifier.isStatic(field.getModifiers())) {
+                continue;
+            }
+            field.setAccessible(true);
+            Object fieldValue = field.get(obj);
+            Object fieldCopy = deepCopy(fieldValue, copied);
+            field.set(pojoCopy, fieldCopy);
+        }
+        return pojoCopy;
+    }
+
+    /**
+     * 判断类型是否为不可变类型（深拷贝时直接复用原引用）
+     */
+    private static boolean isImmutableForCopy(Class<?> clazz) {
+        return clazz.isPrimitive()
+                || clazz == String.class
+                || clazz == Byte.class
+                || clazz == Short.class
+                || clazz == Integer.class
+                || clazz == Long.class
+                || clazz == Float.class
+                || clazz == Double.class
+                || clazz == Boolean.class
+                || clazz == Character.class
+                || clazz == java.math.BigDecimal.class
+                || clazz == java.math.BigInteger.class
+                || Number.class.isAssignableFrom(clazz)
+                || Enum.class.isAssignableFrom(clazz)
+                || clazz == Class.class
+                || clazz == java.util.Date.class
+                || clazz == java.sql.Date.class
+                || clazz == java.sql.Timestamp.class
+                || clazz == java.sql.Time.class
+                || clazz == java.time.LocalDate.class
+                || clazz == java.time.LocalTime.class
+                || clazz == java.time.LocalDateTime.class;
     }
 
     /**

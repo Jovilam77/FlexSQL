@@ -9,7 +9,7 @@ import cn.vonce.sql.helper.Wrapper;
 import cn.vonce.sql.uitls.LambdaUtil;
 import cn.vonce.sql.uitls.SqlBeanUtil;
 
-import java.io.*;
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -839,15 +839,9 @@ public class Select extends CommonCondition<Select> implements Serializable {
      * 复制对象
      *
      * @return
-     * @throws IOException
-     * @throws ClassNotFoundException
      */
-    public Select copy() throws IOException, ClassNotFoundException {
-        ByteArrayOutputStream bos = new ByteArrayOutputStream();
-        ObjectOutputStream oos = new ObjectOutputStream(bos);
-        oos.writeObject(this);
-        ObjectInputStream ois = new ObjectInputStream(new ByteArrayInputStream(bos.toByteArray()));
-        return (Select) ois.readObject();
+    public Select copy() {
+        return SqlBeanUtil.copy(this);
     }
 
 }
