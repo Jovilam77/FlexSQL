@@ -4,6 +4,7 @@ import cn.vonce.sql.bean.Alter;
 import cn.vonce.sql.bean.Select;
 import cn.vonce.sql.config.SqlBeanMeta;
 import cn.vonce.sql.enumerate.JdbcType;
+import cn.vonce.sql.exception.SqlBeanException;
 import cn.vonce.sql.uitls.SqlBeanUtil;
 
 import java.lang.reflect.Field;
@@ -100,14 +101,27 @@ public interface SqlDialect<T> {
     String getDropSchemaSql(SqlBeanMeta sqlBeanMeta, String schemaName);
 
     /**
-     * 获取schema名称
+     * 获取schema名称并进行安全校验
+     * <p>
+     * 校验机制：只允许字母、数字、下划线、$和#字符，防止SQL注入。
+     * 所有方言的 getSchemaSql / getCreateSchemaSql / getDropSchemaSql
+     * 均通过此方法获取名称，一处加固即覆盖所有注入入口。
      *
      * @param sqlBeanMeta
      * @param schemaName
      * @return
+     * @throws SqlBeanException 当schemaName包含非法字符时抛出
      */
     default String getSchemaName(SqlBeanMeta sqlBeanMeta, String schemaName) {
-        return (SqlBeanUtil.isToUpperCase(sqlBeanMeta) ? schemaName.toUpperCase() : schemaName);
+        if (schemaName == null) {
+            return null;
+        }
+        String name = SqlBeanUtil.isToUpperCase(sqlBeanMeta) ? schemaName.toUpperCase() : schemaName;
+        // 校验：只允许字母、数字、下划线、$、# 等安全标识符字符
+        if (!name.matches("[a-zA-Z_$#][a-zA-Z0-9_$#]*")) {
+            throw new SqlBeanException("Schema name contains invalid characters: " + schemaName);
+        }
+        return name;
     }
 
     /**
