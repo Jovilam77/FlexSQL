@@ -8,7 +8,6 @@ import cn.vonce.sql.config.SqlBeanMeta;
 import cn.vonce.sql.constant.SqlConstant;
 import cn.vonce.sql.enumerate.AlterType;
 import cn.vonce.sql.enumerate.JavaMapDerbyType;
-import cn.vonce.sql.enumerate.JdbcType;
 import cn.vonce.sql.exception.SqlBeanException;
 import cn.vonce.sql.uitls.SqlBeanUtil;
 import cn.vonce.sql.uitls.StringUtil;
@@ -24,7 +23,7 @@ import java.util.List;
  * @email imjovi@qq.com
  * @date 2024/4/16 10:21
  */
-public class DerbyDialect implements SqlDialect<JavaMapDerbyType> {
+public class DerbyDialect extends AbstractDialect<JavaMapDerbyType> {
 
     @Override
     public JavaMapDerbyType getType(Field field) {
@@ -41,11 +40,6 @@ public class DerbyDialect implements SqlDialect<JavaMapDerbyType> {
             return JavaMapDerbyType.VARCHAR;
         }
         throw new SqlBeanException(field.getDeclaringClass().getName() + "，实体类不支持此字段类型：" + clazz.getSimpleName());
-    }
-
-    @Override
-    public JdbcType getJdbcType(Field field) {
-        return JdbcType.getType(getType(field).name());
     }
 
     /**
@@ -205,7 +199,7 @@ public class DerbyDialect implements SqlDialect<JavaMapDerbyType> {
      * @param alter
      * @return
      */
-    private String changeColumn(Alter alter) {
+    public String changeColumn(Alter alter) {
         StringBuilder changeSql = new StringBuilder();
         changeSql.append(SqlConstant.RENAME);
         changeSql.append(SqlConstant.COLUMN);

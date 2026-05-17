@@ -3,8 +3,6 @@ package cn.vonce.sql.dialect;
 import cn.vonce.sql.annotation.SqlJSON;
 import cn.vonce.sql.bean.Alter;
 import cn.vonce.sql.bean.ColumnInfo;
-import cn.vonce.sql.bean.Common;
-import cn.vonce.sql.bean.Table;
 import cn.vonce.sql.config.SqlBeanMeta;
 import cn.vonce.sql.constant.SqlConstant;
 import cn.vonce.sql.enumerate.AlterDifference;
@@ -26,7 +24,7 @@ import java.util.List;
  * @email imjovi@qq.com
  * @date 2024/4/16 9:54
  */
-public class DB2Dialect implements SqlDialect<JavaMapDB2Type> {
+public class DB2Dialect extends AbstractDialect<JavaMapDB2Type> {
 
     @Override
     public JavaMapDB2Type getType(Field field) {
@@ -43,11 +41,6 @@ public class DB2Dialect implements SqlDialect<JavaMapDB2Type> {
             return JavaMapDB2Type.VARCHAR;
         }
         throw new SqlBeanException(field.getDeclaringClass().getName() + "，实体类不支持此字段类型：" + clazz.getSimpleName());
-    }
-
-    @Override
-    public JdbcType getJdbcType(Field field) {
-        return JdbcType.getType(getType(field).name());
     }
 
     @Override
@@ -144,30 +137,6 @@ public class DB2Dialect implements SqlDialect<JavaMapDB2Type> {
     }
 
     /**
-     * 获取全名
-     *
-     * @param common
-     * @param table
-     * @return
-     */
-    private String getFullName(Common common, Table table) {
-        String escape = SqlBeanUtil.getEscape(common);
-        boolean toUpperCase = SqlBeanUtil.isToUpperCase(common);
-        StringBuilder sql = new StringBuilder();
-        if (StringUtil.isNotBlank(table.getSchema())) {
-            sql.append(escape);
-            sql.append(table.getSchema(toUpperCase));
-            sql.append(escape);
-            sql.append(SqlConstant.POINT);
-        }
-        sql.append(escape);
-        sql.append(table.getName(toUpperCase));
-        sql.append(escape);
-        sql.append(SqlConstant.SPACES);
-        return sql.toString();
-    }
-
-    /**
      * 更改列信息
      *
      * @param alter
@@ -215,44 +184,6 @@ public class DB2Dialect implements SqlDialect<JavaMapDB2Type> {
             }
         }
         return modifySql;
-    }
-
-    /**
-     * 更改字段名
-     *
-     * @param alter
-     * @return
-     */
-    private String changeColumn(Alter alter) {
-        StringBuilder changeSql = new StringBuilder();
-        changeSql.append(SqlConstant.ALTER_TABLE);
-        changeSql.append(getFullName(alter, alter.getTable()));
-        changeSql.append(SqlConstant.RENAME);
-        changeSql.append(SqlConstant.COLUMN);
-        changeSql.append(alter.getOldColumnName(SqlBeanUtil.isToUpperCase(alter)));
-        changeSql.append(SqlConstant.TO);
-        changeSql.append(alter.getColumnInfo().getName(SqlBeanUtil.isToUpperCase(alter)));
-        return changeSql.toString();
-    }
-
-    @Override
-    public String addRemarks(boolean isTable, Alter item, String escape) {
-        StringBuilder remarksSql = new StringBuilder();
-        remarksSql.append(SqlConstant.COMMENT);
-        remarksSql.append(SqlConstant.ON);
-        remarksSql.append(isTable ? SqlConstant.TABLE : SqlConstant.COLUMN);
-        remarksSql.append(getFullName(item, item.getTable()));
-        if (!isTable) {
-            remarksSql.append(SqlConstant.POINT);
-            remarksSql.append(escape);
-            remarksSql.append(item.getColumnInfo().getName());
-            remarksSql.append(escape);
-        }
-        remarksSql.append(SqlConstant.IS);
-        remarksSql.append(SqlConstant.SINGLE_QUOTATION_MARK);
-        remarksSql.append(StringUtil.isNotBlank(item.getColumnInfo().getRemarks()) ? item.getColumnInfo().getRemarks() : "''");
-        remarksSql.append(SqlConstant.SINGLE_QUOTATION_MARK);
-        return remarksSql.toString();
     }
 
     /**

@@ -8,7 +8,6 @@ import cn.vonce.sql.constant.SqlConstant;
 import cn.vonce.sql.enumerate.AlterType;
 import cn.vonce.sql.enumerate.DbType;
 import cn.vonce.sql.enumerate.JavaMapMySqlType;
-import cn.vonce.sql.enumerate.JdbcType;
 import cn.vonce.sql.exception.SqlBeanException;
 import cn.vonce.sql.uitls.SqlBeanUtil;
 import cn.vonce.sql.uitls.StringUtil;
@@ -24,7 +23,7 @@ import java.util.List;
  * @email imjovi@qq.com
  * @date 2024/4/16 9:41
  */
-public class MysqlDialect implements SqlDialect<JavaMapMySqlType> {
+public class MysqlDialect extends AbstractDialect<JavaMapMySqlType> {
 
     @Override
     public JavaMapMySqlType getType(Field field) {
@@ -41,11 +40,6 @@ public class MysqlDialect implements SqlDialect<JavaMapMySqlType> {
             return JavaMapMySqlType.JSON;
         }
         throw new SqlBeanException(field.getDeclaringClass().getName() + "，实体类不支持此字段类型：" + clazz.getSimpleName());
-    }
-
-    @Override
-    public JdbcType getJdbcType(Field field) {
-        return JdbcType.getType(getType(field).name());
     }
 
     @Override

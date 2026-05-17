@@ -25,7 +25,7 @@ import java.util.List;
  * @email imjovi@qq.com
  * @date 2024/4/16 10:09
  */
-public class SqlServerDialect implements SqlDialect<JavaMapSqlServerType> {
+public class SqlServerDialect extends AbstractDialect<JavaMapSqlServerType> {
 
     @Override
     public JavaMapSqlServerType getType(Field field) {
@@ -42,11 +42,6 @@ public class SqlServerDialect implements SqlDialect<JavaMapSqlServerType> {
             return JavaMapSqlServerType.NVARCHAR;
         }
         throw new SqlBeanException(field.getDeclaringClass().getName() + "，实体类不支持此字段类型：" + clazz.getSimpleName());
-    }
-
-    @Override
-    public JdbcType getJdbcType(Field field) {
-        return JdbcType.getType(getType(field).name());
     }
 
     @Override

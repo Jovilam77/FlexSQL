@@ -7,7 +7,6 @@ import cn.vonce.sql.config.SqlBeanMeta;
 import cn.vonce.sql.constant.SqlConstant;
 import cn.vonce.sql.enumerate.AlterType;
 import cn.vonce.sql.enumerate.JavaMapSqliteType;
-import cn.vonce.sql.enumerate.JdbcType;
 import cn.vonce.sql.exception.SqlBeanException;
 import cn.vonce.sql.helper.SqlHelper;
 import cn.vonce.sql.uitls.DateUtil;
@@ -24,7 +23,7 @@ import java.util.*;
  * @email imjovi@qq.com
  * @date 2024/4/16 10:24
  */
-public class SqliteDialect implements SqlDialect<JavaMapSqliteType> {
+public class SqliteDialect extends AbstractDialect<JavaMapSqliteType> {
 
     @Override
     public JavaMapSqliteType getType(Field field) {
@@ -41,11 +40,6 @@ public class SqliteDialect implements SqlDialect<JavaMapSqliteType> {
             return JavaMapSqliteType.TEXT;
         }
         throw new SqlBeanException(field.getDeclaringClass().getName() + "，实体类不支持此字段类型：" + clazz.getSimpleName());
-    }
-
-    @Override
-    public JdbcType getJdbcType(Field field) {
-        return JdbcType.getType(getType(field).name());
     }
 
     @Override
