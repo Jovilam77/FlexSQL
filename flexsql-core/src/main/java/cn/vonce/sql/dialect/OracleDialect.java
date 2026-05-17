@@ -52,7 +52,7 @@ public class OracleDialect implements SqlDialect<JavaMapOracleType> {
 
     @Override
     public String getTableListSql(SqlBeanMeta sqlBeanMeta, String schema, String tableName) {
-        StringBuffer sql = new StringBuffer();
+        StringBuilder sql = new StringBuilder();
         sql.append("SELECT t.table_name AS \"name\", c.comments AS \"remarks\" ");
         sql.append("FROM user_tables t ");
         sql.append("LEFT JOIN user_tab_comments c ");
@@ -67,7 +67,7 @@ public class OracleDialect implements SqlDialect<JavaMapOracleType> {
 
     @Override
     public String getColumnListSql(SqlBeanMeta sqlBeanMeta, String schema, String tableName) {
-        StringBuffer sql = new StringBuffer();
+        StringBuilder sql = new StringBuilder();
         sql.append("SELECT col.column_id AS cid, col.column_name AS name, col.data_type AS type, ");
         sql.append("(CASE col.nullable WHEN 'N' THEN '1' ELSE '0' END) AS notnull, col.data_default AS dflt_value, ");
         sql.append("(CASE uc1.constraint_type WHEN 'P' THEN '1' ELSE '0' END) AS pk, ");
@@ -91,7 +91,7 @@ public class OracleDialect implements SqlDialect<JavaMapOracleType> {
         List<String> sqlList = new ArrayList<>();
         String escape = SqlBeanUtil.getEscape(alterList.get(0));
         Table table = alterList.get(0).getTable();
-        StringBuffer addOrModifySql = new StringBuffer();
+        StringBuilder addOrModifySql = new StringBuilder();
         addOrModifySql.append(SqlConstant.ALTER_TABLE);
         addOrModifySql.append(getFullName(alterList.get(0), table));
         for (int i = 0; i < alterList.size(); i++) {
@@ -107,7 +107,7 @@ public class OracleDialect implements SqlDialect<JavaMapOracleType> {
                 addOrModifySql.append(modifyColumn(alter));
                 sqlList.add(addRemarks(false, alter, escape));
             } else if (alter.getType() == AlterType.DROP) {
-                StringBuffer dropSql = new StringBuffer();
+                StringBuilder dropSql = new StringBuilder();
                 dropSql.append(SqlConstant.ALTER_TABLE);
                 dropSql.append(getFullName(alter, table));
                 dropSql.append(SqlConstant.DROP);
@@ -140,7 +140,7 @@ public class OracleDialect implements SqlDialect<JavaMapOracleType> {
     private String getFullName(Common common, Table table) {
         String escape = SqlBeanUtil.getEscape(common);
         boolean toUpperCase = SqlBeanUtil.isToUpperCase(common);
-        StringBuffer sql = new StringBuffer();
+        StringBuilder sql = new StringBuilder();
         if (StringUtil.isNotBlank(table.getSchema())) {
             sql.append(escape);
             sql.append(table.getSchema(toUpperCase));
@@ -161,7 +161,7 @@ public class OracleDialect implements SqlDialect<JavaMapOracleType> {
      * @return
      */
     private String modifyColumn(Alter alter) {
-        StringBuffer modifySql = new StringBuffer();
+        StringBuilder modifySql = new StringBuilder();
         modifySql.append(SqlConstant.MODIFY);
         modifySql.append(SqlConstant.BEGIN_BRACKET);
         ColumnInfo columnInfo = alter.getColumnInfo();
@@ -210,7 +210,7 @@ public class OracleDialect implements SqlDialect<JavaMapOracleType> {
      * @return
      */
     private String changeColumn(Alter alter) {
-        StringBuffer changeSql = new StringBuffer();
+        StringBuilder changeSql = new StringBuilder();
         changeSql.append(SqlConstant.ALTER_TABLE);
         changeSql.append(getFullName(alter, alter.getTable()));
         changeSql.append(SqlConstant.RENAME);
@@ -223,7 +223,7 @@ public class OracleDialect implements SqlDialect<JavaMapOracleType> {
 
     @Override
     public String addRemarks(boolean isTable, Alter item, String escape) {
-        StringBuffer remarksSql = new StringBuffer();
+        StringBuilder remarksSql = new StringBuilder();
         remarksSql.append(SqlConstant.COMMENT);
         remarksSql.append(SqlConstant.ON);
         remarksSql.append(isTable ? SqlConstant.TABLE : SqlConstant.COLUMN);
@@ -243,7 +243,7 @@ public class OracleDialect implements SqlDialect<JavaMapOracleType> {
 
     @Override
     public String getSchemaSql(SqlBeanMeta sqlBeanMeta, String schemaName) {
-        StringBuffer sql = new StringBuffer();
+        StringBuilder sql = new StringBuilder();
         sql.append("SELECT USERNAME AS \"name\" FROM ALL_USERS ");
         if (StringUtil.isNotEmpty(schemaName)) {
             sql.append("WHERE USERNAME = ");

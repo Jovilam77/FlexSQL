@@ -50,7 +50,7 @@ public class MysqlDialect implements SqlDialect<JavaMapMySqlType> {
 
     @Override
     public String getTableListSql(SqlBeanMeta sqlBeanMeta, String schema, String tableName) {
-        StringBuffer sql = new StringBuffer();
+        StringBuilder sql = new StringBuilder();
         sql.append("SELECT table_schema AS `schema`, table_name AS `name`, table_comment AS `remarks` ");
         sql.append("FROM information_schema.tables ");
         sql.append("WHERE table_type = 'BASE TABLE' AND table_schema = ");
@@ -67,7 +67,7 @@ public class MysqlDialect implements SqlDialect<JavaMapMySqlType> {
 
     @Override
     public String getColumnListSql(SqlBeanMeta sqlBeanMeta, String schema, String tableName) {
-        StringBuffer sql = new StringBuffer();
+        StringBuilder sql = new StringBuilder();
         sql.append("SELECT ordinal_position AS cid, column_name AS name, data_type AS type, ");
         sql.append("(CASE is_nullable WHEN 'NO' THEN 1 ELSE 0 END) AS notnull, column_default AS dflt_value, ");
         sql.append("(CASE column_key WHEN 'PRI' THEN 1 ELSE 0 END) AS pk, ");
@@ -101,7 +101,7 @@ public class MysqlDialect implements SqlDialect<JavaMapMySqlType> {
     public List<String> alterTable(List<Alter> alterList) {
         String escape = SqlBeanUtil.getEscape(alterList.get(0));
         Table table = alterList.get(0).getTable();
-        StringBuffer sql = new StringBuffer();
+        StringBuilder sql = new StringBuilder();
         sql.append(SqlConstant.ALTER_TABLE);
         if (StringUtil.isNotBlank(table.getSchema())) {
             sql.append(escape);
@@ -145,7 +145,7 @@ public class MysqlDialect implements SqlDialect<JavaMapMySqlType> {
 
     @Override
     public String addRemarks(boolean isTable, Alter item, String escape) {
-        StringBuffer remarksSql = new StringBuffer();
+        StringBuilder remarksSql = new StringBuilder();
         remarksSql.append(SqlConstant.ALTER_TABLE);
         if (StringUtil.isNotBlank(item.getTable().getSchema())) {
             remarksSql.append(escape);
@@ -166,7 +166,7 @@ public class MysqlDialect implements SqlDialect<JavaMapMySqlType> {
 
     @Override
     public String getSchemaSql(SqlBeanMeta sqlBeanMeta, String schemaName) {
-        StringBuffer sql = new StringBuffer();
+        StringBuilder sql = new StringBuilder();
         sql.append("SELECT schema_name as `name` FROM information_schema.schemata ");
         if (StringUtil.isNotEmpty(schemaName)) {
             sql.append("WHERE schema_name = ");
@@ -177,7 +177,7 @@ public class MysqlDialect implements SqlDialect<JavaMapMySqlType> {
 
     @Override
     public String getCreateSchemaSql(SqlBeanMeta sqlBeanMeta, String schemaName) {
-        StringBuffer sql = new StringBuffer();
+        StringBuilder sql = new StringBuilder();
         sql.append("CREATE DATABASE IF NOT EXISTS ");
         sql.append(this.getSchemaName(sqlBeanMeta, schemaName));
         sql.append(" CHARACTER SET ");

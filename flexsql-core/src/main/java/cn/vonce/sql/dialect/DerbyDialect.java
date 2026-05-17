@@ -58,7 +58,7 @@ public class DerbyDialect implements SqlDialect<JavaMapDerbyType> {
      */
     @Override
     public String getTableListSql(SqlBeanMeta sqlBeanMeta, String schema, String tableName) {
-        StringBuffer sql = new StringBuffer();
+        StringBuilder sql = new StringBuilder();
         sql.append("SELECT tb.TABLENAME AS \"name\", sc.SCHEMANAME AS \"schema\" ");
         sql.append("FROM SYS.SYSTABLES tb ");
         sql.append("INNER JOIN SYS.SYSSCHEMAS sc ");
@@ -84,7 +84,7 @@ public class DerbyDialect implements SqlDialect<JavaMapDerbyType> {
      */
     @Override
     public String getColumnListSql(SqlBeanMeta sqlBeanMeta, String schema, String tableName) {
-        StringBuffer sql = new StringBuffer();
+        StringBuilder sql = new StringBuilder();
         sql.append("SELECT cl.COLUMNNUMBER AS cid, cl.COLUMNNAME AS name, cl.COLUMNDATATYPE AS type, cl.COLUMNDEFAULT AS dflt_value, ");
         //由于Derby的缺陷无法查询是否为主键和外键，所以默认第一个字段为主键，其余字段都不是外键
         sql.append("(CASE WHEN cl.COLUMNNUMBER = 1 THEN '1' ELSE '0' END) AS pk, 0 AS pk ");
@@ -117,7 +117,7 @@ public class DerbyDialect implements SqlDialect<JavaMapDerbyType> {
         for (int i = 0; i < alterList.size(); i++) {
             Alter alter = alterList.get(i);
             if (alter.getType() == AlterType.ADD) {
-                StringBuffer sql = new StringBuffer();
+                StringBuilder sql = new StringBuilder();
                 sql.append(SqlConstant.ALTER_TABLE);
                 sql.append(getFullName(alter, alter.getTable(), null));
                 sql.append(SqlConstant.ADD);
@@ -127,14 +127,14 @@ public class DerbyDialect implements SqlDialect<JavaMapDerbyType> {
             } else if (alter.getType() == AlterType.CHANGE) {
                 sqlList.add(changeColumn(alter));
                 //先改名后修改信息
-                StringBuffer modifySql = modifyColumn(alter);
+                StringBuilder modifySql = modifyColumn(alter);
                 if (modifySql.length() > 0) {
                     sqlList.add(SqlConstant.ALTER_TABLE + modifySql);
                 }
             } else if (alter.getType() == AlterType.MODIFY) {
                 sqlList.add(SqlConstant.ALTER_TABLE + modifyColumn(alter));
             } else if (alter.getType() == AlterType.DROP) {
-                StringBuffer sql = new StringBuffer();
+                StringBuilder sql = new StringBuilder();
                 sql.append(SqlConstant.ALTER_TABLE);
                 sql.append(getFullName(alter, alter.getTable(), null));
                 sql.append(SqlConstant.DROP);
@@ -161,7 +161,7 @@ public class DerbyDialect implements SqlDialect<JavaMapDerbyType> {
     private String getFullName(Alter alter, Table table, String columnName) {
         boolean rename = alter.getType() == AlterType.CHANGE && StringUtil.isNotBlank(columnName);
         boolean toUpperCase = SqlBeanUtil.isToUpperCase(alter);
-        StringBuffer sql = new StringBuffer();
+        StringBuilder sql = new StringBuilder();
         if (StringUtil.isNotBlank(table.getSchema())) {
             sql.append(table.getSchema(toUpperCase));
             sql.append(SqlConstant.POINT);
@@ -181,9 +181,9 @@ public class DerbyDialect implements SqlDialect<JavaMapDerbyType> {
      * @param alter
      * @return
      */
-    private StringBuffer modifyColumn(Alter alter) {
+    private StringBuilder modifyColumn(Alter alter) {
         ColumnInfo columnInfo = alter.getColumnInfo();
-        StringBuffer modifySql = new StringBuffer();
+        StringBuilder modifySql = new StringBuilder();
         modifySql.append(getFullName(alter, alter.getTable(), null));
         modifySql.append(SqlConstant.ALTER);
         modifySql.append(SqlConstant.COLUMN);
@@ -206,7 +206,7 @@ public class DerbyDialect implements SqlDialect<JavaMapDerbyType> {
      * @return
      */
     private String changeColumn(Alter alter) {
-        StringBuffer changeSql = new StringBuffer();
+        StringBuilder changeSql = new StringBuilder();
         changeSql.append(SqlConstant.RENAME);
         changeSql.append(SqlConstant.COLUMN);
         changeSql.append(getFullName(alter, alter.getTable(), alter.getOldColumnName()));
@@ -217,7 +217,7 @@ public class DerbyDialect implements SqlDialect<JavaMapDerbyType> {
 
     @Override
     public String getSchemaSql(SqlBeanMeta sqlBeanMeta, String schemaName) {
-        StringBuffer sql = new StringBuffer();
+        StringBuilder sql = new StringBuilder();
         sql.append("SELECT SCHEMANAME as \"name\" FROM SYS.SYSSCHEMAS ");
         if (StringUtil.isNotEmpty(schemaName)) {
             sql.append("WHERE SCHEMANAME = ");

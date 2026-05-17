@@ -51,7 +51,7 @@ public class SqlServerDialect implements SqlDialect<JavaMapSqlServerType> {
 
     @Override
     public String getTableListSql(SqlBeanMeta sqlBeanMeta, String schema, String tableName) {
-        StringBuffer sql = new StringBuffer();
+        StringBuilder sql = new StringBuilder();
         sql.append("SELECT t.name, p.value AS remarks ");
         sql.append("FROM sys.tables t ");
         sql.append("INNER JOIN sys.schemas s ON s.schema_id = t.schema_id ");
@@ -74,7 +74,7 @@ public class SqlServerDialect implements SqlDialect<JavaMapSqlServerType> {
 
     @Override
     public String getColumnListSql(SqlBeanMeta sqlBeanMeta, String schema, String tableName) {
-        StringBuffer sql = new StringBuffer();
+        StringBuilder sql = new StringBuilder();
         sql.append("SELECT a.cid, a.name, a.type, (CASE a.notnull WHEN 0 THEN 1 ELSE 0 END) AS notnull, ");
         sql.append("(CASE LEFT(constraint_name, 2) WHEN 'PK' THEN 1 ELSE 0 END) AS pk, ");
         sql.append("(CASE LEFT(constraint_name, 2) WHEN 'FK' THEN 1 ELSE 0 END) AS fk, ");
@@ -99,8 +99,8 @@ public class SqlServerDialect implements SqlDialect<JavaMapSqlServerType> {
     @Override
     public List<String> alterTable(List<Alter> alterList) {
         List<String> sqlList = new ArrayList<>();
-        StringBuffer sql = new StringBuffer();
-        StringBuffer remarksSql = new StringBuffer();
+        StringBuilder sql = new StringBuilder();
+        StringBuilder remarksSql = new StringBuilder();
         for (int i = 0; i < alterList.size(); i++) {
             Alter alter = alterList.get(i);
             if (alter.getType() == AlterType.ADD) {
@@ -124,7 +124,7 @@ public class SqlServerDialect implements SqlDialect<JavaMapSqlServerType> {
                 sql.append(SqlConstant.SPACES);
                 sql.append(SqlConstant.SEMICOLON);
                 //先改名后修改信息
-                StringBuffer modifySql = modifyColumn(alter);
+                StringBuilder modifySql = modifyColumn(alter);
                 if (modifySql.length() > 0) {
                     sql.append(SqlConstant.ALTER_TABLE);
                     sql.append(modifySql);
@@ -160,7 +160,7 @@ public class SqlServerDialect implements SqlDialect<JavaMapSqlServerType> {
      * @return
      */
     private String getFullName(Alter alter, Table table, String columnName) {
-        StringBuffer sql = new StringBuffer();
+        StringBuilder sql = new StringBuilder();
         boolean rename = alter.getType() == AlterType.CHANGE && StringUtil.isNotBlank(columnName);
         if (rename) {
             sql.append(SqlConstant.SINGLE_QUOTATION_MARK);
@@ -195,9 +195,9 @@ public class SqlServerDialect implements SqlDialect<JavaMapSqlServerType> {
      * @param alter
      * @return
      */
-    private StringBuffer modifyColumn(Alter alter) {
+    private StringBuilder modifyColumn(Alter alter) {
         ColumnInfo columnInfo = alter.getColumnInfo();
-        StringBuffer modifySql = new StringBuffer();
+        StringBuilder modifySql = new StringBuilder();
         String fullName = getFullName(alter, alter.getTable(), null);
         modifySql.append(fullName);
         modifySql.append(SqlConstant.ALTER);
@@ -239,7 +239,7 @@ public class SqlServerDialect implements SqlDialect<JavaMapSqlServerType> {
     @Override
     public String addRemarks(boolean isTable, Alter item, String escape) {
         String remarks = StringUtil.isNotBlank(item.getColumnInfo().getRemarks()) ? item.getColumnInfo().getRemarks() : "''";
-        StringBuffer remarksSql = new StringBuffer();
+        StringBuilder remarksSql = new StringBuilder();
         String schema = SqlConstant.DBO;
         if (StringUtil.isNotBlank(item.getTable().getSchema())) {
             schema = item.getTable().getSchema();
@@ -258,7 +258,7 @@ public class SqlServerDialect implements SqlDialect<JavaMapSqlServerType> {
 
     @Override
     public String getSchemaSql(SqlBeanMeta sqlBeanMeta, String schemaName) {
-        StringBuffer sql = new StringBuffer();
+        StringBuilder sql = new StringBuilder();
         sql.append("SELECT name FROM sys.schemas ");
         if (StringUtil.isNotEmpty(schemaName)) {
             sql.append("WHERE name = ");
@@ -269,7 +269,7 @@ public class SqlServerDialect implements SqlDialect<JavaMapSqlServerType> {
 
     @Override
     public String getCreateSchemaSql(SqlBeanMeta sqlBeanMeta, String schemaName) {
-        StringBuffer sql = new StringBuffer();
+        StringBuilder sql = new StringBuilder();
         sql.append("IF NOT EXISTS (SELECT name FROM sys.schemas WHERE name = N'");
         sql.append(this.getSchemaName(sqlBeanMeta, schemaName));
         sql.append("') BEGIN EXEC ('CREATE SCHEMA [");
@@ -280,7 +280,7 @@ public class SqlServerDialect implements SqlDialect<JavaMapSqlServerType> {
 
     @Override
     public String getDropSchemaSql(SqlBeanMeta sqlBeanMeta, String schemaName) {
-        StringBuffer sql = new StringBuffer();
+        StringBuilder sql = new StringBuilder();
         sql.append("IF EXISTS (SELECT name FROM sys.schemas WHERE name = N'");
         sql.append(this.getSchemaName(sqlBeanMeta, schemaName));
         sql.append("') BEGIN EXEC ('DROP SCHEMA [");

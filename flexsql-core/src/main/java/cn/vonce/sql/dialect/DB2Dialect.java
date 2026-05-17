@@ -52,7 +52,7 @@ public class DB2Dialect implements SqlDialect<JavaMapDB2Type> {
 
     @Override
     public String getTableListSql(SqlBeanMeta sqlBeanMeta, String schema, String tableName) {
-        StringBuffer sql = new StringBuffer();
+        StringBuilder sql = new StringBuilder();
         sql.append("SELECT name, remarks ");
         sql.append("FROM sysibm.systables ");
         sql.append("WHERE type = 'T' ");
@@ -70,7 +70,7 @@ public class DB2Dialect implements SqlDialect<JavaMapDB2Type> {
 
     @Override
     public String getColumnListSql(SqlBeanMeta sqlBeanMeta, String schema, String tableName) {
-        StringBuffer sql = new StringBuffer();
+        StringBuilder sql = new StringBuilder();
         sql.append("SELECT col.column_id AS cid, col.column_name AS name, col.data_type AS type, ");
         sql.append("(CASE col.nullable WHEN 'N' THEN '1' ELSE '0' END) AS notnull, col.data_default AS dflt_value, ");
         sql.append("(CASE uc1.constraint_type WHEN 'P' THEN '1' ELSE '0' END) AS pk, ");
@@ -96,7 +96,7 @@ public class DB2Dialect implements SqlDialect<JavaMapDB2Type> {
         for (int i = 0; i < alterList.size(); i++) {
             Alter alter = alterList.get(i);
             if (alter.getType() == AlterType.ADD) {
-                StringBuffer sql = new StringBuffer();
+                StringBuilder sql = new StringBuilder();
                 sql.append(SqlConstant.ALTER_TABLE);
                 sql.append(getFullName(alter, alter.getTable()));
                 sql.append(SqlConstant.ADD);
@@ -107,11 +107,11 @@ public class DB2Dialect implements SqlDialect<JavaMapDB2Type> {
                     sqlList.add(remarks);
                 }
             } else if (alter.getType() == AlterType.CHANGE) {
-                StringBuffer sql = new StringBuffer();
+                StringBuilder sql = new StringBuilder();
                 sql.append(changeColumn(alter));
                 sql.append(SqlConstant.SEMICOLON);
                 //先改名后修改信息
-                StringBuffer modifySql = modifyColumn(alter);
+                StringBuilder modifySql = modifyColumn(alter);
                 if (modifySql.length() > 0) {
                     sql.append(modifySql);
                 }
@@ -121,7 +121,7 @@ public class DB2Dialect implements SqlDialect<JavaMapDB2Type> {
                     sqlList.add(remarks);
                 }
             } else if (alter.getType() == AlterType.MODIFY) {
-                StringBuffer modifySql = modifyColumn(alter);
+                StringBuilder modifySql = modifyColumn(alter);
                 if (modifySql.length() > 0) {
                     sqlList.add(modifySql.toString());
                 }
@@ -130,7 +130,7 @@ public class DB2Dialect implements SqlDialect<JavaMapDB2Type> {
                     sqlList.add(remarks);
                 }
             } else if (alter.getType() == AlterType.DROP) {
-                StringBuffer sql = new StringBuffer();
+                StringBuilder sql = new StringBuilder();
                 sql.append(SqlConstant.ALTER_TABLE);
                 sql.append(getFullName(alter, alter.getTable()));
                 sql.append(SqlConstant.DROP);
@@ -153,7 +153,7 @@ public class DB2Dialect implements SqlDialect<JavaMapDB2Type> {
     private String getFullName(Common common, Table table) {
         String escape = SqlBeanUtil.getEscape(common);
         boolean toUpperCase = SqlBeanUtil.isToUpperCase(common);
-        StringBuffer sql = new StringBuffer();
+        StringBuilder sql = new StringBuilder();
         if (StringUtil.isNotBlank(table.getSchema())) {
             sql.append(escape);
             sql.append(table.getSchema(toUpperCase));
@@ -173,8 +173,8 @@ public class DB2Dialect implements SqlDialect<JavaMapDB2Type> {
      * @param alter
      * @return
      */
-    private StringBuffer modifyColumn(Alter alter) {
-        StringBuffer modifySql = new StringBuffer();
+    private StringBuilder modifyColumn(Alter alter) {
+        StringBuilder modifySql = new StringBuilder();
         List<AlterDifference> alterDifferenceList = alter.getDifferences();
         for (AlterDifference alterDifference : alterDifferenceList) {
             ColumnInfo columnInfo = alter.getColumnInfo();
@@ -224,7 +224,7 @@ public class DB2Dialect implements SqlDialect<JavaMapDB2Type> {
      * @return
      */
     private String changeColumn(Alter alter) {
-        StringBuffer changeSql = new StringBuffer();
+        StringBuilder changeSql = new StringBuilder();
         changeSql.append(SqlConstant.ALTER_TABLE);
         changeSql.append(getFullName(alter, alter.getTable()));
         changeSql.append(SqlConstant.RENAME);
@@ -237,7 +237,7 @@ public class DB2Dialect implements SqlDialect<JavaMapDB2Type> {
 
     @Override
     public String addRemarks(boolean isTable, Alter item, String escape) {
-        StringBuffer remarksSql = new StringBuffer();
+        StringBuilder remarksSql = new StringBuilder();
         remarksSql.append(SqlConstant.COMMENT);
         remarksSql.append(SqlConstant.ON);
         remarksSql.append(isTable ? SqlConstant.TABLE : SqlConstant.COLUMN);
@@ -262,7 +262,7 @@ public class DB2Dialect implements SqlDialect<JavaMapDB2Type> {
      * @return
      */
     private String recast(Alter item) {
-        StringBuffer recastSql = new StringBuffer();
+        StringBuilder recastSql = new StringBuilder();
         recastSql.append("CALL SYSPROC.ADMIN_CMD");
         recastSql.append(SqlConstant.BEGIN_BRACKET);
         recastSql.append("'REORG TABLE ");
@@ -274,7 +274,7 @@ public class DB2Dialect implements SqlDialect<JavaMapDB2Type> {
 
     @Override
     public String getSchemaSql(SqlBeanMeta sqlBeanMeta, String schemaName) {
-        StringBuffer sql = new StringBuffer();
+        StringBuilder sql = new StringBuilder();
         sql.append("SELECT DATABASENAME as \"name\" FROM SYSIBM.SYSDATABASES ");
         if (StringUtil.isNotEmpty(schemaName)) {
             sql.append("WHERE DATABASENAME = ");

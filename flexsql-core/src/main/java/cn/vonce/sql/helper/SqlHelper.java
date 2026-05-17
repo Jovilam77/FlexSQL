@@ -13,6 +13,7 @@ import cn.vonce.sql.uitls.SqlBeanUtil;
 
 import java.lang.reflect.Field;
 import java.util.*;
+import java.util.logging.Logger;
 
 /**
  * SQL 语句助手
@@ -24,6 +25,8 @@ import java.util.*;
  */
 public class SqlHelper {
 
+    private static final Logger logger = Logger.getLogger(SqlHelper.class.getName());
+
     /**
      * 生成select sql语句
      *
@@ -32,7 +35,7 @@ public class SqlHelper {
      */
     public static String buildSelectSql(Select select) {
         SqlBeanUtil.check(select);
-        StringBuffer sqlSb = new StringBuffer();
+        StringBuilder sqlSb = new StringBuilder();
         Integer[] pageParam = null;
         String orderSql = orderBySql(select);
         //SQLServer2008 分页处理
@@ -120,7 +123,7 @@ public class SqlHelper {
      */
     public static String buildUpdateSql(Update update) {
         SqlBeanUtil.check(update);
-        StringBuffer sqlSb = new StringBuffer();
+        StringBuilder sqlSb = new StringBuilder();
         sqlSb.append(SqlConstant.UPDATE);
         if (update.getSqlBeanMeta().getDbType() == DbType.H2 || update.getSqlBeanMeta().getDbType() == DbType.Oracle) {
             sqlSb.append(SqlBeanUtil.fromFullName(update.getTable().getSchema(), update.getTable().getName(), update.getTable().getAlias(), update));
@@ -146,7 +149,7 @@ public class SqlHelper {
         try {
             sql = fieldAndValuesSql(insert);
         } catch (IllegalArgumentException e) {
-            e.printStackTrace();
+            logger.warning("Failed to build insert SQL: " + e.getMessage());
         }
         return sql;
     }
@@ -159,7 +162,7 @@ public class SqlHelper {
      */
     public static String buildDeleteSql(Delete delete) {
         SqlBeanUtil.check(delete);
-        StringBuffer sqlSb = new StringBuffer();
+        StringBuilder sqlSb = new StringBuilder();
         sqlSb.append(SqlConstant.DELETE_FROM);
         if (delete.getSqlBeanMeta().getDbType() == DbType.H2 || delete.getSqlBeanMeta().getDbType() == DbType.Oracle) {
             sqlSb.append(SqlBeanUtil.fromFullName(delete.getTable().getSchema(), delete.getTable().getName(), delete.getTable().getAlias(), delete));
@@ -178,7 +181,7 @@ public class SqlHelper {
      */
     public static String buildCreateSql(Create create) {
         SqlBeanUtil.check(create);
-        StringBuffer sqlSb = new StringBuffer();
+        StringBuilder sqlSb = new StringBuilder();
         sqlSb.append(SqlConstant.CREATE_TABLE);
         sqlSb.append(SqlBeanUtil.getTableName(create.getTable(), create));
         sqlSb.append(SqlConstant.BEGIN_BRACKET);
@@ -235,7 +238,7 @@ public class SqlHelper {
         if (StringUtil.isEmpty(targetSchema)) {
             targetSchema = backup.getTable().getSchema();
         }
-        StringBuffer backupSql = new StringBuffer();
+        StringBuilder backupSql = new StringBuilder();
         //非SQLServer、Postgresql数据库则使用：create table A as select * from B
         if (DbType.SQLServer != backup.getSqlBeanMeta().getDbType() && DbType.Postgresql != backup.getSqlBeanMeta().getDbType()) {
             backupSql.append(SqlConstant.CREATE_TABLE);
@@ -281,8 +284,8 @@ public class SqlHelper {
         if (StringUtil.isEmpty(targetSchema)) {
             targetSchema = copy.getTable().getSchema();
         }
-        StringBuffer copySql = new StringBuffer();
-        StringBuffer columnSql = new StringBuffer();
+        StringBuilder copySql = new StringBuilder();
+        StringBuilder columnSql = new StringBuilder();
         copySql.append(SqlConstant.INSERT_INTO);
         copySql.append(SqlBeanUtil.getTableName(copy.getTable(), copy));
         if (copy.getColumns() != null && copy.getColumns().length > 0) {
@@ -299,7 +302,7 @@ public class SqlHelper {
         copySql.append(SqlConstant.SPACES);
         copySql.append(SqlConstant.SELECT);
         if (copy.getTargetColumns() != null && copy.getTargetColumns().length > 0) {
-            StringBuffer targetColumnSql = new StringBuffer();
+            StringBuilder targetColumnSql = new StringBuilder();
             for (Column column : copy.getTargetColumns()) {
                 targetColumnSql.append(column.getName());
                 targetColumnSql.append(SqlConstant.COMMA);
@@ -324,7 +327,7 @@ public class SqlHelper {
      * @return
      */
     public static String buildDrop(Drop drop) {
-        StringBuffer dropSql = new StringBuffer();
+        StringBuilder dropSql = new StringBuilder();
         String tableName = SqlBeanUtil.getTableName(drop.getTable(), drop);
         if (drop.getSqlBeanMeta().getDbType() == DbType.MySQL || drop.getSqlBeanMeta().getDbType() == DbType.MariaDB || drop.getSqlBeanMeta().getDbType() == DbType.Postgresql || drop.getSqlBeanMeta().getDbType() == DbType.H2) {
             dropSql.append("DROP TABLE IF EXISTS ");
@@ -346,7 +349,7 @@ public class SqlHelper {
      * @return
      */
     private static String column(Select select) {
-        StringBuffer columnSql = new StringBuffer();
+        StringBuilder columnSql = new StringBuilder();
         if (select.getColumnList() != null && select.getColumnList().size() != 0) {
             for (int i = 0; i < select.getColumnList().size(); i++) {
                 Column column = select.getColumnList().get(i);
@@ -387,7 +390,7 @@ public class SqlHelper {
      * @return
      */
     private static String joinSql(Select select) {
-        StringBuffer joinSql = new StringBuffer();
+        StringBuilder joinSql = new StringBuilder();
         if (select != null && select.getJoin().size() != 0) {
             for (int i = 0; i < select.getJoin().size(); i++) {
                 Join join = select.getJoin().get(i);
@@ -441,9 +444,9 @@ public class SqlHelper {
      */
     private static String fieldAndValuesSql(Insert insert) throws IllegalArgumentException {
         String tableName = SqlBeanUtil.getTableName(insert.getTable(), insert);
-        StringBuffer fieldSql = new StringBuffer();
-        StringBuffer valueSql = new StringBuffer();
-        StringBuffer fieldAndValuesSql = new StringBuffer();
+        StringBuilder fieldSql = new StringBuilder();
+        StringBuilder valueSql = new StringBuilder();
+        StringBuilder fieldAndValuesSql = new StringBuilder();
         List<String> valueSqlList = new ArrayList<>();
         List objectList = insert.getBean();
         SqlTable sqlTable = SqlBeanUtil.getSqlTable(insert.getBeanClass());
@@ -598,7 +601,7 @@ public class SqlHelper {
      * @return
      */
     private static String setSql(Update update) {
-        StringBuffer setSql = new StringBuffer();
+        StringBuilder setSql = new StringBuilder();
         String escape = SqlBeanUtil.getEscape(update);
         List<Column> filterColumns = update.getFilterColumns();
         Object bean = update.getBean();
@@ -759,7 +762,7 @@ public class SqlHelper {
      * @return
      */
     private static String groupByAndOrderBySql(String type, Select select) {
-        StringBuffer groupByAndOrderBySql = new StringBuffer();
+        StringBuilder groupByAndOrderBySql = new StringBuilder();
         int length = SqlConstant.ORDER_BY.equals(type) ? select.getOrderBy().size() : select.getGroupBy().size();
         String escape = SqlBeanUtil.getEscape(select);
         boolean isToUpperCase = SqlBeanUtil.isToUpperCase(select);
@@ -813,7 +816,7 @@ public class SqlHelper {
      * @return
      */
     private static String conditionHandle(ConditionType conditionType, Common common, String conditionString, Object[] args, Object bean, Condition condition, Wrapper wrapper) {
-        StringBuffer conditionSql = new StringBuffer();
+        StringBuilder conditionSql = new StringBuilder();
         if (ConditionType.WHERE == conditionType && StringUtil.isBlank(conditionString)) {
             conditionSql.append(versionCondition(common, bean));
             conditionSql.append(logicallyDeleteCondition(common));
@@ -860,7 +863,7 @@ public class SqlHelper {
      * @return
      */
     private static String simpleConditionHandle(Common common, List<ConditionData> conditionDataList) {
-        StringBuffer conditionSql = new StringBuffer();
+        StringBuilder conditionSql = new StringBuilder();
         for (int i = 0; i < conditionDataList.size(); i++) {
             Object itemData = conditionDataList.get(i).getItem();
             if (itemData instanceof ConditionInfo) {
@@ -891,7 +894,7 @@ public class SqlHelper {
      * @return
      */
     private static String wrapperConditionHandle(Common common, Wrapper wrapper) {
-        StringBuffer conditionSql = new StringBuffer();
+        StringBuilder conditionSql = new StringBuilder();
         if (!wrapper.getDataList().isEmpty()) {
             conditionSql.append(SqlConstant.BEGIN_BRACKET);
             for (int i = 0; i < wrapper.getDataList().size(); i++) {
@@ -923,7 +926,7 @@ public class SqlHelper {
         if (!(common instanceof Update) || !((Update) common).isOptimisticLock()) {
             return "";
         }
-        StringBuffer versionConditionSql = new StringBuffer();
+        StringBuilder versionConditionSql = new StringBuilder();
         SqlTable sqlTable = SqlBeanUtil.getSqlTable(bean.getClass());
         Field versionField = null;
         //更新时乐观锁处理
@@ -952,7 +955,7 @@ public class SqlHelper {
      */
     private static String logicallyDeleteCondition(Common common) {
         if (common instanceof Select && SqlBeanUtil.checkLogically(common.getBeanClass())) {
-            StringBuffer logicallyDeleteSql = new StringBuffer();
+            StringBuilder logicallyDeleteSql = new StringBuilder();
             SqlTable sqlTable = SqlBeanUtil.getSqlTable(common.getBeanClass());
             Field logicallyDeleteField = SqlBeanUtil.getLogicallyField(common.getBeanClass());
             if (logicallyDeleteField != null) {
@@ -1054,8 +1057,8 @@ public class SqlHelper {
      * @param conditionInfo
      * @return
      */
-    private static StringBuffer valueOperator(Common common, ConditionInfo conditionInfo) {
-        StringBuffer sql = new StringBuffer();
+    private static StringBuilder valueOperator(Common common, ConditionInfo conditionInfo) {
+        StringBuilder sql = new StringBuilder();
         String operator = getOperator(conditionInfo);
         boolean needEndBracket = false;
         Object[] betweenValues = null;
@@ -1067,14 +1070,14 @@ public class SqlHelper {
                 try {
                     throw new SqlBeanException("between 条件的值必须为Array或ArrayList");
                 } catch (SqlBeanException e) {
-                    e.printStackTrace();
+                    logger.warning("Failed to process BETWEEN value: " + e.getMessage());
                     return null;
                 }
             }
         } else if (conditionInfo.getSqlOperator() == SqlOperator.IN || conditionInfo.getSqlOperator() == SqlOperator.NOT_IN) {
             needEndBracket = true;
             Object[] in_notInValues = SqlBeanUtil.getObjectArray(value);
-            StringBuffer in_notIn = new StringBuffer();
+            StringBuilder in_notIn = new StringBuilder();
             if (in_notInValues != null && in_notInValues.length > 0) {
                 for (int k = 0; k < in_notInValues.length; k++) {
                     in_notIn.append(SqlBeanUtil.getActualValue(common, in_notInValues[k]));
@@ -1129,7 +1132,7 @@ public class SqlHelper {
      * @param select
      * @return
      */
-    private static void mysqlPageDispose(Select select, StringBuffer sqlSb) {
+    private static void mysqlPageDispose(Select select, StringBuilder sqlSb) {
         if (SqlBeanUtil.isUsePage(select)) {
             Integer[] param = pageParam(select);
             sqlSb.append(SqlConstant.LIMIT);
@@ -1145,7 +1148,7 @@ public class SqlHelper {
      * @param select
      * @return
      */
-    private static void PostgresqlPageDispose(Select select, StringBuffer sqlSb) {
+    private static void PostgresqlPageDispose(Select select, StringBuilder sqlSb) {
         if (SqlBeanUtil.isUsePage(select)) {
             Integer[] param = pageParam(select);
             sqlSb.append(SqlConstant.LIMIT);
@@ -1161,15 +1164,15 @@ public class SqlHelper {
      * @param select
      * @param sqlSb
      */
-    private static void oraclePageDispose(Select select, StringBuffer sqlSb) {
+    private static void oraclePageDispose(Select select, StringBuilder sqlSb) {
         //oracle 分页语句前缀
         if (SqlBeanUtil.isUsePage(select)) {
             Integer[] param = pageParam(select);
-            StringBuffer beginSqlSb = new StringBuffer();
+            StringBuilder beginSqlSb = new StringBuilder();
             beginSqlSb.append(SqlConstant.SELECT + SqlConstant.ALL + SqlConstant.FROM + SqlConstant.BEGIN_BRACKET);
             beginSqlSb.append(SqlConstant.SELECT + SqlConstant.TB + SqlConstant.POINT + SqlConstant.ALL + SqlConstant.COMMA + SqlConstant.ROWNUM + SqlConstant.RN + SqlConstant.FROM + SqlConstant.BEGIN_BRACKET);
             sqlSb.insert(0, beginSqlSb);
-            StringBuffer endSb = new StringBuffer();
+            StringBuilder endSb = new StringBuilder();
             endSb.append(SqlConstant.END_BRACKET + SqlConstant.TB + SqlConstant.WHERE + SqlConstant.ROWNUM + SqlConstant.LESS_THAN_OR_EQUAL_TO);
             endSb.append(param[1]);
             endSb.append(SqlConstant.END_BRACKET + SqlConstant.WHERE + SqlConstant.RN + SqlConstant.GREATER_THAN);
@@ -1184,16 +1187,16 @@ public class SqlHelper {
      * @param select
      * @param sqlSb
      */
-    private static void db2PageDispose(Select select, StringBuffer sqlSb) {
+    private static void db2PageDispose(Select select, StringBuilder sqlSb) {
         //db2 分页语句前缀
         if (SqlBeanUtil.isUsePage(select)) {
             Integer[] param = pageParam(select);
-            StringBuffer beginSqlSb = new StringBuffer();
+            StringBuilder beginSqlSb = new StringBuilder();
             beginSqlSb.append(SqlConstant.SELECT + SqlConstant.ALL + SqlConstant.FROM + SqlConstant.BEGIN_BRACKET);
             beginSqlSb.append(SqlConstant.SELECT + SqlConstant.T + SqlConstant.POINT + SqlConstant.ALL + SqlConstant.COMMA + SqlConstant.ROWNUMBER);
             beginSqlSb.append(SqlConstant.OVER + SqlConstant.BEGIN_BRACKET + SqlConstant.SPACES + SqlConstant.END_BRACKET + SqlConstant.AS + SqlConstant.RN + SqlConstant.FROM + SqlConstant.BEGIN_BRACKET);
             sqlSb.insert(0, beginSqlSb);
-            StringBuffer endSb = new StringBuffer();
+            StringBuilder endSb = new StringBuilder();
             endSb.append(SqlConstant.END_BRACKET + SqlConstant.T + SqlConstant.SPACES + SqlConstant.END_BRACKET + SqlConstant.TB);
             endSb.append(SqlConstant.WHERE + SqlConstant.BEGIN_BRACKET + SqlConstant.TB + SqlConstant.POINT + SqlConstant.RN + SqlConstant.LESS_THAN_OR_EQUAL_TO);
             endSb.append(param[1]);
@@ -1210,7 +1213,7 @@ public class SqlHelper {
      * @param select
      * @return
      */
-    private static void derbyPageDispose(Select select, StringBuffer sqlSb) {
+    private static void derbyPageDispose(Select select, StringBuilder sqlSb) {
         if (SqlBeanUtil.isUsePage(select)) {
             Integer[] param = pageParam(select);
             sqlSb.append(SqlConstant.OFFSET);

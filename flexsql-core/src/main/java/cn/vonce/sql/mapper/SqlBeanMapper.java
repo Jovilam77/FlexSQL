@@ -51,11 +51,11 @@ public class SqlBeanMapper extends BaseMapper<ResultSet> {
         try {
             ResultSetMetaData resultSetMetaData = resultSet.getMetaData();
             value = getValue(resultSetMetaData.getColumnTypeName(1), 1, resultSetDelegate);
-            if (value == null || value.equals("null")) {
+            if (value == null) {
                 value = getDefaultValueByColumnType(resultSetMetaData.getColumnTypeName(1));
             }
         } catch (SQLException e) {
-            e.printStackTrace();
+            logger.warning("Failed to get base value: " + e.getMessage());
         }
         return value;
     }
@@ -70,13 +70,13 @@ public class SqlBeanMapper extends BaseMapper<ResultSet> {
             map = new HashMap<>();
             for (int i = 1; i <= columns; i++) {
                 Object value = getValue(resultSetMetaData.getColumnTypeName(i), i, resultSetDelegate);
-                if (value == null || value.equals("null")) {
+                if (value == null) {
                     value = getDefaultValueByColumnType(resultSetMetaData.getColumnTypeName(i));
                 }
                 map.put(resultSetMetaData.getColumnLabel(i), value);
             }
         } catch (SQLException e) {
-            e.printStackTrace();
+            logger.warning("Failed to map result set: " + e.getMessage());
         }
         return map;
     }

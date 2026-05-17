@@ -78,7 +78,7 @@ public class StringUtil {
     public static String randomCode(int length) {
         String base = "1234567890";
         Random random = new Random();
-        StringBuffer sb = new StringBuffer();
+        StringBuilder sb = new StringBuilder();
         for (int i = 0; i < length; i++) {
             int number = random.nextInt(base.length());
             sb.append(base.charAt(number));
@@ -97,7 +97,7 @@ public class StringUtil {
         if (params == null || params.isEmpty()) {
             return text;
         }
-        StringBuffer buf = new StringBuffer(text);
+        StringBuilder buf = new StringBuilder(text);
         int startIndex = buf.indexOf(PLACEHOLDER_PREFIX);
         while (startIndex != -1) {
             int endIndex = buf.indexOf(PLACEHOLDER_SUFFIX, startIndex + PLACEHOLDER_PREFIX.length());

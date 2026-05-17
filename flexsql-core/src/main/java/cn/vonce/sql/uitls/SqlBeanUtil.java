@@ -28,6 +28,8 @@ import java.util.logging.Logger;
 public class SqlBeanUtil {
 
     private static final Logger logger = Logger.getLogger(SqlBeanUtil.class.getName());
+    // 字段列表缓存
+    private static final Map<Class<?>, List<Field>> beanAllFieldCache = new ConcurrentHashMap<>();
     // 是否是Android环境
     private static boolean isAndroidEnv;
 
@@ -242,7 +244,7 @@ public class SqlBeanUtil {
             throw new IllegalArgumentException("tableFieldName cannot be null");
         }
         String escape = getEscape(common);
-        StringBuffer fullName = new StringBuffer();
+        StringBuilder fullName = new StringBuilder();
         if (StringUtil.isNotEmpty(tableAlias)) {
             fullName.append(escape);
             fullName.append(tableAlias);
@@ -270,7 +272,7 @@ public class SqlBeanUtil {
             throw new IllegalArgumentException("column cannot be null");
         }
         String escape = getEscape(common);
-        StringBuffer fullName = new StringBuffer();
+        StringBuilder fullName = new StringBuilder();
         if (StringUtil.isNotEmpty(column.getTableAlias())) {
             fullName.append(escape);
             fullName.append(column.getTableAlias());
@@ -307,7 +309,7 @@ public class SqlBeanUtil {
      */
     public static String fromFullName(String schema, String tableName, String tableAlias, Common common) {
         String escape = SqlBeanUtil.getEscape(common);
-        StringBuffer fromSql = new StringBuffer();
+        StringBuilder fromSql = new StringBuilder();
         if (SqlBeanUtil.isToUpperCase(common)) {
             tableName = tableName.toUpperCase();
             schema = schema.toUpperCase();
@@ -603,6 +605,10 @@ public class SqlBeanUtil {
         if (clazz == null) {
             return Collections.emptyList();
         }
+        List<Field> cached = beanAllFieldCache.get(clazz);
+        if (cached != null) {
+            return cached;
+        }
         List<Field> fieldList = new ArrayList<>();
         Class<?> superClass = clazz.getSuperclass();
         do {
@@ -615,7 +621,9 @@ public class SqlBeanUtil {
             }
         } while (superClass != null && superClass != java.lang.Object.class);
         fieldList.addAll(Arrays.asList(clazz.getDeclaredFields()));
-        return fieldList;
+        List<Field> unmodifiable = Collections.unmodifiableList(fieldList);
+        beanAllFieldCache.put(clazz, unmodifiable);
+        return unmodifiable;
     }
 
     /**
@@ -823,11 +831,11 @@ public class SqlBeanUtil {
         if (where == null || where.equals("")) {
             return "";
         }
-        StringBuffer conditionSql = new StringBuffer();
+        StringBuilder conditionSql = new StringBuilder();
         int index = 0;
         for (char c : where.toCharArray()) {
             if ('?' == c) {
-                StringBuffer value = new StringBuffer();
+                StringBuilder value = new StringBuilder();
                 Object[] objects = null;
                 if (args[index] == null) {
                     objects = null;
@@ -865,7 +873,7 @@ public class SqlBeanUtil {
      * @return
      */
     public static String getColumn(Common common, Object columnObject) {
-        StringBuffer value = new StringBuffer();
+        StringBuilder value = new StringBuilder();
         Column column = null;
         if (columnObject instanceof Column) {
             column = (Column) columnObject;
@@ -919,7 +927,7 @@ public class SqlBeanUtil {
      * @return
      */
     public static String getSqlFunction(Common common, SqlFun sqlFun) {
-        StringBuffer fun = new StringBuffer();
+        StringBuilder fun = new StringBuilder();
         fun.append(sqlFun.getFunName());
         fun.append(SqlConstant.BEGIN_BRACKET);
         if (sqlFun.getValues() != null && sqlFun.getValues().length > 0) {
@@ -947,7 +955,7 @@ public class SqlBeanUtil {
         }
         String prefix = "${";
         String suffix = "}";
-        StringBuffer conditionSql = new StringBuffer(where);
+        StringBuilder conditionSql = new StringBuilder(where);
         int startIndex = conditionSql.indexOf(prefix);
         while (startIndex != -1) {
             int endIndex = conditionSql.indexOf(suffix, startIndex + prefix.length());
@@ -1476,7 +1484,7 @@ public class SqlBeanUtil {
      * @return
      */
     public static String addColumn(Common common, ColumnInfo columnInfo, String afterColumnName) {
-        StringBuffer sql = new StringBuffer();
+        StringBuilder sql = new StringBuilder();
         JdbcType jdbcType = JdbcType.getType(columnInfo.getType());
         sql.append(getTableFieldName(common, columnInfo.getName()));
         sql.append(SqlConstant.SPACES);

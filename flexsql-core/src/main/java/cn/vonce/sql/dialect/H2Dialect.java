@@ -58,7 +58,7 @@ public class H2Dialect implements SqlDialect<JavaMapH2Type> {
      */
     @Override
     public String getTableListSql(SqlBeanMeta sqlBeanMeta, String schema, String tableName) {
-        StringBuffer sql = new StringBuffer();
+        StringBuilder sql = new StringBuilder();
         sql.append("SELECT TABLE_SCHEMA AS schema,TABLE_NAME AS name,REMARKS AS remarks ");
         sql.append("FROM information_schema.tables ");
         sql.append("WHERE (table_type = 'TABLE' OR TABLE_TYPE = 'BASE TABLE') ");
@@ -83,7 +83,7 @@ public class H2Dialect implements SqlDialect<JavaMapH2Type> {
      */
     @Override
     public String getColumnListSql(SqlBeanMeta sqlBeanMeta, String schema, String tableName) {
-        StringBuffer sql = new StringBuffer();
+        StringBuilder sql = new StringBuilder();
         sql.append("SELECT cl.ORDINAL_POSITION AS cid, ");
         sql.append("cl.COLUMN_NAME AS name, ");
         if (sqlBeanMeta.getDatabaseMajorVersion() == 1) {
@@ -125,8 +125,8 @@ public class H2Dialect implements SqlDialect<JavaMapH2Type> {
     public List<String> alterTable(List<Alter> alterList) {
         List<String> sqlList = new ArrayList<>();
         String escape = SqlBeanUtil.getEscape(alterList.get(0));
-        StringBuffer sql = new StringBuffer();
-        StringBuffer remarksSql = new StringBuffer();
+        StringBuilder sql = new StringBuilder();
+        StringBuilder remarksSql = new StringBuilder();
         for (int i = 0; i < alterList.size(); i++) {
             Alter alter = alterList.get(i);
             if (alter.getType() == AlterType.ADD) {
@@ -139,7 +139,7 @@ public class H2Dialect implements SqlDialect<JavaMapH2Type> {
                 sql.append(changeColumn(alter));
                 sql.append(SqlConstant.SEMICOLON);
                 //先改名后修改信息
-                StringBuffer modifySql = modifyColumn(alter);
+                StringBuilder modifySql = modifyColumn(alter);
                 if (modifySql.length() > 0) {
                     sql.append(SqlConstant.ALTER_TABLE);
                     sql.append(modifySql);
@@ -174,7 +174,7 @@ public class H2Dialect implements SqlDialect<JavaMapH2Type> {
     private String getFullName(Common common, Table table) {
         String escape = SqlBeanUtil.getEscape(common);
         boolean toUpperCase = SqlBeanUtil.isToUpperCase(common);
-        StringBuffer sql = new StringBuffer();
+        StringBuilder sql = new StringBuilder();
         if (StringUtil.isNotBlank(table.getSchema())) {
             sql.append(escape);
             sql.append(table.getSchema(toUpperCase));
@@ -194,8 +194,8 @@ public class H2Dialect implements SqlDialect<JavaMapH2Type> {
      * @param alter
      * @return
      */
-    private StringBuffer modifyColumn(Alter alter) {
-        StringBuffer modifySql = new StringBuffer();
+    private StringBuilder modifyColumn(Alter alter) {
+        StringBuilder modifySql = new StringBuilder();
         modifySql.append(getFullName(alter, alter.getTable()));
         modifySql.append(SqlConstant.ALTER);
         modifySql.append(SqlConstant.COLUMN);
@@ -210,7 +210,7 @@ public class H2Dialect implements SqlDialect<JavaMapH2Type> {
      * @return
      */
     private String changeColumn(Alter alter) {
-        StringBuffer changeSql = new StringBuffer();
+        StringBuilder changeSql = new StringBuilder();
         changeSql.append(SqlConstant.ALTER_TABLE);
         changeSql.append(getFullName(alter, alter.getTable()));
         changeSql.append(SqlConstant.RENAME);
@@ -231,7 +231,7 @@ public class H2Dialect implements SqlDialect<JavaMapH2Type> {
      */
     @Override
     public String addRemarks(boolean isTable, Alter item, String escape) {
-        StringBuffer remarksSql = new StringBuffer();
+        StringBuilder remarksSql = new StringBuilder();
         remarksSql.append(SqlConstant.COMMENT);
         remarksSql.append(SqlConstant.ON);
         remarksSql.append(isTable ? SqlConstant.TABLE : SqlConstant.COLUMN);
@@ -257,7 +257,7 @@ public class H2Dialect implements SqlDialect<JavaMapH2Type> {
      */
     @Override
     public String getSchemaSql(SqlBeanMeta sqlBeanMeta, String schemaName) {
-        StringBuffer sql = new StringBuffer();
+        StringBuilder sql = new StringBuilder();
         sql.append("SELECT SCHEMA_NAME as \"name\" FROM INFORMATION_SCHEMA.SCHEMATA ");
         if (StringUtil.isNotEmpty(schemaName)) {
             sql.append("WHERE SCHEMA_NAME = ");

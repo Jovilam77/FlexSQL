@@ -50,7 +50,7 @@ public class SqliteDialect implements SqlDialect<JavaMapSqliteType> {
 
     @Override
     public String getTableListSql(SqlBeanMeta sqlBeanMeta, String schema, String tableName) {
-        StringBuffer sql = new StringBuffer();
+        StringBuilder sql = new StringBuilder();
         sql.append("SELECT name ");
         sql.append("FROM sqlite_master ");
         sql.append("WHERE type='table'");
@@ -62,7 +62,7 @@ public class SqliteDialect implements SqlDialect<JavaMapSqliteType> {
 
     @Override
     public String getColumnListSql(SqlBeanMeta sqlBeanMeta, String schema, String tableName) {
-        StringBuffer sql = new StringBuffer();
+        StringBuilder sql = new StringBuilder();
         sql.append("pragma table_info('");
         sql.append(tableName);
         sql.append("')");
@@ -78,7 +78,7 @@ public class SqliteDialect implements SqlDialect<JavaMapSqliteType> {
         SqlTable sqlTable = beanClass.getAnnotation(SqlTable.class);
         //备份表
         String oldTableName = SqlConstant.UNDERLINE + table.getName() + SqlConstant.UNDERLINE + "old" + SqlConstant.UNDERLINE + DateUtil.dateToString(new Date(), "yyyyMMddHHmmss");
-        StringBuffer alterTableSql = new StringBuffer();
+        StringBuilder alterTableSql = new StringBuilder();
         alterTableSql.append(SqlConstant.ALTER_TABLE);
         alterTableSql.append(SqlConstant.DOUBLE_ESCAPE_CHARACTER);
         alterTableSql.append(table.getName());

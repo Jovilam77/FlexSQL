@@ -51,7 +51,7 @@ public class PostgresqlDialect implements SqlDialect<JavaMapPostgresqlType> {
 
     @Override
     public String getTableListSql(SqlBeanMeta sqlBeanMeta, String schema, String tableName) {
-        StringBuffer sql = new StringBuffer();
+        StringBuilder sql = new StringBuilder();
         sql.append("SELECT pt.tablename AS \"name\", pd.description AS remarks ");
         sql.append("FROM pg_tables pt ");
         sql.append("INNER JOIN pg_class pc ON pc.relname = pt.tablename ");
@@ -71,7 +71,7 @@ public class PostgresqlDialect implements SqlDialect<JavaMapPostgresqlType> {
 
     @Override
     public String getColumnListSql(SqlBeanMeta sqlBeanMeta, String schema, String tableName) {
-        StringBuffer sql = new StringBuffer();
+        StringBuilder sql = new StringBuilder();
         sql.append("SELECT cl.ordinal_position as cid, cl.column_name as name, cl.data_type as type, ");
         sql.append("CASE WHEN cl.is_nullable = 'NO' THEN 1 ELSE 0 END as notnull, ");
         sql.append("cl.column_default as dflt_value, cl.character_maximum_length as length, cl.numeric_scale as scale, ");
@@ -102,10 +102,10 @@ public class PostgresqlDialect implements SqlDialect<JavaMapPostgresqlType> {
         List<String> sqlList = new ArrayList<>();
         String escape = SqlBeanUtil.getEscape(alterList.get(0));
         Table table = alterList.get(0).getTable();
-        StringBuffer alertSql = new StringBuffer();
+        StringBuilder alertSql = new StringBuilder();
         alertSql.append(SqlConstant.ALTER_TABLE);
         alertSql.append(getFullName(alterList.get(0), table));
-        StringBuffer addOrModifySql = new StringBuffer();
+        StringBuilder addOrModifySql = new StringBuilder();
         for (int i = 0; i < alterList.size(); i++) {
             Alter alter = alterList.get(i);
             if (alter.getType() == AlterType.ADD) {
@@ -123,7 +123,7 @@ public class PostgresqlDialect implements SqlDialect<JavaMapPostgresqlType> {
                 addOrModifySql.append(modifyColumn(alter));
                 sqlList.add(addRemarks(false, alter, escape));
             } else if (alter.getType() == AlterType.DROP) {
-                StringBuffer dropSql = new StringBuffer();
+                StringBuilder dropSql = new StringBuilder();
                 dropSql.append(SqlConstant.ALTER_TABLE);
                 dropSql.append(getFullName(alter, table));
                 dropSql.append(SqlConstant.DROP);
@@ -160,7 +160,7 @@ public class PostgresqlDialect implements SqlDialect<JavaMapPostgresqlType> {
     private String getFullName(Common common, Table table) {
         String escape = SqlBeanUtil.getEscape(common);
         boolean toUpperCase = SqlBeanUtil.isToUpperCase(common);
-        StringBuffer sql = new StringBuffer();
+        StringBuilder sql = new StringBuilder();
         if (StringUtil.isNotBlank(table.getSchema())) {
             sql.append(escape);
             sql.append(table.getSchema(toUpperCase));
@@ -183,14 +183,14 @@ public class PostgresqlDialect implements SqlDialect<JavaMapPostgresqlType> {
     private String modifyColumn(Alter alter) {
         ColumnInfo columnInfo = alter.getColumnInfo();
         JdbcType jdbcType = JdbcType.getType(columnInfo.getType());
-        StringBuffer modifySql = new StringBuffer();
+        StringBuilder modifySql = new StringBuilder();
         modifySql.append(SqlConstant.ALTER);
         modifySql.append(SqlConstant.COLUMN);
         String columnName = SqlBeanUtil.getTableFieldName(alter, columnInfo.getName());
         modifySql.append(columnName);
         modifySql.append(SqlConstant.SPACES);
         modifySql.append(SqlConstant.TYPE);
-        StringBuffer typeSql = new StringBuffer();
+        StringBuilder typeSql = new StringBuilder();
         typeSql.append(jdbcType.name());
         if (columnInfo.getLength() != null && columnInfo.getLength() > 0) {
             typeSql.append(SqlConstant.BEGIN_BRACKET);
@@ -261,7 +261,7 @@ public class PostgresqlDialect implements SqlDialect<JavaMapPostgresqlType> {
      * @return
      */
     private String changeColumn(Alter alter) {
-        StringBuffer changeSql = new StringBuffer();
+        StringBuilder changeSql = new StringBuilder();
         changeSql.append(SqlConstant.ALTER_TABLE);
         changeSql.append(getFullName(alter, alter.getTable()));
         changeSql.append(SqlConstant.RENAME);
@@ -274,7 +274,7 @@ public class PostgresqlDialect implements SqlDialect<JavaMapPostgresqlType> {
 
     @Override
     public String addRemarks(boolean isTable, Alter item, String escape) {
-        StringBuffer remarksSql = new StringBuffer();
+        StringBuilder remarksSql = new StringBuilder();
         remarksSql.append(SqlConstant.COMMENT);
         remarksSql.append(SqlConstant.ON);
         remarksSql.append(isTable ? SqlConstant.TABLE : SqlConstant.COLUMN);
@@ -294,7 +294,7 @@ public class PostgresqlDialect implements SqlDialect<JavaMapPostgresqlType> {
 
     @Override
     public String getSchemaSql(SqlBeanMeta sqlBeanMeta, String schemaName) {
-        StringBuffer sql = new StringBuffer();
+        StringBuilder sql = new StringBuilder();
         sql.append("SELECT schema_name as \"name\" FROM information_schema.schemata ");
         if (StringUtil.isNotEmpty(schemaName)) {
             sql.append("WHERE schema_name = ");

@@ -135,7 +135,7 @@ public abstract class BaseMapper<T> {
      */
     public void setFieldValue(Object obj, Field field, String columnName, ResultSetDelegate<T> resultSetDelegate) {
         Object value = getValue(field, columnName, resultSetDelegate);
-        if (value == null || value.equals("null")) {
+        if (value == null) {
             value = SqlBeanUtil.getDefaultValue(field.getType());
         }
         if (SqlEnum.class.isAssignableFrom(field.getType())) {
