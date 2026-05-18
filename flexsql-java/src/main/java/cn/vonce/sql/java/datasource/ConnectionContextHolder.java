@@ -3,8 +3,8 @@ package cn.vonce.sql.java.datasource;
 import cn.vonce.sql.uitls.StringUtil;
 
 import java.sql.SQLException;
+import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Logger;
 
 /**
@@ -18,7 +18,7 @@ public class ConnectionContextHolder {
 
     private static final Logger logger = Logger.getLogger(ConnectionContextHolder.class.getName());
 
-    private static final ThreadLocal<ConcurrentHashMap<String, ConnectionProxy>> contextHolder = ThreadLocal.withInitial(() -> new ConcurrentHashMap<>());
+    private static final ThreadLocal<HashMap<String, ConnectionProxy>> contextHolder = ThreadLocal.withInitial(HashMap::new);
 
     /**
      * 设置当前数据源代理
@@ -27,7 +27,7 @@ public class ConnectionContextHolder {
      * @param connectionProxy
      */
     public static void setConnection(String ds, ConnectionProxy connectionProxy) {
-        ConcurrentHashMap<String, ConnectionProxy> map = contextHolder.get();
+        HashMap<String, ConnectionProxy> map = contextHolder.get();
         if (map != null) {
             try {
                 connectionProxy.setAutoCommit(false);
@@ -68,7 +68,7 @@ public class ConnectionContextHolder {
      */
     public static void commitOrRollback(String ds, boolean isOk) {
         try {
-            ConcurrentHashMap<String, ConnectionProxy> map = contextHolder.get();
+            HashMap<String, ConnectionProxy> map = contextHolder.get();
             if (map != null) {
                 ConnectionProxy connectionProxy = map.get(ds);
                 if (connectionProxy != null) {
@@ -104,7 +104,10 @@ public class ConnectionContextHolder {
      * @param readOnly
      */
     public static void setReadOnly(String ds, boolean readOnly) {
-        setReadOnly(contextHolder.get().get(ds), readOnly);
+        ConnectionProxy connectionProxy = contextHolder.get().get(ds);
+        if (connectionProxy != null) {
+            setReadOnly(connectionProxy, readOnly);
+        }
     }
 
     /**
@@ -119,6 +122,14 @@ public class ConnectionContextHolder {
         } catch (SQLException e) {
             logger.warning("Failed to set read only: " + e.getMessage());
         }
+    }
+
+    /**
+     * 清除所有连接
+     * 防止 ThreadLocal 内存泄漏
+     */
+    public static void clearAll() {
+        contextHolder.remove();
     }
 
 }

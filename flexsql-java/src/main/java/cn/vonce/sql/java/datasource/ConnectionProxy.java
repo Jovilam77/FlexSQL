@@ -130,12 +130,12 @@ public class ConnectionProxy implements Connection {
 
     @Override
     public Statement createStatement(int resultSetType, int resultSetConcurrency) throws SQLException {
-        return connection.createStatement();
+        return connection.createStatement(resultSetType, resultSetConcurrency);
     }
 
     @Override
     public PreparedStatement prepareStatement(String sql, int resultSetType, int resultSetConcurrency) throws SQLException {
-        return connection.prepareStatement(sql);
+        return connection.prepareStatement(sql, resultSetType, resultSetConcurrency);
     }
 
     @Override
@@ -175,7 +175,7 @@ public class ConnectionProxy implements Connection {
 
     @Override
     public void rollback(Savepoint savepoint) throws SQLException {
-        connection.rollback();
+        connection.rollback(savepoint);
     }
 
     @Override
