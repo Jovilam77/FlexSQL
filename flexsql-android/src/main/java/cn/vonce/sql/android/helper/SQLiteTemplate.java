@@ -31,12 +31,24 @@ public class SQLiteTemplate {
      */
     public <T> List<T> query(String sql, RowMapper<T> rowMapper) {
         List<T> list = new ArrayList<>();
-        ResultSetDelegate<Cursor> resultSetDelegate = new ResultSetDelegate<>(db.rawQuery(sql, null));
-        Log.d("flexsql", "query: " + sql);
-        for (int i = 0; i < resultSetDelegate.getDelegate().getCount(); i++) {
-            list.add(rowMapper.mapRow(resultSetDelegate, i));
+        Cursor cursor = null;
+        try {
+            cursor = db.rawQuery(sql, null);
+            Log.d("flexsql", "query: " + sql);
+            if (cursor != null && cursor.getCount() > 0) {
+                ResultSetDelegate<Cursor> resultSetDelegate = new ResultSetDelegate<>(cursor);
+                for (int i = 0; i < cursor.getCount(); i++) {
+                    cursor.moveToPosition(i);
+                    list.add(rowMapper.mapRow(resultSetDelegate, i));
+                }
+            }
+        } catch (Exception e) {
+            Log.e("flexsql", "query error: " + e.getMessage(), e);
+        } finally {
+            if (cursor != null) {
+                cursor.close();
+            }
         }
-        resultSetDelegate.getDelegate().close();
         return list;
     }
 
@@ -49,11 +61,23 @@ public class SQLiteTemplate {
      * @return
      */
     public <T> T queryForObject(String sql, RowMapper<T> rowMapper) {
-        Cursor cursor = db.rawQuery(sql, null);
-        Log.d("flexsql", "queryForObject: " + sql);
-        T t = rowMapper.mapRow(new ResultSetDelegate<>(cursor), 0);
-        cursor.close();
-        return t;
+        Cursor cursor = null;
+        try {
+            cursor = db.rawQuery(sql, null);
+            Log.d("flexsql", "queryForObject: " + sql);
+            if (cursor != null && cursor.getCount() > 0) {
+                cursor.moveToFirst();
+                return rowMapper.mapRow(new ResultSetDelegate<>(cursor), 0);
+            }
+            return null;
+        } catch (Exception e) {
+            Log.e("flexsql", "queryForObject error: " + e.getMessage(), e);
+            return null;
+        } finally {
+            if (cursor != null) {
+                cursor.close();
+            }
+        }
     }
 
     /**

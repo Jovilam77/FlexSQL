@@ -16,9 +16,10 @@ public class PackageUtil {
 
     public static List<String> getClasses(Context mContext, String packageName) {
         List<String> classes = new ArrayList<>();
+        DexFile df = null;
         try {
             String packageCodePath = mContext.getPackageCodePath();
-            DexFile df = new DexFile(packageCodePath);
+            df = new DexFile(packageCodePath);
             String regExp = "^" + packageName + ".\\w+$";
             Enumeration<String> enumeration = df.entries();
             while (enumeration.hasMoreElements()) {
@@ -29,6 +30,14 @@ public class PackageUtil {
             }
         } catch (IOException e) {
             logger.warning("Failed to get classes from package '" + packageName + "': " + e.getMessage());
+        } finally {
+            if (df != null) {
+                try {
+                    df.close();
+                } catch (IOException e) {
+                    logger.warning("Failed to close DexFile: " + e.getMessage());
+                }
+            }
         }
         return classes;
     }

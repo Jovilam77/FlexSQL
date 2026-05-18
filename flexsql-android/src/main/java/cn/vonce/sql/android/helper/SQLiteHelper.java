@@ -9,7 +9,7 @@ import cn.vonce.sql.uitls.SqlBeanUtil;
 
 import java.util.List;
 import java.util.Map;
-import java.util.WeakHashMap;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Logger;
 
 /**
@@ -22,8 +22,8 @@ public class SQLiteHelper {
     private static final Logger logger = Logger.getLogger(SQLiteHelper.class.getName());
 
     private volatile static SQLiteHelper defaultSqLiteHelper;
-    private final static Map<String, SQLiteHelper> sqLiteHelperMap = new WeakHashMap<>();
-    private final Map<Class<?>, SqlBeanHelper> sqlBeanHelperMap = new WeakHashMap<>();
+    private final static Map<String, SQLiteHelper> sqLiteHelperMap = new ConcurrentHashMap<>();
+    private final Map<Class<?>, SqlBeanHelper> sqlBeanHelperMap = new ConcurrentHashMap<>();
 
     private Context context;
     private String name;
@@ -65,11 +65,11 @@ public class SQLiteHelper {
         SQLiteHelper sqLiteHelper = sqLiteHelperMap.get(name);
         if (sqLiteHelper == null) {
             sqLiteHelper = new SQLiteHelper(context, name, version);
+            sqLiteHelperMap.put(name, sqLiteHelper);
         } else {
             if (sqLiteHelper.version != version) {
                 sqLiteHelper.version = version;
                 sqLiteHelper.sqlBeanHelperMap.clear();
-                sqLiteHelperMap.put(name, sqLiteHelper);
             }
         }
         return sqLiteHelper;
