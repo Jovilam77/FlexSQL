@@ -20,10 +20,21 @@ public class TransactionalInterceptor implements MethodInterceptor {
 
     @Override
     public Object invoke(MethodInvocation methodInvocation) throws Throwable {
-        DbTransactional dbTransactional = methodInvocation.getThis().getClass().getAnnotation(DbTransactional.class);
+        // 获取类级别注解
+        DbTransactional dbTransactional = null;
+        if (methodInvocation.getThis() != null) {
+            dbTransactional = methodInvocation.getThis().getClass().getAnnotation(DbTransactional.class);
+        }
+        // 获取方法级别注解（优先）
         if (methodInvocation.getMethod().isAnnotationPresent(DbTransactional.class)) {
             dbTransactional = methodInvocation.getMethod().getAnnotation(DbTransactional.class);
         }
+        
+        // 如果没有事务注解，直接执行
+        if (dbTransactional == null) {
+            return methodInvocation.proceed();
+        }
+        
         Object result;
         String xid = null;
         try {
