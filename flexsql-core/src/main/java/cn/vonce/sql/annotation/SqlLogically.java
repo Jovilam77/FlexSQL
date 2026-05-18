@@ -1,5 +1,7 @@
 package cn.vonce.sql.annotation;
 
+import cn.vonce.sql.enumerate.LogicallyStrategy;
+
 import java.lang.annotation.*;
 
 /**
@@ -16,5 +18,10 @@ import java.lang.annotation.*;
 @Inherited
 public @interface SqlLogically {
 
-
+    /**
+     * 逻辑删除策略
+     * 
+     * @return 策略枚举值
+     */
+    LogicallyStrategy strategy() default LogicallyStrategy.FILTER;
 }

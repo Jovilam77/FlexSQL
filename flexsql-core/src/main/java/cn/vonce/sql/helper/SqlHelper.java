@@ -985,10 +985,17 @@ public class SqlHelper {
      */
     private static String logicallyDeleteCondition(Common common) {
         if (common instanceof Select && SqlBeanUtil.checkLogically(common.getBeanClass())) {
-            StringBuilder logicallyDeleteSql = new StringBuilder();
-            SqlTable sqlTable = SqlBeanUtil.getSqlTable(common.getBeanClass());
             Field logicallyDeleteField = SqlBeanUtil.getLogicallyField(common.getBeanClass());
             if (logicallyDeleteField != null) {
+                // 获取逻辑删除策略
+                SqlLogically sqlLogically = logicallyDeleteField.getAnnotation(SqlLogically.class);
+                if (sqlLogically != null && sqlLogically.strategy() == LogicallyStrategy.NOT_FILTER) {
+                    // 如果策略为 NOT_FILTER，不拼接逻辑删除条件
+                    return "";
+                }
+                
+                StringBuilder logicallyDeleteSql = new StringBuilder();
+                SqlTable sqlTable = SqlBeanUtil.getSqlTable(common.getBeanClass());
                 logicallyDeleteSql.append(SqlConstant.BEGIN_BRACKET);
                 logicallyDeleteSql.append(SqlBeanUtil.getTableFieldFullName(common, common.getTable().getAlias(), SqlBeanUtil.getTableFieldName(logicallyDeleteField, sqlTable)));
                 logicallyDeleteSql.append(SqlConstant.EQUAL_TO);
@@ -1001,8 +1008,8 @@ public class SqlHelper {
                     logicallyDeleteSql.append(0);
                 }
                 logicallyDeleteSql.append(SqlConstant.END_BRACKET);
+                return logicallyDeleteSql.toString();
             }
-            return logicallyDeleteSql.toString();
         }
         return "";
     }
