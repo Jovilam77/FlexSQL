@@ -2,6 +2,7 @@ package cn.vonce.sql.spring.datasource;
 
 import cn.vonce.sql.java.annotation.DbTransactional;
 import cn.vonce.sql.java.datasource.ConnectionContextHolder;
+import cn.vonce.sql.java.datasource.TransactionTimeoutManager;
 import cn.vonce.sql.java.datasource.TransactionalContextHolder;
 import cn.vonce.sql.uitls.IdBuilder;
 import cn.vonce.sql.uitls.StringUtil;
@@ -24,8 +25,9 @@ public class TransactionalInterceptor implements MethodInterceptor {
             dbTransactional = methodInvocation.getMethod().getAnnotation(DbTransactional.class);
         }
         Object result;
+        String xid = null;
         try {
-            String xid = TransactionalContextHolder.getXid();
+            xid = TransactionalContextHolder.getXid();
             //已经存在事务则加入事务并执行
             if (StringUtil.isNotBlank(xid)) {
                 result = methodInvocation.proceed();
@@ -36,14 +38,26 @@ public class TransactionalInterceptor implements MethodInterceptor {
                 if (dbTransactional.readOnly()) {
                     ConnectionContextHolder.setReadOnly(true);
                 }
-                TransactionalContextHolder.setXid(IdBuilder.uuid());
+                xid = IdBuilder.uuid();
+                TransactionalContextHolder.setXid(xid);
+                
+                // 调度事务超时任务
+                int timeout = dbTransactional.timeout();
+                if (timeout > 0) {
+                    TransactionTimeoutManager.scheduleTimeout(xid, timeout);
+                }
+                
                 result = methodInvocation.proceed();
+                //取消超时任务
+                TransactionTimeoutManager.cancelTimeout(xid);
                 //移除事务id
                 TransactionalContextHolder.clearXid();
                 //提交或回滚事务
                 ConnectionContextHolder.commitOrRollback(true);
             }
         } catch (Throwable e) {
+            //取消超时任务
+            TransactionTimeoutManager.cancelTimeout(xid);
             //移除事务id
             TransactionalContextHolder.clearXid();
             Class<? extends Throwable>[] rollbackFor = dbTransactional.rollbackFor();

@@ -21,12 +21,13 @@ public @interface DbTransactional {
      */
     boolean readOnly() default false;
 
-//    /**
-//     * 事务超时时间
-//     *
-//     * @return
-//     */
-//    int timeout() default -1;
+    /**
+     * 事务超时时间（秒）
+     * -1 表示不设置超时
+     *
+     * @return
+     */
+    int timeout() default -1;
 
     /**
      * 什么异常回滚
