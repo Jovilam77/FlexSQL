@@ -41,17 +41,27 @@ public class AutoConfigSolon implements Plugin {
         }
         bw.context().beanMake(SolonAutoCreateTableListener.class);
         bw.context().beanInterceptorAdd(DbSwitch.class, new DataSourceInterceptor());
-        try {
-            Connection connection = mybatisAdapter.getConfiguration().getEnvironment().getDataSource().getConnection();
-            SqlBeanConfig sqlBeanConfig = bw.context().getBean(SqlBeanConfig.class);
-            SqlBeanMeta sqlBeanMeta = SqlBeanMeta.build(sqlBeanConfig, connection.getMetaData());
-            connection.close();
-            BeanWrap beanWrap = bw.context().wrap("sqlBeanMeta", sqlBeanMeta);
-            bw.context().putWrap(SqlBeanMeta.class, beanWrap);
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
+        
+        if (mybatisAdapter != null) {
+            Connection connection = null;
+            try {
+                connection = mybatisAdapter.getConfiguration().getEnvironment().getDataSource().getConnection();
+                SqlBeanConfig sqlBeanConfig = bw.context().getBean(SqlBeanConfig.class);
+                SqlBeanMeta sqlBeanMeta = SqlBeanMeta.build(sqlBeanConfig, connection.getMetaData());
+                BeanWrap beanWrap = bw.context().wrap("sqlBeanMeta", sqlBeanMeta);
+                bw.context().putWrap(SqlBeanMeta.class, beanWrap);
+            } catch (SQLException e) {
+                throw new RuntimeException(e);
+            } finally {
+                if (connection != null) {
+                    try {
+                        connection.close();
+                    } catch (SQLException e) {
+                        // log warning if needed
+                    }
+                }
+            }
         }
-
     }
 
 }

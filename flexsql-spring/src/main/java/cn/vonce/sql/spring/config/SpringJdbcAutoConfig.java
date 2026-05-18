@@ -30,15 +30,22 @@ public class SpringJdbcAutoConfig {
 
     @Bean(name = "sqlBeanMetaForSpringJdbc")
     public SqlBeanMeta sqlBeanMeta() {
+        Connection connection = null;
         try {
-            Connection connection = jdbcTemplate.getDataSource().getConnection();
-            SqlBeanMeta sqlBeanMeta = SqlBeanMeta.build(sqlBeanConfig, connection.getMetaData());
-            connection.close();
-            return sqlBeanMeta;
+            connection = jdbcTemplate.getDataSource().getConnection();
+            return SqlBeanMeta.build(sqlBeanConfig, connection.getMetaData());
         } catch (SQLException e) {
             logger.warning(String.format("sqlBeanMeta：%s", e.getMessage()));
+            return null;
+        } finally {
+            if (connection != null) {
+                try {
+                    connection.close();
+                } catch (SQLException e) {
+                    logger.warning(String.format("Failed to close connection: %s", e.getMessage()));
+                }
+            }
         }
-        return null;
     }
 
 }

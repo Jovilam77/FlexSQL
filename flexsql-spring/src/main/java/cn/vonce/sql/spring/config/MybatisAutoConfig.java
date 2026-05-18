@@ -77,10 +77,22 @@ public class MybatisAutoConfig {
                 logger.warning(String.format("sqlBeanMeta：%s", e.getMessage()));
             }
         }
-        Connection connection = sqlSessionFactory.getConfiguration().getEnvironment().getDataSource().getConnection();
-        SqlBeanMeta sqlBeanMeta = SqlBeanMeta.build(sqlBeanConfig, connection.getMetaData());
-        connection.close();
-        return sqlBeanMeta;
+        if (sqlSessionFactory == null) {
+            throw new IllegalStateException("SqlSessionFactory is null");
+        }
+        Connection connection = null;
+        try {
+            connection = sqlSessionFactory.getConfiguration().getEnvironment().getDataSource().getConnection();
+            return SqlBeanMeta.build(sqlBeanConfig, connection.getMetaData());
+        } finally {
+            if (connection != null) {
+                try {
+                    connection.close();
+                } catch (Exception e) {
+                    logger.warning(String.format("Failed to close connection: %s", e.getMessage()));
+                }
+            }
+        }
     }
 
 }
