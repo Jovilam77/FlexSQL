@@ -11,6 +11,7 @@ import cn.vonce.sql.uitls.SqlBeanUtil;
 import cn.vonce.sql.uitls.StringUtil;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Logger;
 
 /**
@@ -33,85 +34,156 @@ public abstract class BaseAutoCreateTableListener {
 
     public void processSqlBeanServices() {
         List<SqlBeanService> beanServiceList = this.getBeansForType(SqlBeanService.class);
-        //去除重复的
-        Map<Class<?>, SqlBeanService> beanServiceMap = null;
-        if (beanServiceList != null && !beanServiceList.isEmpty()) {
-            beanServiceMap = new HashMap<>();
-            for (SqlBeanService sqlBeanService : beanServiceList) {
-                beanServiceMap.put(sqlBeanService.getBeanClass(), sqlBeanService);
+        if (beanServiceList == null || beanServiceList.isEmpty()) {
+            return;
+        }
+        
+        // 去除重复的，使用 beanClass 作为 key
+        Map<Class<?>, SqlBeanService> beanServiceMap = new ConcurrentHashMap<>();
+        for (SqlBeanService sqlBeanService : beanServiceList) {
+            Class<?> beanClass = sqlBeanService.getBeanClass();
+            if (beanClass != null) {
+                beanServiceMap.put(beanClass, sqlBeanService);
             }
         }
-        if (beanServiceMap != null) {
-            Map<String, SqlBeanService> schemaMap = new HashMap<>();
-            for (SqlBeanService sqlBeanService : beanServiceMap.values()) {
+        
+        if (beanServiceMap.isEmpty()) {
+            return;
+        }
+        
+        // 按 schema 分组，一个 schema 对应多个 SqlBeanService
+        Map<String, List<SqlBeanService>> schemaMap = new ConcurrentHashMap<>();
+        for (SqlBeanService sqlBeanService : beanServiceMap.values()) {
+            Class<?> clazz = sqlBeanService.getBeanClass();
+            if (clazz == null) {
+                continue;
+            }
+            
+            SqlTable sqlTable = SqlBeanUtil.getSqlTable(clazz);
+            if (sqlTable == null) {
+                continue;
+            }
+            
+            // 检查是否实现了 AdvancedDbManageService
+            if (!(sqlBeanService instanceof AdvancedDbManageService)) {
+                logger.warning("SqlBeanService does not implement AdvancedDbManageService: " + clazz.getName());
+                continue;
+            }
+            
+            schemaMap.computeIfAbsent(sqlTable.schema(), k -> new ArrayList<>()).add(sqlBeanService);
+        }
+        
+        // 处理每个 schema
+        for (Map.Entry<String, List<SqlBeanService>> entry : schemaMap.entrySet()) {
+            String schema = entry.getKey();
+            List<SqlBeanService> services = entry.getValue();
+            
+            if (services.isEmpty()) {
+                continue;
+            }
+            
+            SqlBeanService firstService = services.get(0);
+            DbType dbType = firstService.getSqlBeanMeta().getDbType();
+            
+            // 检查 schema 是否存在，不存在则创建（不支持 sqlite 和 oracle）
+            if (StringUtil.isNotBlank(schema)) {
+                if (dbType == DbType.SQLite || dbType == DbType.Oracle) {
+                    continue;
+                }
+                try {
+                    AdvancedDbManageService advancedService = (AdvancedDbManageService) firstService;
+                    List<String> databases = advancedService.getSchemas(schema);
+                    if (databases == null || databases.isEmpty()) {
+                        advancedService.createSchema(schema);
+                        logger.info(String.format("-----Schema:[%s]不存在,已为你自动创建-----", schema));
+                    }
+                } catch (Exception e) {
+                    logger.warning(String.format("创建 Schema 出错：" + e.getMessage()));
+                    continue;
+                }
+            }
+            
+            // 获取当前 schema 的表列表并构建索引
+            List<TableInfo> tableList;
+            Set<String> tableNameSet = new HashSet<>();
+            Map<String, TableInfo> tableInfoMap = new HashMap<>();
+            
+            try {
+                DbManageService dbManageService = (DbManageService) firstService;
+                tableList = dbManageService.getTableList();
+                // 构建表名索引，支持不区分大小写的查找
+                for (TableInfo tableInfo : tableList) {
+                    String tableName = tableInfo.getName().toLowerCase();
+                    tableNameSet.add(tableName);
+                    tableInfoMap.put(tableName, tableInfo);
+                }
+            } catch (Exception e) {
+                logger.warning(String.format("获取表列表出错：" + e.getMessage()));
+                continue;
+            }
+            
+            // 处理当前 schema 的所有服务
+            for (SqlBeanService sqlBeanService : services) {
                 Class<?> clazz = sqlBeanService.getBeanClass();
                 if (clazz == null) {
                     continue;
                 }
+                
                 SqlTable sqlTable = SqlBeanUtil.getSqlTable(clazz);
-                schemaMap.put(sqlTable.schema(), sqlBeanService);
-            }
-            for (Map.Entry<String, SqlBeanService> entry : schemaMap.entrySet()) {
-                //检查schema是否存在,不存在则创建（不支持sqlite和oracle）
-                if (StringUtil.isNotBlank(entry.getKey())) {
-                    if (entry.getValue().getSqlBeanMeta().getDbType() == DbType.SQLite || entry.getValue().getSqlBeanMeta().getDbType() == DbType.Oracle) {
-                        continue;
-                    }
-                    List<String> databases = ((AdvancedDbManageService) entry.getValue()).getSchemas(entry.getKey());
-                    if (databases == null || databases.isEmpty()) {
-                        ((AdvancedDbManageService) entry.getValue()).createSchema(entry.getKey());
-                        logger.info(String.format("-----Schema:[%s]不存在,已为你自动创建-----", entry.getKey()));
-                    }
+                Table table = SqlBeanUtil.getTable(clazz);
+                
+                // 存在 @SqlTable 注解且不是视图才处理
+                if (sqlTable == null || sqlTable.isView()) {
+                    continue;
                 }
-                List<TableInfo> tableList = ((DbManageService) entry.getValue()).getTableList();
-                for (SqlBeanService sqlBeanService : beanServiceMap.values()) {
-                    Class<?> clazz = sqlBeanService.getBeanClass();
-                    if (clazz == null) {
-                        continue;
-                    }
-                    SqlTable sqlTable = SqlBeanUtil.getSqlTable(clazz);
-                    Table table = SqlBeanUtil.getTable(clazz);
-                    //存在@SqlTable注解且不是视图且schema一致的才会自动创建表和更新表结构
-                    if (sqlTable != null && !sqlTable.isView() && sqlTable.schema().equals(entry.getKey())) {
-                        boolean isExist = false;
-                        //检查表是否存在
-                        for (TableInfo tableInfo : tableList) {
-                            if (tableInfo.getName().equalsIgnoreCase(table.getName())) {
-                                isExist = true;
-                                String remarks = sqlTable.remarks();
-                                //如果没有设置表注释，则从类上获取
-                                if (StringUtil.isEmpty(remarks)) {
-                                    remarks = SqlBeanUtil.getBeanRemarks(SqlBeanUtil.getConstantClass(clazz));
-                                }
-                                //表注释不一致
-                                if (sqlTable.autoAlter() && !remarks.equals(tableInfo.getRemarks())) {
-                                    ((AdvancedDbManageService) sqlBeanService).alterRemarks(remarks);
-                                }
-                                break;
-                            }
+                
+                String tableNameLower = table.getName().toLowerCase();
+                boolean isExist = tableNameSet.contains(tableNameLower);
+                
+                AdvancedDbManageService advancedService = (AdvancedDbManageService) sqlBeanService;
+                
+                if (isExist) {
+                    TableInfo tableInfo = tableInfoMap.get(tableNameLower);
+                    if (tableInfo != null) {
+                        String remarks = sqlTable.remarks();
+                        // 如果没有设置表注释，则从类上获取
+                        if (StringUtil.isEmpty(remarks)) {
+                            remarks = SqlBeanUtil.getBeanRemarks(SqlBeanUtil.getConstantClass(clazz));
                         }
-                        //创建表
-                        if (!isExist && sqlTable.autoCreate()) {
+                        
+                        // 表注释不一致，更新注释
+                        if (sqlTable.autoAlter() && !remarks.equals(tableInfo.getRemarks())) {
                             try {
-                                ((AdvancedDbManageService) sqlBeanService).createTable();
-                                logger.info(String.format("-----Table:[%s]不存在,已为你自动创建-----", (StringUtil.isNotEmpty(table.getSchema()) ? table.getSchema() + "." + table.getName() : table.getName())));
-                                continue;
+                                advancedService.alterRemarks(remarks);
                             } catch (Exception e) {
-                                logger.warning(String.format("创建表结构出错：" + e.getMessage()));
+                                logger.warning(String.format("更新表注释出错：" + e.getMessage()));
                             }
                         }
-                        //更新表结构
-                        if (isExist && sqlTable.autoAlter()) {
+                        
+                        // 更新表结构
+                        if (sqlTable.autoAlter()) {
                             try {
-                                ((AdvancedDbManageService) sqlBeanService).alter(table, ((AdvancedDbManageService) sqlBeanService).getColumnInfoList(table.getName()));
+                                advancedService.alter(table, advancedService.getColumnInfoList(table.getName()));
                             } catch (Exception e) {
                                 logger.warning(String.format("更新表结构出错：" + e.getMessage()));
                             }
                         }
                     }
+                } else {
+                    // 创建表
+                    if (sqlTable.autoCreate()) {
+                        try {
+                            advancedService.createTable();
+                            String fullTableName = StringUtil.isNotEmpty(table.getSchema()) 
+                                ? table.getSchema() + "." + table.getName() 
+                                : table.getName();
+                            logger.info(String.format("-----Table:[%s]不存在,已为你自动创建-----", fullTableName));
+                        } catch (Exception e) {
+                            logger.warning(String.format("创建表结构出错：" + e.getMessage()));
+                        }
+                    }
                 }
             }
-            schemaMap.clear();
         }
     }
 
