@@ -1,399 +1,263 @@
-#### 更多实例FlexSQL使用实例以及代码生成点击这里👉 [https://gitee.com/iJovi/flexsql-example](https://gitee.com/iJovi/flexsql-example "FlexSQL-Example")
-#### 一. Select对象使用示例（复杂查询或灵活性较高时使用，查看下方文档使用更简便方式）
+# Select 查询
+
+## 一、Select 对象使用示例
+
+### 1. 基础查询
+
 ```java
-    Select select = new Select();
-    select.column(SqlEssay._all);
-    select.column(SqlUser.headPortrait, "头像");
-    select.column(SqlUser.nickname, "昵称");
-    select.join(JoinType.INNER_JOIN, SqlUser._tableAlias, SqlUser.id, SqlEssay.userId);
-    select.where().eq(SqlEssay.userId, "1111");
-    //value 直接输入字符串 会当作字符串处理，sql中会带''，如果希望不被做处理则使用Original
-    select.where().eq(SqlFun.date_format(SqlEssay.creationTime$, "%Y-%m-%d"), SqlFun.date_format(SqlFun.now(), "%Y-%m-%d"));
-    select.orderByDesc(SqlEssay.id);
-    essayService.select(select);
+// 查询所有字段
+Select select = new Select();
+select.column(User$.userName, User$.age, User$.email);
+select.where().eq(User$.status$, UserStatus.NORMAL);
+List<User> list = userService.select(select);
 ```
-#### 二. SelectService接口文档
-###### 1.根据id条件查询
+
+### 2. 联表查询
+
 ```java
-    /**
-     * 根据id条件查询
-     *
-     * @param id 唯一id
-     * @return
-     */
-    T selectById(ID id);
+Select select = new Select();
+select.column(User$.id, User$.userName, UserAddress$.city);
+select.innerJoin(UserAddress.class).on().eq(UserAddress$.userId$, User$.id$);
+select.where().eq(User$.age, 18);
+select.orderByDesc(User$.createTime);
+List<Map<String, Object>> result = userService.selectMapList(select);
 ```
-###### 2.根据id条件查询(可指定返回类型、查询的表)
+
+### 3. 复杂条件查询
+
 ```java
-    /**
-     * 根据id条件查询(可指定返回类型、查询的表)
-     *
-     * @param returnType 指定返回到类型
-     * @param id         唯一id
-     * @return
-     */
-    <R> R selectById(Class<R> returnType, ID id);
+// SQL: WHERE age = 20 AND gender = 0 AND (city = '广州' OR city = '深圳')
+Select select = new Select();
+select.column(User$.userName, User$.mobilePhone);
+select.where()
+    .eq(User$.age, 20)
+    .and().eq(User$.gender, 0)
+    .and(condition -> condition.eq(UserAddress$.city, "广州").or().eq(UserAddress$.city, "深圳"));
 ```
-###### 3.根据ids条件查询
+
+### 4. 使用 SQL 函数
+
 ```java
-    /**
-     * 根据ids条件查询
-     *
-     * @param ids 唯一id数组
-     * @return
-     */
-    List<T> selectByIds(ID... ids);
+Select select = new Select();
+select.column(SqlFun.count(User$.id), "count")
+      .column(SqlFun.avg(User$.age), "avgAge");
+select.where().gt(SqlFun.date_format(User$.createTime$, "%Y-%m-%d"), "2024-06-24");
+select.groupBy(User$.gender);
+select.orderByDesc("count");
+List<Map<String, Object>> result = userService.selectMapList(select);
 ```
-###### 4.根据id条件查询(可指定返回类型、查询的表)
+
+---
+
+## 二、SelectService 接口
+
+### 1. 根据 ID 查询
+
 ```java
-    /**
-     * 根据id条件查询(可指定返回类型、查询的表)
-     *
-     * @param returnType 指定返回到类型
-     * @param ids        唯一id数组
-     * @return
-     */
-    <R> List<R> selectByIds(Class<R> returnType, ID... ids);
+// 根据单个 ID 查询
+User user = userService.selectById(1L);
+
+// 根据多个 ID 查询
+List<User> users = userService.selectByIds(1L, 2L, 3L);
+
+// 指定返回类型
+UserDTO dto = userService.selectById(UserDTO.class, 1L);
 ```
-###### 5.根据自定义条件查询 只返回一条记录
+
+### 2. 根据条件查询单条
+
 ```java
-    /**
-     * 根据自定义条件查询 只返回一条记录
-     *
-     * @param select 查询对象
-     * @return
-     */
-    T selectOne(Select select);
+// 使用字符串条件
+User user = userService.selectOneBy("status = ?", UserStatus.NORMAL);
+
+// 使用 Wrapper 条件
+User user = userService.selectOneBy(Wrapper.where(Cond.eq(User$.id$, 1001)));
+
+// 指定返回类型
+UserDTO dto = userService.selectOneBy(UserDTO.class, Wrapper.where(Cond.eq(User$.id$, 1001)));
 ```
-###### 6.根据自定义条件查询 只返回一条记录(可指定返回类型)
+
+### 3. 根据条件查询列表
+
 ```java
-    /**
-     * 根据自定义条件查询 只返回一条记录(可指定返回类型)
-     *
-     * @param returnType 指定返回到类型
-     * @param select     查询对象
-     * @return
-     */
-    <R> R selectOne(Class<R> returnType, Select select);
+// 使用字符串条件
+List<User> list = userService.selectBy("age > ? AND gender = ?", 18, 0);
+
+// 使用 Wrapper 条件
+List<User> list = userService.selectBy(condition -> condition.gt(User$.age, 18).and().eq(User$.gender, 0));
+
+// 带分页
+List<User> list = userService.selectBy(pageHelper.getPaging(), Wrapper.where(Cond.gt(User$.age, 18)));
+
+// 指定返回类型
+List<UserDTO> dtoList = userService.selectBy(UserDTO.class, Wrapper.where(Cond.eq(User$.status$, UserStatus.NORMAL)));
 ```
-###### 7.根据自定义条件查询返回Map
+
+### 4. 查询全部
+
 ```java
-    /**
-     * 根据自定义条件查询返回Map
-     *
-     * @param select 查询对象
-     * @return
-     */
-    Map<String, Object> selectMap(Select select);
+// 查询所有
+List<User> list = userService.select();
+
+// 带分页
+List<User> list = userService.select(pageHelper.getPaging());
+
+// 指定返回类型
+List<UserDTO> dtoList = userService.select(UserDTO.class);
 ```
-###### 8.根据条件查询
+
+### 5. 统计查询
+
 ```java
-    /**
-     * 根据条件查询
-     *
-     * @param where 查询条件
-     * @param args  条件参数
-     * @return
-     */
-    T selectOneBy(String where, Object... args);
+// 统计全部
+int count = userService.count();
+
+// 根据条件统计
+int count = userService.countBy(Wrapper.where(Cond.eq(User$.status$, UserStatus.NORMAL)));
+
+// 使用 Select 对象统计
+int count = userService.count(select);
 ```
-###### 9.根据条件查询(可指定返回类型、查询的表)
+
+### 6. 查询 Map 结果
+
 ```java
-    /**
-     * 根据条件查询(可指定返回类型、查询的表)
-     *
-     * @param returnType 指定返回到类型
-     * @param where      查询条件
-     * @param args       条件参数
-     * @return
-     */
-    <R> R selectOneBy(Class<R> returnType, String where, Object... args);
+// 查询单条 Map
+Map<String, Object> map = userService.selectMap(select);
+
+// 查询多条 Map
+List<Map<String, Object>> mapList = userService.selectMapList(select);
 ```
-###### 10.根据条件查询
+
+### 7. 分页查询
+
 ```java
-    /**
-     * 根据条件查询
-     *
-     * @param where 条件包装器
-     * @return
-     */
-    T selectOneBy(Wrapper where);
+// 使用 PageHelper
+ResultData<User> result = userService.paging(select, pageHelper);
+
+// 指定页码和每页数量
+ResultData<User> result = userService.paging(select, 1, 20);
+
+// 指定返回类型
+ResultData<UserDTO> result = userService.paging(UserDTO.class, select, pageHelper);
 ```
-###### 11.根据条件查询
+
+---
+
+## 三、Select 对象 API
+
+### 1. 设置字段
+
+| 方法 | 说明 | 示例 |
+| :--- | :--- | :--- |
+| `column(column1, column2, ...)` | 指定查询字段 | `select.column(User$.id, User$.userName)` |
+| `column(fun, alias)` | 使用 SQL 函数 | `select.column(SqlFun.count(User$.id), "count")` |
+| `column(tableAlias, column, alias)` | 指定表别名 | `select.column("u", "name", "userName")` |
+
+### 2. 设置表
+
+| 方法 | 说明 | 示例 |
+| :--- | :--- | :--- |
+| `setTable(class)` | 设置主表 | `select.setTable(User.class)` |
+| `setTable(tableName)` | 设置表名 | `select.setTable("t_user")` |
+
+### 3. 表连接
+
+| 方法 | 说明 | 示例 |
+| :--- | :--- | :--- |
+| `innerJoin(class)` | 内连接 | `select.innerJoin(UserAddress.class)` |
+| `leftJoin(class)` | 左连接 | `select.leftJoin(UserAddress.class)` |
+| `rightJoin(class)` | 右连接 | `select.rightJoin(UserAddress.class)` |
+| `fullJoin(class)` | 全连接 | `select.fullJoin(UserAddress.class)` |
+
+### 4. 连接条件
+
 ```java
-    /**
-     * 根据条件查询
-     *
-     * @param returnType 指定返回到类型
-     * @param where      条件包装器
-     * @param <R>
-     * @return
-     */
-    <R> R selectOneBy(Class<R> returnType, Wrapper where);
+select.innerJoin(UserAddress.class)
+    .on().eq(UserAddress$.userId$, User$.id$)
+    .and().gt(UserAddress$.id$, 0);
 ```
-###### 12.根据条件查询
+
+### 5. 排序
+
+| 方法 | 说明 | 示例 |
+| :--- | :--- | :--- |
+| `orderBy(column)` | 升序 | `select.orderBy(User$.createTime)` |
+| `orderByDesc(column)` | 降序 | `select.orderByDesc(User$.createTime)` |
+
+### 6. 分页
+
 ```java
-    /**
-     * 根据条件查询
-     *
-     * @param where 查询条件
-     * @param args  条件参数
-     * @return
-     */
-    List<T> selectBy(String where, Object... args);
+select.page(0, 10);  // 第1页，每页10条
 ```
-###### 13.根据条件查询
+
+### 7. 分组
+
 ```java
-    /**
-     * 根据条件查询
-     *
-     * @param where 条件包装器
-     * @return
-     */
-    List<T> selectBy(Wrapper where);
+select.groupBy(User$.gender);
+select.having().eq("count", 5);
 ```
-###### 14.根据条件查询
+
+---
+
+## 四、Where 条件构建
+
+### 1. 链式条件
+
 ```java
-    /**
-     * 根据条件查询
-     *
-     * @param paging 分页对象
-     * @param where  查询条件
-     * @param args   条件参数
-     * @return
-     */
-    List<T> selectBy(Paging paging, String where, Object... args);
+select.where()
+    .eq(User$.age, 18)                    // age = 18
+    .and().gt(User$.createTime$, "2024-01-01")  // AND create_time > '2024-01-01'
+    .or().like(User$.userName, "%test%"); // OR user_name LIKE '%test%'
 ```
-###### 15.根据条件查询
+
+### 2. 支持的条件方法
+
+| 方法 | SQL 表达式 | 示例 |
+| :--- | :--- | :--- |
+| `eq(column, value)` | `column = value` | `eq(User$.age, 18)` |
+| `ne(column, value)` | `column != value` | `ne(User$.status, 0)` |
+| `gt(column, value)` | `column > value` | `gt(User$.age, 18)` |
+| `lt(column, value)` | `column < value` | `lt(User$.age, 30)` |
+| `ge(column, value)` | `column >= value` | `ge(User$.age, 18)` |
+| `le(column, value)` | `column <= value` | `le(User$.age, 30)` |
+| `like(column, value)` | `column LIKE value` | `like(User$.name, "%test%")` |
+| `notLike(column, value)` | `column NOT LIKE value` | `notLike(User$.name, "%test%")` |
+| `in(column, values)` | `column IN (values)` | `in(User$.status, 1, 2, 3)` |
+| `notIn(column, values)` | `column NOT IN (values)` | `notIn(User$.status, 0)` |
+| `between(column, start, end)` | `column BETWEEN start AND end` | `between(User$.age, 18, 30)` |
+| `isNull(column)` | `column IS NULL` | `isNull(User$.email)` |
+| `isNotNull(column)` | `column IS NOT NULL` | `isNotNull(User$.email)` |
+
+---
+
+## 五、SQL 函数
+
+### 聚合函数
+
 ```java
-    /**
-     * 根据条件查询
-     *
-     * @param paging 分页对象
-     * @param where  条件包装器
-     * @return
-     */
-    List<T> selectBy(Paging paging, Wrapper where);
+SqlFun.count(User$.id)          // COUNT(id)
+SqlFun.sum(User$.age)           // SUM(age)
+SqlFun.avg(User$.age)           // AVG(age)
+SqlFun.max(User$.age)           // MAX(age)
+SqlFun.min(User$.age)           // MIN(age)
 ```
-###### 16.根据条件查询(可指定返回类型、查询的表)
+
+### 日期函数
+
 ```java
-    /**
-     * 根据条件查询(可指定返回类型、查询的表)
-     *
-     * @param returnType 指定返回到类型
-     * @param where      查询条件
-     * @param args       条件参数
-     * @return
-     */
-    <R> List<R> selectBy(Class<R> returnType, String where, Object... args);
+SqlFun.now()                        // NOW()
+SqlFun.date_format(User$.createTime$, "%Y-%m-%d")  // DATE_FORMAT(create_time, '%Y-%m-%d')
+SqlFun.year(User$.createTime$)      // YEAR(create_time)
+SqlFun.month(User$.createTime$)     // MONTH(create_time)
+SqlFun.day(User$.createTime$)       // DAY(create_time)
 ```
-###### 17.根据条件查询(可指定返回类型、查询的表)
+
+### 字符串函数
+
 ```java
-    /**
-     * 根据条件查询(可指定返回类型、查询的表)
-     *
-     * @param returnType 指定返回到类型
-     * @param where      条件包装器
-     * @param <R>
-     * @return
-     */
-    <R> List<R> selectBy(Class<R> returnType, Wrapper where);
-```
-###### 18.根据条件查询(可指定返回类型、查询的表)
-```java
-    /**
-     * 根据条件查询(可指定返回类型、查询的表)
-     *
-     * @param returnType 指定返回到类型
-     * @param paging     分页对象
-     * @param where      查询条件
-     * @param args       条件参数
-     * @return
-     */
-    <R> List<R> selectBy(Class<R> returnType, Paging paging, String where, Object... args);
-```
-###### 19.根据条件查询(可指定返回类型、查询的表)
-```java
-    /**
-     * 根据条件查询(可指定返回类型、查询的表)
-     *
-     * @param returnType 指定返回到类型
-     * @param paging     分页对象
-     * @param where      条件包装器
-     * @param <R>
-     * @return
-     */
-    <R> List<R> selectBy(Class<R> returnType, Paging paging, Wrapper where);
-```
-###### 20.根据条件查询统计
-```java
-    /**
-     * 根据条件查询统计
-     *
-     * @param where 查询条件
-     * @param args  条件参数
-     * @return
-     */
-    int countBy(String where, Object... args);
-```
-###### 21.根据条件查询统计
-```java
-    /**
-     * 根据条件查询统计
-     *
-     * @param where 条件包装器
-     * @return
-     */
-    int countBy(Wrapper where);
-```
-###### 22.统计全部
-```java
-    /**
-     * 统计全部
-     *
-     * @return
-     */
-    int count();
-```
-###### 23.查询全部
-```java
-    /**
-     * 查询全部
-     *
-     * @return
-     */
-    List<T> select();
-```
-###### 24.查询全部
-```java
-    /**
-     * 查询全部(可指定返回类型、查询的表)
-     *
-     * @param returnType 指定返回到类型
-     * @return
-     */
-    <R> List<R> select(Class<R> returnType);
-```
-###### 25.查询全部
-```java
-    /**
-     * 查询全部
-     *
-     * @param paging 分页对象
-     * @return
-     */
-    List<T> select(Paging paging);
-```
-###### 26.查询全部(可指定返回类型、查询的表)
-```java
-    /**
-     * 查询全部(可指定返回类型、查询的表)
-     *
-     * @param returnType 指定返回到类型
-     * @param paging     分页对象
-     * @return
-     */
-    <R> List<R> select(Class<R> returnType, Paging paging);
-```
-###### 27.根据自定义条件查询（可自动分页）返回List<Map>结果集
-```java
-    /**
-     * 根据自定义条件查询（可自动分页）返回List<Map>结果集
-     *
-     * @param select 查询对象
-     * @return
-     */
-    List<Map<String, Object>> selectMapList(Select select);
-```
-###### 28.根据自定义条件查询（可自动分页）返回List<T>
-```java
-    /**
-     * 根据自定义条件查询（可自动分页）返回List<T>
-     *
-     * @param select 查询对象
-     * @return
-     */
-    List<T> select(Select select);
-```
-###### 29.根据自定义条件查询（可自动分页）返回List<R> (可指定返回类型、查询的表)
-```java
-    /**
-     * 根据自定义条件查询（可自动分页）返回List<R> (可指定返回类型、查询的表)
-     *
-     * @param returnType 指定返回到类型
-     * @param select     查询对象
-     * @return
-     */
-    <R> List<R> select(Class<R> returnType, Select select);
-```
-###### 30.根据自定义条件统计
-```java
-    /**
-     * 根据自定义条件统计
-     *
-     * @param select 查询对象
-     * @return
-     */
-    int count(Select select);
-```
-###### 31.根据自定义条件统计
-```java
-    /**
-     * 根据自定义条件统计
-     *
-     * @param returnType 指定返回到类型
-     * @param select     查询对象
-     * @return
-     */
-    int count(Class<?> returnType, Select select);
-```
-###### 32.分页
-```java
-    /**
-     * 分页
-     *
-     * @param select     查询对象
-     * @param pageHelper 分页助手
-     * @return
-     */
-    ResultData<T> paging(Select select, PageHelper<T> pageHelper);
-```
-###### 33.分页
-```java
-    /**
-     * 分页
-     *
-     * @param select  查询对象
-     * @param pagenum 当前页
-     * @param pagenum 每页数量
-     * @return
-     */
-    ResultData<T> paging(Select select, int pagenum, int pagesize);
-```
-###### 34.分页
-```java
-    /**
-     * 分页
-     *
-     * @param returnType 指定返回到类型
-     * @param select     查询对象
-     * @param pageHelper 分页助手
-     * @param <R>
-     * @return
-     */
-    <R> ResultData<R> paging(Class<R> returnType, Select select, PageHelper<R> pageHelper);
-```
-###### 35.分页
-```java
-    /**
-     * 分页
-     *
-     * @param returnType 指定返回到类型
-     * @param select     查询对象
-     * @param pagenum    当前页
-     * @param pagenum    每页数量
-     * @param <R>
-     * @return
-     */
-    <R> ResultData<R> paging(Class<R> returnType, Select select, int pagenum, int pagesize);
+SqlFun.concat(User$.userName, "@", User$.email)  // CONCAT(user_name, '@', email)
+SqlFun.upper(User$.userName)                     // UPPER(user_name)
+SqlFun.lower(User$.userName)                     // LOWER(user_name)
+SqlFun.length(User$.userName)                    // LENGTH(user_name)
 ```

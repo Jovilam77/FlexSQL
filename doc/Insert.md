@@ -1,91 +1,154 @@
-#### 更多实例FlexSQL使用实例以及代码生成点击这里👉 [https://gitee.com/iJovi/flexsql-example](https://gitee.com/iJovi/flexsql-example "FlexSQL-Example")
-#### 一. Insert对象使用示例（通常情况下不使用该方式，查看下方文档使用更简便方式）
-######1.使用实体类方式插入
-```java
-    Date date = new Date();
-    //单条插入
-    Essay essay = new Essay();
-    essay.setId(1L);
-    essay.setUserId(222L);
-    essay.setContent("内容");
-    essay.setCreationTime(date);
+# Insert 插入
 
-    Insert<Essay> insert1 = new Insert();
-	//insert1.setTable("t_essay");
-    insert1.setTable(Essay.class);
-    insert1.setInsertBean(essay);
-    essayService.insert(insert1);
+## 一、Insert 对象使用示例
 
-    //批量插入
-    List<Essay> list = new ArrayList<>();
-    for (int i = 0; i < 100; i++) {
-        essay = new Essay();
-        essay.setId((long) i);
-        essay.setUserId((long) (10000 + i));
-        essay.setContent("内容" + i);
-        essay.setCreationTime(date);
-        list.add(essay);
-    }
-	
-    Insert<Essay> insert2 = new Insert();
-	//insert2.setTable("t_essay");
-    insert2.setTable(Essay.class);
-    insert2.setInsertBean(essay);
-    essayService.insert(insert2);
-```
-######2.拟SQL语句方式插入
+### 1. 使用实体类插入
+
 ```java
-Insert userInsert = new Insert<User>().column(
-                        User::getId,
-                        User::getAge,
-                        User::getUserName,
-                        User::getNickName,
-                        User::getEmail,
-                        User::getGender,
-                        User::getMobilePhone,
-                        User::getStatus,
-                        User::getPassword)
-                .values(IdBuilder.snowflake16(),
-                        18,
-                        "Jovi",
-                        "Jovi Lam",
-                        "imjovi@qq.com",
-                        1,
-                        "18888888888",
-                        UserStatus.NORMAL,
-                        "123456");
-userService.insert(userInsert);
+// 单条插入
+User user = new User();
+user.setUserName("Jovi");
+user.setPassword("123456");
+user.setEmail("imjovi@qq.com");
+userService.insert(user);
+
+// 批量插入
+List<User> userList = new ArrayList<>();
+for (int i = 0; i < 10; i++) {
+    User u = new User();
+    u.setUserName("user" + i);
+    u.setPassword("password" + i);
+    userList.add(u);
+}
+userService.insert(userList);
 ```
-#### 二. InsertService接口文档
-###### 1：插入单条或多条数组形式的数据
+
+### 2. 使用 Insert 对象插入
+
 ```java
-  /**
-    * 插入数据
-    *
-    * @param bean 单个实体或数组
-    * @return
-    */
-    @SuppressWarnings("unchecked")
-    int insert(T... bean);
+// 单条插入
+Insert<User> insert = new Insert<>();
+insert.setTable(User.class);
+insert.column(User::getId, User::getUserName, User::getPassword)
+      .values(IdBuilder.snowflake16(), "Jovi", "123456");
+userService.insert(insert);
+
+// 批量插入
+Insert<User> batchInsert = new Insert<>();
+batchInsert.setTable(User.class);
+batchInsert.column(User::getId, User::getUserName)
+           .values(1L, "User1")
+           .values(2L, "User2")
+           .values(3L, "User3");
+userService.insert(batchInsert);
 ```
-###### 2：插入多条List形式的数据
+
+---
+
+## 二、InsertService 接口
+
+### 1. 插入单条数据
+
 ```java
-   /**
-     * 插入数据
-     *
-     * @param beanList 实体列表
-     * @return
-     */
-     @SuppressWarnings("unchecked")
-     int insert(Collection<T> beanList);
+User user = new User();
+user.setUserName("test");
+user.setPassword("123456");
+
+// 插入并返回受影响行数
+int count = userService.insert(user);
 ```
-###### 3：插入数据
+
+### 2. 批量插入
+
 ```java
-   /**
-     * 插入数据
-     *
-     * @param insert 插入对象
-     * @return
-     */
-     int insert(Insert<T> insert);
+List<User> userList = new ArrayList<>();
+// ... 添加用户
+
+// 批量插入
+int count = userService.insert(userList);
+```
+
+### 3. 使用 Insert 对象
+
+```java
+Insert<User> insert = new Insert<>();
+insert.setTable(User.class);
+insert.column(User::getUserName, User::getEmail)
+      .values("Jovi", "imjovi@qq.com");
+      
+int count = userService.insert(insert);
+```
+
+---
+
+## 三、Insert 对象 API
+
+### 1. 设置表
+
+```java
+insert.setTable(User.class);      // 使用实体类
+insert.setTable("t_user");        // 使用表名
+```
+
+### 2. 设置字段和值
+
+```java
+// 方式一：使用方法引用
+insert.column(User::getId, User::getUserName)
+      .values(1L, "Jovi");
+
+// 方式二：使用常量
+insert.column(User$.id, User$.userName)
+      .values(1L, "Jovi");
+
+// 方式三：使用实体对象
+User user = new User();
+user.setUserName("Jovi");
+insert.setInsertBean(user);
+```
+
+### 3. 批量添加值
+
+```java
+insert.column(User::getId, User::getUserName)
+      .values(1L, "User1")
+      .values(2L, "User2")
+      .values(3L, "User3");
+```
+
+---
+
+## 四、特殊用法
+
+### 1. 插入时忽略某些字段
+
+```java
+User user = new User();
+user.setUserName("Jovi");
+user.setPassword("123456");
+user.setCreateTime(new Date());  // 这个字段会由 @SqlDefaultValue 自动填充
+
+Insert<User> insert = new Insert<>();
+insert.setTable(User.class);
+insert.setInsertBean(user);
+insert.filterFields(User::getCreateTime);  // 过滤掉 createTime 字段
+userService.insert(insert);
+```
+
+### 2. 使用 ID 生成器
+
+```java
+Insert<User> insert = new Insert<>();
+insert.setTable(User.class);
+insert.column(User::getId, User::getUserName)
+      .values(IdBuilder.snowflake16(), "Jovi");  // 使用雪花 ID
+```
+
+### 3. 处理枚举类型
+
+```java
+User user = new User();
+user.setUserName("Jovi");
+user.setStatus(UserStatus.NORMAL);  // 枚举类型会自动转换为对应的 code
+userService.insert(user);
 ```
