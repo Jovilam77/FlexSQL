@@ -9,10 +9,9 @@ import com.github.javaparser.ast.PackageDeclaration;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.FieldDeclaration;
 import com.github.javaparser.ast.body.TypeDeclaration;
+import com.github.javaparser.ast.body.VariableDeclarator;
 import com.github.javaparser.ast.comments.Comment;
 import com.github.javaparser.ast.type.ClassOrInterfaceType;
-
-import javax.lang.model.element.PackageElement;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.util.*;
@@ -75,8 +74,11 @@ public class JavaParserUtil {
             return null;
         }
         for (FieldDeclaration fieldDeclaration : fieldDeclarationList) {
-            if (fieldDeclaration.getVariables().get(0).getNameAsString().equals(fieldName)) {
-                return fieldDeclaration;
+            NodeList<VariableDeclarator> variables = fieldDeclaration.getVariables();
+            if (variables != null && !variables.isEmpty()) {
+                if (variables.get(0).getNameAsString().equals(fieldName)) {
+                    return fieldDeclaration;
+                }
             }
         }
         return null;
@@ -98,14 +100,22 @@ public class JavaParserUtil {
                 return fieldDeclarationList;
             }
             String superClassPath = getSuperClassPath(sourceRoot, packageDeclaration.get().getNameAsString(), superClassName, compilationUnit.getImports());
+            if (superClassPath == null) {
+                return fieldDeclarationList;
+            }
             try {
                 JavaParser javaParser = new JavaParser();
                 ParseResult<CompilationUnit> result = javaParser.parse(new File(sourceRoot + superClassPath));
-                if (result == null || !result.isSuccessful() || !result.getResult().isPresent()) {
-                    return null;
+                if (result != null && result.isSuccessful() && result.getResult().isPresent()) {
+                    CompilationUnit superCompilationUnit = result.getResult().get();
+                    NodeList<TypeDeclaration<?>> types = superCompilationUnit.getTypes();
+                    if (types != null && !types.isEmpty()) {
+                        List<FieldDeclaration> superFieldDeclarations = getAllFieldDeclaration(sourceRoot, superCompilationUnit, types.get(0));
+                        if (superFieldDeclarations != null) {
+                            fieldDeclarationList.addAll(superFieldDeclarations);
+                        }
+                    }
                 }
-                CompilationUnit superCompilationUnit = result.getResult().get();
-                fieldDeclarationList.addAll(Objects.requireNonNull(getAllFieldDeclaration(sourceRoot, superCompilationUnit, superCompilationUnit.getTypes().get(0))));
             } catch (FileNotFoundException e) {
                 logger.warning("File not found for super class path: " + e.getMessage());
             }
