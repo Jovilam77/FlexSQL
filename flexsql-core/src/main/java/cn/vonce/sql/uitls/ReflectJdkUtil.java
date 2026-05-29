@@ -44,15 +44,17 @@ public class ReflectJdkUtil implements Reflect {
         if (constructor == null) {
             try {
                 constructor = clazz.getDeclaredConstructor();
+                constructor.setAccessible(true);
                 constructorMap.put(clazz, constructor);
             } catch (NoSuchMethodException e) {
                 logger.warning("No default constructor found for " + clazz.getName() + ": " + e.getMessage());
+                throw new RuntimeException("No default constructor found for " + clazz.getName(), e);
             }
         }
         try {
             return constructor.newInstance();
         } catch (InstantiationException | IllegalAccessException | InvocationTargetException e) {
-            throw new RuntimeException(e);
+            throw new RuntimeException("Failed to instantiate " + clazz.getName(), e);
         }
     }
 
