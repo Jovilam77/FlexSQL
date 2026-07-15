@@ -1326,10 +1326,10 @@ public class SqlBeanUtil {
      */
     public static Object assignInitialValue(Class<?> type) {
         if (type == Byte.class || type == byte.class) {
-            return new Byte("0");
+            return Byte.valueOf("0");
         }
         if (type == Short.class || type == short.class) {
-            return new Short("0");
+            return Short.valueOf("0");
         }
         if (type == Integer.class || type == int.class) {
             return 0;
@@ -1387,10 +1387,10 @@ public class SqlBeanUtil {
      */
     public static Object getDefaultValue(Class<?> type) {
         if (type == byte.class) {
-            return new Byte("0");
+            return Byte.valueOf("0");
         }
         if (type == short.class) {
-            return new Short("0");
+            return Short.valueOf("0");
         }
         if (type == int.class) {
             return 0;
