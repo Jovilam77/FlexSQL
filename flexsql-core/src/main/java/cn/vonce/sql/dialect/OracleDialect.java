@@ -12,6 +12,7 @@ import cn.vonce.sql.enumerate.AlterType;
 import cn.vonce.sql.enumerate.JavaMapOracleType;
 import cn.vonce.sql.enumerate.JdbcType;
 import cn.vonce.sql.enumerate.LockType;
+import cn.vonce.sql.enumerate.LockWaitMode;
 import cn.vonce.sql.exception.SqlBeanException;
 import cn.vonce.sql.uitls.SqlBeanUtil;
 import cn.vonce.sql.uitls.StringUtil;
@@ -218,7 +219,9 @@ public class OracleDialect extends AbstractDialect<JavaMapOracleType> {
      * 构建 Oracle 行锁子句文本（含版本门控）。
      * <p>
      * - FOR UPDATE：所有 Oracle 版本均支持；
-     * - FOR UPDATE SKIP LOCKED：需 Oracle 11g R1（major >= 11），
+     * - FOR SHARE：Oracle 不支持（仅支持 FOR UPDATE），返回 null 并由内部告警；
+     * - NOWAIT：所有 Oracle 版本均支持；
+     * - SKIP LOCKED：需 Oracle 11g R1（major >= 11），
      *   版本未探测（major=0，未做数据库元数据探测）时按已支持处理直接下发。
      * 不支持时返回 null（由调用方跳过，并已在内部告警）。
      *
@@ -230,21 +233,38 @@ public class OracleDialect extends AbstractDialect<JavaMapOracleType> {
         if (lockType == null || lockType == LockType.NONE) {
             return null;
         }
+        String base;
         if (lockType == LockType.FOR_UPDATE) {
-            return SqlConstant.SPACES + "FOR UPDATE";
+            base = "FOR UPDATE";
+        } else if (lockType == LockType.FOR_SHARE) {
+            // Oracle 不支持 FOR SHARE（共享行锁），仅支持 FOR UPDATE
+            logger.warning("Oracle 不支持 FOR SHARE（共享行锁），已忽略该锁子句（仅支持 FOR UPDATE）");
+            return null;
+        } else {
+            return null;
         }
-        if (lockType == LockType.FOR_UPDATE_SKIP_LOCKED) {
+        StringBuilder lockSb = new StringBuilder();
+        lockSb.append(SqlConstant.SPACES).append(base);
+        // Oracle 的 FOR UPDATE OF 指定需锁定的表（多表 JOIN 场景）
+        List<String> ofTables = select.getLockOfTables();
+        if (ofTables != null && !ofTables.isEmpty()) {
+            lockSb.append(" OF ").append(String.join(", ", ofTables));
+        }
+        LockWaitMode waitMode = select.getLockWaitMode();
+        if (waitMode == LockWaitMode.NOWAIT) {
+            lockSb.append(" NOWAIT");
+        } else if (waitMode == LockWaitMode.SKIP_LOCKED) {
             int major = select.getSqlBeanMeta().getDatabaseMajorVersion();
             // Oracle 自 11g R1 (11.1) 起正式支持 SKIP LOCKED；
             // 版本未探测（major=0）时按已支持处理直接下发
             if (major > 0 && major < 11) {
-                logger.warning("当前数据库（" + select.getSqlBeanMeta().getProductName() + " " + major
+                logger.warning("当前数据库（" + select.getSqlBeanMeta().getDbType().name() + " " + major
                         + "）不支持 SKIP LOCKED（需 Oracle 11g+），已忽略该锁子句");
                 return null;
             }
-            return SqlConstant.SPACES + "FOR UPDATE SKIP LOCKED";
+            lockSb.append(" SKIP LOCKED");
         }
-        return null;
+        return lockSb.toString();
     }
 
     @Override

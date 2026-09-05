@@ -10,6 +10,7 @@ import cn.vonce.sql.enumerate.AlterType;
 import cn.vonce.sql.enumerate.DbType;
 import cn.vonce.sql.enumerate.JavaMapMySqlType;
 import cn.vonce.sql.enumerate.LockType;
+import cn.vonce.sql.enumerate.LockWaitMode;
 import cn.vonce.sql.exception.SqlBeanException;
 import cn.vonce.sql.uitls.SqlBeanUtil;
 import cn.vonce.sql.uitls.StringUtil;
@@ -181,18 +182,46 @@ public class MysqlDialect extends AbstractDialect<JavaMapMySqlType> {
         if (lockType == null || lockType == LockType.NONE) {
             return;
         }
-        if (lockType == LockType.FOR_UPDATE_SKIP_LOCKED) {
-            // SKIP LOCKED 需 MySQL 8.0+ / MariaDB 10.3+，版本未知（major=0，未做数据库探测）时按已支持处理
-            int major = select.getSqlBeanMeta().getDatabaseMajorVersion();
+        int major = select.getSqlBeanMeta().getDatabaseMajorVersion();
+        // MySQL 8.0+ 支持 FOR SHARE / NOWAIT / SKIP LOCKED；5.x 仅支持 FOR UPDATE
+        String base;
+        if (lockType == LockType.FOR_UPDATE) {
+            base = "FOR UPDATE";
+        } else if (lockType == LockType.FOR_SHARE) {
             if (major > 0 && major < 8) {
-                logger.warning("当前数据库（" + select.getSqlBeanMeta().getProductName() + " " + major
-                        + "）不支持 SKIP LOCKED（需 MySQL 8.0+/MariaDB 10.3+），已忽略该锁子句");
+                logger.warning("当前数据库（" + select.getSqlBeanMeta().getDbType().name() + " " + major
+                        + "）不支持 FOR SHARE（需 MySQL 8.0+），已忽略该锁子句");
                 return;
             }
-            sqlSb.append(SqlConstant.SPACES).append("FOR UPDATE SKIP LOCKED");
-        } else if (lockType == LockType.FOR_UPDATE) {
-            sqlSb.append(SqlConstant.SPACES).append("FOR UPDATE");
+            base = "FOR SHARE";
+        } else {
+            return;
         }
+        StringBuilder lockSb = new StringBuilder();
+        lockSb.append(SqlConstant.SPACES).append(base);
+        // OF 表限制：仅锁定指定表（多表 JOIN 场景）
+        List<String> ofTables = select.getLockOfTables();
+        if (ofTables != null && !ofTables.isEmpty()) {
+            lockSb.append(" OF ").append(String.join(", ", ofTables));
+        }
+        // 等待模式
+        LockWaitMode waitMode = select.getLockWaitMode();
+        if (waitMode == LockWaitMode.NOWAIT) {
+            if (major > 0 && major < 8) {
+                logger.warning("当前数据库（" + select.getSqlBeanMeta().getDbType().name() + " " + major
+                        + "）不支持 NOWAIT（需 MySQL 8.0+），已忽略该锁子句");
+                return;
+            }
+            lockSb.append(" NOWAIT");
+        } else if (waitMode == LockWaitMode.SKIP_LOCKED) {
+            if (major > 0 && major < 8) {
+                logger.warning("当前数据库（" + select.getSqlBeanMeta().getDbType().name() + " " + major
+                        + "）不支持 SKIP LOCKED（需 MySQL 8.0+），已忽略该锁子句");
+                return;
+            }
+            lockSb.append(" SKIP LOCKED");
+        }
+        sqlSb.append(lockSb);
     }
 
     @Override

@@ -12,6 +12,7 @@ import cn.vonce.sql.enumerate.DbType;
 import cn.vonce.sql.enumerate.JavaMapSqlServerType;
 import cn.vonce.sql.enumerate.JdbcType;
 import cn.vonce.sql.enumerate.LockType;
+import cn.vonce.sql.enumerate.LockWaitMode;
 import cn.vonce.sql.exception.SqlBeanException;
 import cn.vonce.sql.uitls.SqlBeanUtil;
 import cn.vonce.sql.uitls.StringUtil;
@@ -279,16 +280,20 @@ public class SqlServerDialect extends AbstractDialect<JavaMapSqlServerType> {
     }
 
     /**
-     * 表级锁提示（SQL Server 用 WITH (UPDLOCK[, READPAST]) 实现行锁语义）
+     * 表级锁提示（SQL Server 用 WITH (UPDLOCK[, READPAST | NOWAIT]) 实现行锁语义）
      * <p>
-     * SQL Server 没有 FOR UPDATE 语法，而是用表提示表达悲观行锁：
-     * - FOR_UPDATE            → WITH (UPDLOCK)            （对已读取行加更新锁，阻塞直至锁释放）
-     * - FOR_UPDATE_SKIP_LOCKED → WITH (UPDLOCK, READPAST) （在前者基础上跳过已被其它事务锁定的行）
+     * SQL Server 没有 FOR UPDATE / FOR SHARE 语法，而是用表提示表达悲观行锁：
+     * - FOR_UPDATE / FOR_SHARE → WITH (UPDLOCK)            （对已读取行加更新锁，阻塞直至锁释放）
+     * - NOWAIT                → WITH (UPDLOCK, NOWAIT)     （获取不到锁立即报错）
+     * - SKIP_LOCKED           → WITH (UPDLOCK, READPAST)   （跳过已被其它事务锁定的行）
      * <p>
-     * 该提示必须紧贴 FROM / JOIN 后的表名，因此由 buildSelectSql 在拼接表名后立即调用本方法。
-     * UPDLOCK / READPAST 在所有受支持的 SQL Server 版本中均可用，无需版本门控；
+     * FOR SHARE 在 SQL Server 无严格等价语义，统一用 UPDLOCK 表达并提示。
+     * 表提示必须紧贴 FROM / JOIN 后的表名，因此由 buildSelectSql 在拼接表名后立即调用本方法
+     * （主表与每个 join 表都会各自注入一次，符合 SQL Server 表提示语法）。
+     * UPDLOCK / NOWAIT / READPAST 在所有受支持的 SQL Server 版本中均可用，无需版本门控；
      * 版本未探测（major=0）时同样直接下发，与 MySQL/PostgreSQL 的处理口径一致。
      * 由于锁已通过表提示注入，appendLockClause（尾部子句钩子）对 SQL Server 保持默认 no-op。
+     * 注：OF 表限制在 SQL Server 表提示中无对应写法，故此处忽略 lockOfTables。
      *
      * @param sqlSb  SQL构建器
      * @param select 查询对象
@@ -299,13 +304,17 @@ public class SqlServerDialect extends AbstractDialect<JavaMapSqlServerType> {
         if (lockType == null || lockType == LockType.NONE) {
             return;
         }
+        // FOR SHARE 在 SQL Server 无直接等价，统一映射为 UPDLOCK
+        LockWaitMode waitMode = select.getLockWaitMode();
         sqlSb.append(SqlConstant.SPACES);
         sqlSb.append("WITH ");
         sqlSb.append(SqlConstant.BEGIN_BRACKET);
-        if (lockType == LockType.FOR_UPDATE) {
-            sqlSb.append("UPDLOCK");
-        } else if (lockType == LockType.FOR_UPDATE_SKIP_LOCKED) {
+        if (waitMode == LockWaitMode.SKIP_LOCKED) {
             sqlSb.append("UPDLOCK, READPAST");
+        } else if (waitMode == LockWaitMode.NOWAIT) {
+            sqlSb.append("UPDLOCK, NOWAIT");
+        } else {
+            sqlSb.append("UPDLOCK");
         }
         sqlSb.append(SqlConstant.END_BRACKET);
     }

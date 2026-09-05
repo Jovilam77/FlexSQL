@@ -11,6 +11,7 @@ import cn.vonce.sql.enumerate.AlterType;
 import cn.vonce.sql.enumerate.JavaMapPostgresqlType;
 import cn.vonce.sql.enumerate.JdbcType;
 import cn.vonce.sql.enumerate.LockType;
+import cn.vonce.sql.enumerate.LockWaitMode;
 import cn.vonce.sql.exception.SqlBeanException;
 import cn.vonce.sql.uitls.SqlBeanUtil;
 import cn.vonce.sql.uitls.StringUtil;
@@ -247,19 +248,37 @@ public class PostgresqlDialect extends AbstractDialect<JavaMapPostgresqlType> {
         if (lockType == null || lockType == LockType.NONE) {
             return;
         }
-        if (lockType == LockType.FOR_UPDATE_SKIP_LOCKED) {
-            // SKIP LOCKED 需 PostgreSQL 9.5+，版本未知（major=0，未做数据库探测）时按已支持处理
-            int major = select.getSqlBeanMeta().getDatabaseMajorVersion();
-            int minor = select.getSqlBeanMeta().getDatabaseMinorVersion();
+        int major = select.getSqlBeanMeta().getDatabaseMajorVersion();
+        int minor = select.getSqlBeanMeta().getDatabaseMinorVersion();
+        // PostgreSQL 9.5+ 支持 NOWAIT / SKIP LOCKED；FOR UPDATE / FOR SHARE 全版本支持
+        String base;
+        if (lockType == LockType.FOR_UPDATE) {
+            base = "FOR UPDATE";
+        } else if (lockType == LockType.FOR_SHARE) {
+            base = "FOR SHARE";
+        } else {
+            return;
+        }
+        StringBuilder lockSb = new StringBuilder();
+        lockSb.append(SqlConstant.SPACES).append(base);
+        // OF 表限制：仅锁定指定表（多表 JOIN 场景）
+        List<String> ofTables = select.getLockOfTables();
+        if (ofTables != null && !ofTables.isEmpty()) {
+            lockSb.append(" OF ").append(String.join(", ", ofTables));
+        }
+        // 等待模式
+        LockWaitMode waitMode = select.getLockWaitMode();
+        if (waitMode == LockWaitMode.NOWAIT || waitMode == LockWaitMode.SKIP_LOCKED) {
+            // NOWAIT / SKIP LOCKED 需 PostgreSQL 9.5+，版本未知（major=0）时按已支持处理
             if (major > 0 && (major < 9 || (major == 9 && minor < 5))) {
                 logger.warning("当前 PostgreSQL 版本（" + major + "." + minor
-                        + "）不支持 SKIP LOCKED（需 9.5+），已忽略该锁子句");
+                        + "）不支持 " + (waitMode == LockWaitMode.NOWAIT ? "NOWAIT" : "SKIP LOCKED")
+                        + "（需 9.5+），已忽略该锁子句");
                 return;
             }
-            sqlSb.append(SqlConstant.SPACES).append("FOR UPDATE SKIP LOCKED");
-        } else if (lockType == LockType.FOR_UPDATE) {
-            sqlSb.append(SqlConstant.SPACES).append("FOR UPDATE");
+            lockSb.append(waitMode == LockWaitMode.NOWAIT ? " NOWAIT" : " SKIP LOCKED");
         }
+        sqlSb.append(lockSb);
     }
 
     @Override

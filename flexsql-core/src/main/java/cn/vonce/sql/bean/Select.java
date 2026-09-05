@@ -4,6 +4,7 @@ import cn.vonce.sql.define.ColumnFun;
 import cn.vonce.sql.define.SqlFun;
 import cn.vonce.sql.enumerate.JoinType;
 import cn.vonce.sql.enumerate.LockType;
+import cn.vonce.sql.enumerate.LockWaitMode;
 import cn.vonce.sql.enumerate.SqlSort;
 import cn.vonce.sql.helper.SqlHelper;
 import cn.vonce.sql.helper.Wrapper;
@@ -68,6 +69,18 @@ public class Select extends CommonCondition<Select> implements Serializable {
      * 行锁（悲观锁）类型，默认不加锁
      */
     private LockType lockType = LockType.NONE;
+    /**
+     * 行锁等待模式，默认 WAIT（一直等待）
+     * <p>
+     * NOWAIT 立即返回、SKIP_LOCKED 跳过已锁行，分别由方言按版本门控支持。
+     */
+    private LockWaitMode lockWaitMode = LockWaitMode.WAIT;
+    /**
+     * 行锁作用的目标表（FOR UPDATE OF ... / FOR SHARE OF ...）
+     * <p>
+     * 为 null 时表示锁定所有涉及的表；非空时仅锁定指定表（用于多表 JOIN 场景）。
+     */
+    private List<String> lockOfTables = null;
     /**
      * CTE（WITH 子句）列表
      */
@@ -784,6 +797,55 @@ public class Select extends CommonCondition<Select> implements Serializable {
     }
 
     /**
+     * 设置行锁类型
+     *
+     * @param lockType 行锁类型
+     * @return
+     */
+    public Select lockType(LockType lockType) {
+        this.lockType = lockType;
+        return this;
+    }
+
+    /**
+     * 获取行锁等待模式
+     *
+     * @return 等待模式，默认 {@link LockWaitMode#WAIT}
+     */
+    public LockWaitMode getLockWaitMode() {
+        return lockWaitMode;
+    }
+
+    /**
+     * 设置行锁等待模式
+     *
+     * @param lockWaitMode 等待模式
+     * @return
+     */
+    public Select lockWaitMode(LockWaitMode lockWaitMode) {
+        this.lockWaitMode = lockWaitMode;
+        return this;
+    }
+
+    /**
+     * 获取行锁作用的目标表列表（FOR ... OF ...）
+     *
+     * @return 目标表名集合，为 null 时锁定所有涉及的表
+     */
+    public List<String> getLockOfTables() {
+        return lockOfTables;
+    }
+
+    /**
+     * 设置行锁作用的目标表列表
+     *
+     * @param lockOfTables 目标表名集合
+     */
+    public void setLockOfTables(List<String> lockOfTables) {
+        this.lockOfTables = lockOfTables;
+    }
+
+    /**
      * 设置行锁为 FOR UPDATE（悲观行锁）
      * <p>
      * 对已读取的行加排他锁，直到当前事务结束。适用于 MySQL / MariaDB / PostgreSQL / Oracle 等主流数据库。
@@ -798,13 +860,93 @@ public class Select extends CommonCondition<Select> implements Serializable {
     /**
      * 设置行锁为 FOR UPDATE SKIP LOCKED（跳过已被锁定的行，避免并发等待）
      * <p>
-     * 仅 MySQL 8.0+ / MariaDB 10.3+ / PostgreSQL 9.5+ 支持；
+     * 等价于 {@code forUpdate().skipLocked()}。
+     * 仅 MySQL 8.0+ / MariaDB 10.3+ / PostgreSQL 9.5+ / Oracle 11g+ 支持；
      * 低版本数据库会自动忽略该子句并输出告警。行锁子句会拼接在 ORDER BY 与 LIMIT 之后。
      *
      * @return
      */
     public Select forUpdateSkipLocked() {
-        this.lockType = LockType.FOR_UPDATE_SKIP_LOCKED;
+        this.lockType = LockType.FOR_UPDATE;
+        this.lockWaitMode = LockWaitMode.SKIP_LOCKED;
+        return this;
+    }
+
+    /**
+     * 设置行锁为 FOR SHARE（共享行锁 / 读锁）
+     * <p>
+     * 允许其它事务读取被锁定的行，但阻止其加排他锁或修改，适用于「读多写少」的并发控制。
+     * 仅 MySQL 8.0+ / PostgreSQL 支持；低版本数据库会自动忽略该子句并输出告警。
+     *
+     * @return
+     */
+    public Select forShare() {
+        this.lockType = LockType.FOR_SHARE;
+        return this;
+    }
+
+    /**
+     * 设置行锁为 FOR SHARE NOWAIT（共享锁且不等待）
+     * <p>
+     * 等价于 {@code forShare().nowait()}。
+     *
+     * @return
+     */
+    public Select forShareNowait() {
+        this.lockType = LockType.FOR_SHARE;
+        this.lockWaitMode = LockWaitMode.NOWAIT;
+        return this;
+    }
+
+    /**
+     * 设置行锁等待模式为 NOWAIT：获取不到锁时立即报错返回，不阻塞等待。
+     * <p>
+     * 可与 {@link #forUpdate()} / {@link #forShare()} 链式调用，例如 {@code forUpdate().nowait()}。
+     * 仅 MySQL 8.0+ / PostgreSQL 9.5+ / Oracle（全版本）/ SQL Server 支持。
+     *
+     * @return
+     */
+    public Select nowait() {
+        this.lockWaitMode = LockWaitMode.NOWAIT;
+        return this;
+    }
+
+    /**
+     * 设置行锁等待模式为 SKIP LOCKED：跳过已被其它事务锁定的行，避免并发等待。
+     * <p>
+     * 可与 {@link #forUpdate()} / {@link #forShare()} 链式调用，例如 {@code forUpdate().skipLocked()}。
+     * 仅 MySQL 8.0+ / MariaDB 10.3+ / PostgreSQL 9.5+ / Oracle 11g+ 支持。
+     *
+     * @return
+     */
+    public Select skipLocked() {
+        this.lockWaitMode = LockWaitMode.SKIP_LOCKED;
+        return this;
+    }
+
+    /**
+     * 限定行锁仅作用于指定表（FOR UPDATE OF ... / FOR SHARE OF ...）
+     * <p>
+     * 用于多表 JOIN 场景，仅锁定列出的表所对应的行；不调用本方法则锁定所有涉及的表。
+     *
+     * @param tables 目标表名（可多个）
+     * @return
+     */
+    public Select of(String... tables) {
+        if (tables != null && tables.length > 0) {
+            this.lockOfTables = Arrays.asList(tables);
+        }
+        return this;
+    }
+
+    /**
+     * 限定行锁仅作用于指定表（FOR UPDATE OF ... / FOR SHARE OF ...）
+     *
+     * @param tables 目标表名集合
+     * @return
+     */
+    public Select of(List<String> tables) {
+        this.lockOfTables = tables;
         return this;
     }
 

@@ -45,6 +45,9 @@ public class SqlHelperTest {
         // selectLock（行锁 FOR UPDATE / SKIP LOCKED）
         selectLock();
 
+        // selectLockVariants（行锁变体 FOR SHARE / NOWAIT / OF）
+        selectLockVariants();
+
         // selectCte（CTE / WITH 子句）
         selectCte();
 //
@@ -341,6 +344,194 @@ public class SqlHelperTest {
         s13.forUpdateSkipLocked();
         System.out.println("---selectLock SQLServer2019 SKIP LOCKED + JOIN（两表均有提示）---");
         System.out.println(SqlHelper.buildSelectSql(s13));
+    }
+
+    /**
+     * 行锁变体（FOR SHARE / NOWAIT / OF）生成测试
+     */
+    private static void selectLockVariants() {
+        // MySQL 8.0
+        SqlBeanMeta mysql8 = new SqlBeanMeta();
+        mysql8.setDbType(DbType.MySQL);
+        mysql8.setDatabaseMajorVersion(8);
+        mysql8.setDatabaseMinorVersion(0);
+        mysql8.setSqlBeanConfig(new SqlBeanConfig());
+
+        // MySQL 5.7（不支持 FOR SHARE / NOWAIT / SKIP LOCKED）
+        SqlBeanMeta mysql57 = new SqlBeanMeta();
+        mysql57.setDbType(DbType.MySQL);
+        mysql57.setDatabaseMajorVersion(5);
+        mysql57.setDatabaseMinorVersion(7);
+        mysql57.setSqlBeanConfig(new SqlBeanConfig());
+
+        // PostgreSQL 13
+        SqlBeanMeta pg13 = new SqlBeanMeta();
+        pg13.setDbType(DbType.Postgresql);
+        pg13.setDatabaseMajorVersion(13);
+        pg13.setDatabaseMinorVersion(0);
+        pg13.setSqlBeanConfig(new SqlBeanConfig());
+
+        // PostgreSQL 9.4（不支持 NOWAIT / SKIP LOCKED）
+        SqlBeanMeta pg94 = new SqlBeanMeta();
+        pg94.setDbType(DbType.Postgresql);
+        pg94.setDatabaseMajorVersion(9);
+        pg94.setDatabaseMinorVersion(4);
+        pg94.setSqlBeanConfig(new SqlBeanConfig());
+
+        // Oracle 19c
+        SqlBeanMeta oracle19 = new SqlBeanMeta();
+        oracle19.setDbType(DbType.Oracle);
+        oracle19.setDatabaseMajorVersion(19);
+        oracle19.setDatabaseMinorVersion(0);
+        oracle19.setSqlBeanConfig(new SqlBeanConfig());
+
+        // SQL Server 2019
+        SqlBeanMeta sqlServer = new SqlBeanMeta();
+        sqlServer.setDbType(DbType.SQLServer);
+        sqlServer.setDatabaseMajorVersion(15);
+        sqlServer.setSqlBeanConfig(new SqlBeanConfig());
+
+        // 1) MySQL 8.0 + FOR SHARE
+        Select v1 = new Select();
+        v1.setSqlBeanMeta(mysql8);
+        v1.setBeanClass(User.class);
+        v1.column(User::getId);
+        v1.setTable(User.class);
+        v1.forShare();
+        System.out.println("---variants MySQL8 FOR SHARE---");
+        System.out.println(SqlHelper.buildSelectSql(v1));
+
+        // 2) MySQL 8.0 + FOR SHARE NOWAIT（链式）
+        Select v2 = new Select();
+        v2.setSqlBeanMeta(mysql8);
+        v2.setBeanClass(User.class);
+        v2.column(User::getId);
+        v2.setTable(User.class);
+        v2.forShare().nowait();
+        System.out.println("---variants MySQL8 FOR SHARE NOWAIT---");
+        System.out.println(SqlHelper.buildSelectSql(v2));
+
+        // 3) MySQL 8.0 + FOR UPDATE NOWAIT（链式）
+        Select v3 = new Select();
+        v3.setSqlBeanMeta(mysql8);
+        v3.setBeanClass(User.class);
+        v3.column(User::getId);
+        v3.setTable(User.class);
+        v3.forUpdate().nowait();
+        System.out.println("---variants MySQL8 FOR UPDATE NOWAIT---");
+        System.out.println(SqlHelper.buildSelectSql(v3));
+
+        // 4) MySQL 8.0 + FOR UPDATE OF t1, t2（限定锁定表）
+        Select v4 = new Select();
+        v4.setSqlBeanMeta(mysql8);
+        v4.setBeanClass(User.class);
+        v4.column(User::getId);
+        v4.setTable(User.class);
+        v4.forUpdate().of("d_user", "d_role");
+        System.out.println("---variants MySQL8 FOR UPDATE OF d_user, d_role---");
+        System.out.println(SqlHelper.buildSelectSql(v4));
+
+        // 5) MySQL 8.0 + FOR SHARE OF t1 SKIP LOCKED（组合）
+        Select v5 = new Select();
+        v5.setSqlBeanMeta(mysql8);
+        v5.setBeanClass(User.class);
+        v5.column(User::getId);
+        v5.setTable(User.class);
+        v5.forShare().of("d_user").skipLocked();
+        System.out.println("---variants MySQL8 FOR SHARE OF d_user SKIP LOCKED---");
+        System.out.println(SqlHelper.buildSelectSql(v5));
+
+        // 6) MySQL 5.7 + FOR SHARE（应忽略并告警，无锁子句）
+        Select v6 = new Select();
+        v6.setSqlBeanMeta(mysql57);
+        v6.setBeanClass(User.class);
+        v6.column(User::getId);
+        v6.setTable(User.class);
+        v6.forShare();
+        System.out.println("---variants MySQL5.7 FOR SHARE（应无锁）---");
+        System.out.println(SqlHelper.buildSelectSql(v6));
+
+        // 7) PostgreSQL 13 + FOR SHARE NOWAIT
+        Select v7 = new Select();
+        v7.setSqlBeanMeta(pg13);
+        v7.setBeanClass(User.class);
+        v7.column(User::getId);
+        v7.setTable(User.class);
+        v7.forShare().nowait();
+        System.out.println("---variants PG13 FOR SHARE NOWAIT---");
+        System.out.println(SqlHelper.buildSelectSql(v7));
+
+        // 8) PostgreSQL 13 + FOR UPDATE OF t1, t2
+        Select v8 = new Select();
+        v8.setSqlBeanMeta(pg13);
+        v8.setBeanClass(User.class);
+        v8.column(User::getId);
+        v8.setTable(User.class);
+        v8.forUpdate().of("d_user", "d_role");
+        System.out.println("---variants PG13 FOR UPDATE OF d_user, d_role---");
+        System.out.println(SqlHelper.buildSelectSql(v8));
+
+        // 9) PostgreSQL 9.4 + FOR UPDATE NOWAIT（应忽略并告警，无锁子句）
+        Select v9 = new Select();
+        v9.setSqlBeanMeta(pg94);
+        v9.setBeanClass(User.class);
+        v9.column(User::getId);
+        v9.setTable(User.class);
+        v9.forUpdate().nowait();
+        System.out.println("---variants PG9.4 FOR UPDATE NOWAIT（应无锁）---");
+        System.out.println(SqlHelper.buildSelectSql(v9));
+
+        // 10) Oracle 19c + FOR UPDATE NOWAIT
+        Select v10 = new Select();
+        v10.setSqlBeanMeta(oracle19);
+        v10.setBeanClass(User.class);
+        v10.column(User::getId);
+        v10.setTable(User.class);
+        v10.forUpdate().nowait();
+        System.out.println("---variants Oracle19 FOR UPDATE NOWAIT---");
+        System.out.println(SqlHelper.buildSelectSql(v10));
+
+        // 11) Oracle 19c + FOR SHARE（应告警并忽略，无锁子句）
+        Select v11 = new Select();
+        v11.setSqlBeanMeta(oracle19);
+        v11.setBeanClass(User.class);
+        v11.column(User::getId);
+        v11.setTable(User.class);
+        v11.forShare();
+        System.out.println("---variants Oracle19 FOR SHARE（应无锁）---");
+        System.out.println(SqlHelper.buildSelectSql(v11));
+
+        // 12) Oracle 19c + FOR UPDATE OF t1 SKIP LOCKED（分页，锁注入最内层）
+        Select v12 = new Select();
+        v12.setSqlBeanMeta(oracle19);
+        v12.setBeanClass(User.class);
+        v12.column(User::getId);
+        v12.setTable(User.class);
+        v12.orderByDesc(User::getId);
+        v12.page(0, 10);
+        v12.forUpdate().of("d_user").skipLocked();
+        System.out.println("---variants Oracle19 FOR UPDATE OF d_user SKIP LOCKED + page（锁在最内层）---");
+        System.out.println(SqlHelper.buildSelectSql(v12));
+
+        // 13) SQL Server 2019 + FOR UPDATE NOWAIT（表提示 UPDLOCK, NOWAIT）
+        Select v13 = new Select();
+        v13.setSqlBeanMeta(sqlServer);
+        v13.setBeanClass(User.class);
+        v13.column(User::getId);
+        v13.setTable(User.class);
+        v13.forUpdate().nowait();
+        System.out.println("---variants SQLServer2019 FOR UPDATE NOWAIT（表提示 UPDLOCK, NOWAIT）---");
+        System.out.println(SqlHelper.buildSelectSql(v13));
+
+        // 14) SQL Server 2019 + FOR SHARE（映射为 UPDLOCK 表提示）
+        Select v14 = new Select();
+        v14.setSqlBeanMeta(sqlServer);
+        v14.setBeanClass(User.class);
+        v14.column(User::getId);
+        v14.setTable(User.class);
+        v14.forShare();
+        System.out.println("---variants SQLServer2019 FOR SHARE（表提示 UPDLOCK）---");
+        System.out.println(SqlHelper.buildSelectSql(v14));
     }
 
     /**
