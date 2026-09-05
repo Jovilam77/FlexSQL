@@ -14,6 +14,10 @@ public class SqlBeanException extends RuntimeException {
 		super(message);
 	}
 
+	public SqlBeanException(String message, Throwable cause) {
+		super(message, cause);
+	}
+
 	/**
 	 *
 	 */

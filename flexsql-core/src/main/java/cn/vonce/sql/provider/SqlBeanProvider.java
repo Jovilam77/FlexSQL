@@ -635,15 +635,6 @@ public class SqlBeanProvider {
     }
 
     /**
-     * 获取最后插入的自增id
-     *
-     * @return
-     */
-    public static String lastInsertIdSql() {
-        return "select last_insert_id()";
-    }
-
-    /**
      * 构建更改表结构sql
      *
      * @param sqlBeanMeta

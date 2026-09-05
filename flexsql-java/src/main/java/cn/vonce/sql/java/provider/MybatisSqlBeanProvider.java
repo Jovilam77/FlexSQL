@@ -340,15 +340,6 @@ public class MybatisSqlBeanProvider {
     }
 
     /**
-     * 获取最后插入的自增id
-     *
-     * @return
-     */
-    public String lastInsertId() {
-        return SqlBeanProvider.lastInsertIdSql();
-    }
-
-    /**
      * 复制数据到指定表
      *
      * @param map

@@ -23,9 +23,13 @@ import cn.vonce.sql.uitls.SqlBeanUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.PreparedStatementCreator;
+import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.sql.PreparedStatement;
+import java.sql.Statement;
 import java.util.*;
 
 /**
@@ -65,13 +69,20 @@ public class SpringJdbcSqlBeanServiceImpl<T, ID> extends BaseSqlBeanServiceImpl<
     }
 
     @Override
-    public Long getAutoIncrId() {
-        return singleResult(jdbcTemplate.query(SqlBeanProvider.lastInsertIdSql(), new SpringJdbcSqlBeanMapper<Long>(clazz, Long.class)));
-    }
-
-    @Override
     public Class<?> getBeanClass() {
         return clazz;
+    }
+
+    /**
+     * 从 GeneratedKeyHolder 取出生成的自增主键（按行 1:1）
+     */
+    private List<Long> generatedKeys(GeneratedKeyHolder keyHolder) {
+        List<Long> keys = new ArrayList<>();
+        for (Map<String, Object> row : keyHolder.getKeyList()) {
+            Object v = row.isEmpty() ? null : row.values().iterator().next();
+            keys.add(v == null ? null : ((Number) v).longValue());
+        }
+        return keys;
     }
 
     @DbSwitch(DbRole.SLAVE)
@@ -594,8 +605,10 @@ public class SpringJdbcSqlBeanServiceImpl<T, ID> extends BaseSqlBeanServiceImpl<
         if (bean == null || bean.length == 0) {
             throw new SqlBeanException("insert方法bean参数必须拥有一个值");
         }
-        int count = jdbcTemplate.update(SqlBeanProvider.insertBeanSql(getSqlBeanMeta(), clazz, bean));
-        super.setAutoIncrId(clazz, Arrays.asList(bean));
+        String sql = SqlBeanProvider.insertBeanSql(getSqlBeanMeta(), clazz, bean);
+        GeneratedKeyHolder keyHolder = new GeneratedKeyHolder();
+        int count = jdbcTemplate.update((PreparedStatementCreator) con -> con.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS), keyHolder);
+        super.setAutoIncrId(clazz, Arrays.asList(bean), generatedKeys(keyHolder));
         return count;
     }
 
@@ -607,8 +620,10 @@ public class SpringJdbcSqlBeanServiceImpl<T, ID> extends BaseSqlBeanServiceImpl<
         if (beanList == null || beanList.size() == 0) {
             throw new SqlBeanException("insert方法beanList参数至少拥有一个值");
         }
-        int count = jdbcTemplate.update(SqlBeanProvider.insertBeanSql(getSqlBeanMeta(), clazz, beanList));
-        super.setAutoIncrId(clazz, beanList);
+        String sql = SqlBeanProvider.insertBeanSql(getSqlBeanMeta(), clazz, beanList);
+        GeneratedKeyHolder keyHolder = new GeneratedKeyHolder();
+        int count = jdbcTemplate.update((PreparedStatementCreator) con -> con.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS), keyHolder);
+        super.setAutoIncrId(clazz, beanList, generatedKeys(keyHolder));
         return count;
     }
 
@@ -617,8 +632,10 @@ public class SpringJdbcSqlBeanServiceImpl<T, ID> extends BaseSqlBeanServiceImpl<
     @DbSwitch(DbRole.MASTER)
     @Override
     public int insert(Insert insert) {
-        int count = jdbcTemplate.update(SqlBeanProvider.insertBeanSql(getSqlBeanMeta(), clazz, insert));
-        super.setAutoIncrId(clazz, insert.getBean());
+        String sql = SqlBeanProvider.insertBeanSql(getSqlBeanMeta(), clazz, insert);
+        GeneratedKeyHolder keyHolder = new GeneratedKeyHolder();
+        int count = jdbcTemplate.update((PreparedStatementCreator) con -> con.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS), keyHolder);
+        super.setAutoIncrId(clazz, insert.getBean(), generatedKeys(keyHolder));
         return count;
     }
 

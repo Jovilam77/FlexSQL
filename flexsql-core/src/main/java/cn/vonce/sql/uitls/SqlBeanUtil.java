@@ -356,6 +356,41 @@ public class SqlBeanUtil {
     }
 
     /**
+     * 用数据库生成的自增键值回填 bean 的 @SqlId(type = AUTO) 字段（按索引 1:1 对应）
+     * <p>统一使用 JDBC getGeneratedKeys 机制（A 方案），取代原先依赖数据库会话状态的两段式 last_insert_id()。</p>
+     *
+     * @param clazz 实体类（用于取 @SqlId 字段定义）
+     * @param keys  与 bean 顺序一致的生成键列表（无值可为 null）
+     * @param beans 待回填的 bean 实例（与 keys 顺序一致）
+     */
+    public static void setAutoIncrId(Class<?> clazz, List<Long> keys, Object... beans) {
+        if (keys == null || keys.isEmpty() || beans == null || beans.length == 0) {
+            return;
+        }
+        Field idField = getIdField(clazz);
+        if (idField != null && idField.getAnnotation(SqlId.class).type() == IdType.AUTO) {
+            for (int i = 0; i < beans.length; i++) {
+                if (i >= keys.size()) {
+                    break;
+                }
+                Long value = keys.get(i);
+                if (value == null) {
+                    continue;
+                }
+                Object bean = beans[i];
+                if (bean == null) {
+                    continue;
+                }
+                Field field = getIdField(bean.getClass());
+                if (Number.class.isAssignableFrom(field.getType())) {
+                    Object newValue = ReflectUtil.instance().invoke(field.getType(), null, "valueOf", new Class<?>[]{String.class}, new Object[]{value.toString()});
+                    ReflectUtil.instance().set(bean.getClass(), bean, field.getName(), newValue);
+                }
+            }
+        }
+    }
+
+    /**
      * 获取逻辑删除标识字段
      *
      * @param clazz

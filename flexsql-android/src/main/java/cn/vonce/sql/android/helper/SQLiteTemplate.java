@@ -81,14 +81,14 @@ public class SQLiteTemplate {
     }
 
     /**
-     * insert
+     * insert，返回新插入行的 rowid（自增主键）
      *
      * @param sql
-     * @return
+     * @return 新插入行的 rowid；出错返回 -1
      */
-    public int insert(final String sql) {
+    public long insert(final String sql) {
         Log.d("flexsql", "updateSQL: " + sql);
-        return (int) db.compileStatement(sql).executeInsert();
+        return db.compileStatement(sql).executeInsert();
     }
 
     /**

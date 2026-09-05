@@ -20,11 +20,17 @@ import cn.vonce.sql.spring.config.UseMybatis;
 import cn.vonce.sql.service.SqlBeanService;
 import cn.vonce.sql.uitls.DateUtil;
 import cn.vonce.sql.uitls.SqlBeanUtil;
+import org.apache.ibatis.session.SqlSession;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.*;
 
 /**
@@ -42,6 +48,9 @@ public class MybatisSqlBeanServiceImpl<T, ID> extends BaseSqlBeanServiceImpl<T> 
 
     @Autowired
     private MybatisSqlBeanDao<T> mybatisSqlBeanDao;
+
+    @Autowired
+    private SqlSession sqlSession;
 
     private final Class<?> clazz;
 
@@ -65,16 +74,40 @@ public class MybatisSqlBeanServiceImpl<T, ID> extends BaseSqlBeanServiceImpl<T> 
     }
 
     @Override
-    public Long getAutoIncrId() {
-        if (getSqlBeanMeta().getDbType() == DbType.MySQL || getSqlBeanMeta().getDbType() == DbType.MariaDB) {
-            return mybatisSqlBeanDao.lastInsertId();
-        }
-        return null;
-    }
-
-    @Override
     public Class<?> getBeanClass() {
         return clazz;
+    }
+
+    /**
+     * 统一使用 getGeneratedKeys 回填自增id（取代两段式 last_insert_id）
+     * 通过 MyBatis 当前会话的连接执行，保留 @DbSwitch 路由与事务参与
+     */
+    private int insertWithGeneratedKeys(Collection<T> beans) {
+        if (beans == null || beans.isEmpty()) {
+            return 0;
+        }
+        Connection conn = sqlSession.getConnection();
+        List<Long> keys = new ArrayList<>();
+        try {
+            for (T bean : beans) {
+                String sql = SqlBeanProvider.insertBeanSql(getSqlBeanMeta(), clazz, Collections.singletonList(bean));
+                try (PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+                    ps.executeUpdate();
+                    try (ResultSet rs = ps.getGeneratedKeys()) {
+                        if (rs.next()) {
+                            Object v = rs.getObject(1);
+                            keys.add(v == null ? null : ((Number) v).longValue());
+                        } else {
+                            keys.add(null);
+                        }
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            throw new SqlBeanException("插入并取回自增id失败: " + e.getMessage(), e);
+        }
+        SqlBeanUtil.setAutoIncrId(clazz, keys, beans.toArray());
+        return beans.size();
     }
 
     @DbSwitch(DbRole.SLAVE)
@@ -597,10 +630,7 @@ public class MybatisSqlBeanServiceImpl<T, ID> extends BaseSqlBeanServiceImpl<T> 
         if (bean == null || bean.length == 0) {
             throw new SqlBeanException("insert方法bean参数至少拥有一个值");
         }
-        List<T> beanList = Arrays.asList(bean);
-        int count = mybatisSqlBeanDao.insertBean(getSqlBeanMeta(), clazz, beanList);
-        super.setAutoIncrId(clazz, beanList);
-        return count;
+        return insertWithGeneratedKeys(Arrays.asList(bean));
     }
 
     @Transactional
@@ -611,9 +641,7 @@ public class MybatisSqlBeanServiceImpl<T, ID> extends BaseSqlBeanServiceImpl<T> 
         if (beanList == null || beanList.size() == 0) {
             throw new SqlBeanException("insert方法beanList参数至少拥有一个值");
         }
-        int count = mybatisSqlBeanDao.insertBean(getSqlBeanMeta(), clazz, beanList);
-        super.setAutoIncrId(clazz, beanList);
-        return count;
+        return insertWithGeneratedKeys(beanList);
     }
 
     @Transactional
@@ -621,9 +649,7 @@ public class MybatisSqlBeanServiceImpl<T, ID> extends BaseSqlBeanServiceImpl<T> 
     @DbSwitch(DbRole.MASTER)
     @Override
     public int insert(Insert<T> insert) {
-        int count = mybatisSqlBeanDao.insert(getSqlBeanMeta(), clazz, insert);
-        super.setAutoIncrId(clazz, insert.getBean());
-        return count;
+        return insertWithGeneratedKeys(insert.getBean());
     }
 
     @DbSwitch(DbRole.MASTER)

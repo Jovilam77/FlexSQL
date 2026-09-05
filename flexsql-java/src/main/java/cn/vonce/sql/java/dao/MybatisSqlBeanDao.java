@@ -238,14 +238,6 @@ public interface MybatisSqlBeanDao<T> {
     int count(@Param("sqlBeanMeta") SqlBeanMeta sqlBeanMeta, @Param("clazz") Class<?> clazz, @Param("returnType") Class<?> returnType, @Param("select") Select select);
 
     /**
-     * 获取最后插入的自增id
-     *
-     * @return
-     */
-    @SelectProvider(type = MybatisSqlBeanProvider.class, method = "lastInsertId")
-    long lastInsertId();
-
-    /**
      * 根据id条件删除
      *
      * @param sqlBeanMeta

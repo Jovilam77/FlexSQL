@@ -1,20 +1,16 @@
 package cn.vonce.sql.java.service;
 
-import cn.vonce.sql.annotation.SqlId;
 import cn.vonce.sql.bean.ColumnInfo;
 import cn.vonce.sql.bean.CommonCondition;
 import cn.vonce.sql.bean.Condition;
 import cn.vonce.sql.config.SqlBeanMeta;
 import cn.vonce.sql.define.ConditionHandle;
 import cn.vonce.sql.enumerate.DbType;
-import cn.vonce.sql.enumerate.IdType;
 import cn.vonce.sql.enumerate.JdbcType;
 import cn.vonce.sql.helper.Wrapper;
-import cn.vonce.sql.uitls.ReflectUtil;
 import cn.vonce.sql.uitls.SqlBeanUtil;
 import cn.vonce.sql.uitls.StringUtil;
 
-import java.lang.reflect.Field;
 import java.util.Collection;
 import java.util.List;
 
@@ -110,36 +106,19 @@ public abstract class BaseSqlBeanServiceImpl<T> {
         return null;
     }
 
-    public abstract Long getAutoIncrId();
-
     /**
-     * 设置自增id
+     * 设置自增id（统一使用 getGeneratedKeys 回填，取代两段式 last_insert_id）
      *
-     * @param clazz
-     * @param beanList
+     * @param clazz    实体类（用于取 @SqlId 字段定义）
+     * @param beanList 待回填的 bean 集合（与 keys 顺序一致）
+     * @param keys     与 bean 顺序一致的数据库生成键值（来自 getGeneratedKeys）
      * @param <T>
      */
-    public <T> void setAutoIncrId(Class<?> clazz, Collection<T> beanList) {
-        if (beanList == null || beanList.size() == 0) {
+    public <T> void setAutoIncrId(Class<?> clazz, Collection<T> beanList, List<Long> keys) {
+        if (keys == null || keys.isEmpty()) {
             return;
         }
-        Field idField = SqlBeanUtil.getIdField(clazz);
-        if (idField != null && idField.getAnnotation(SqlId.class).type() == IdType.AUTO) {
-            Long idBeginValue = getAutoIncrId();
-            if (idBeginValue == null) {
-                return;
-            }
-            int i = 0;
-            for (T t : beanList) {
-                Field field = SqlBeanUtil.getIdField(t.getClass());
-                if (Number.class.isAssignableFrom(field.getType())) {
-                    Long value = idBeginValue + i;
-                    Object newValue = ReflectUtil.instance().invoke(field.getType(), null, "valueOf", new Class<?>[]{String.class}, new Object[]{value.toString()});
-                    ReflectUtil.instance().set(t.getClass(), t, field.getName(), newValue);
-                }
-                i++;
-            }
-        }
+        SqlBeanUtil.setAutoIncrId(clazz, keys, beanList.toArray());
     }
 
     protected void conditionHandle(CommonCondition<?> condition, ConditionHandle<T> cond) {

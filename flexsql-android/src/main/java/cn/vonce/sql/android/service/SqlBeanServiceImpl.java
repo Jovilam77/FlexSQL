@@ -835,7 +835,13 @@ public class SqlBeanServiceImpl<T, ID> implements SqlBeanService<T, ID>, DbManag
         if (bean == null || bean.length == 0) {
             throw new SqlBeanException("insert方法bean参数至少拥有一个值");
         }
-        return sqliteTemplate.insert(SqlBeanProvider.insertBeanSql(getSqlBeanMeta(), clazz, bean));
+        List<Long> keys = new ArrayList<>();
+        for (T b : bean) {
+            long rowid = sqliteTemplate.insert(SqlBeanProvider.insertBeanSql(getSqlBeanMeta(), clazz, Collections.singletonList(b)));
+            keys.add(rowid < 0 ? null : rowid);
+        }
+        SqlBeanUtil.setAutoIncrId(clazz, keys, bean);
+        return bean.length;
     }
 
     @Override
@@ -843,12 +849,28 @@ public class SqlBeanServiceImpl<T, ID> implements SqlBeanService<T, ID>, DbManag
         if (beanList == null || beanList.size() == 0) {
             throw new SqlBeanException("insert方法beanList参数至少拥有一个值");
         }
-        return sqliteTemplate.insert(SqlBeanProvider.insertBeanSql(getSqlBeanMeta(), clazz, beanList));
+        List<Long> keys = new ArrayList<>();
+        for (T b : beanList) {
+            long rowid = sqliteTemplate.insert(SqlBeanProvider.insertBeanSql(getSqlBeanMeta(), clazz, Collections.singletonList(b)));
+            keys.add(rowid < 0 ? null : rowid);
+        }
+        SqlBeanUtil.setAutoIncrId(clazz, keys, beanList.toArray());
+        return beanList.size();
     }
 
     @Override
     public int insert(Insert<T> insert) {
-        return sqliteTemplate.insert(SqlBeanProvider.insertBeanSql(getSqlBeanMeta(), clazz, insert));
+        List<T> beans = insert.getBean();
+        if (beans != null && !beans.isEmpty()) {
+            List<Long> keys = new ArrayList<>();
+            for (T b : beans) {
+                long rowid = sqliteTemplate.insert(SqlBeanProvider.insertBeanSql(getSqlBeanMeta(), clazz, Collections.singletonList(b)));
+                keys.add(rowid < 0 ? null : rowid);
+            }
+            SqlBeanUtil.setAutoIncrId(clazz, keys, beans.toArray());
+            return beans.size();
+        }
+        return (int) sqliteTemplate.insert(SqlBeanProvider.insertBeanSql(getSqlBeanMeta(), clazz, insert));
     }
 
     protected void conditionHandle(CommonCondition<?> condition, ConditionHandle<T> cond) {
