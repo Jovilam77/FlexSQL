@@ -343,4 +343,9 @@ public class SqlServerDialect extends AbstractDialect<JavaMapSqlServerType> {
         return sql.toString();
     }
 
+    @Override
+    public boolean useRecursiveKeyword() {
+        return false;
+    }
+
 }

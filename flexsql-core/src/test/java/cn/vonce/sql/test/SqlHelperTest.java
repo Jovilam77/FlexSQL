@@ -44,6 +44,9 @@ public class SqlHelperTest {
 
         // selectLock（行锁 FOR UPDATE / SKIP LOCKED）
         selectLock();
+
+        // selectCte（CTE / WITH 子句）
+        selectCte();
 //
 //        // select4
 //        select4(sqlBeanMeta);
@@ -338,6 +341,159 @@ public class SqlHelperTest {
         s13.forUpdateSkipLocked();
         System.out.println("---selectLock SQLServer2019 SKIP LOCKED + JOIN（两表均有提示）---");
         System.out.println(SqlHelper.buildSelectSql(s13));
+    }
+
+    /**
+     * CTE（WITH 子句）生成测试
+     */
+    private static void selectCte() {
+        // MySQL 8.0
+        SqlBeanMeta mysql8 = new SqlBeanMeta();
+        mysql8.setDbType(DbType.MySQL);
+        mysql8.setDatabaseMajorVersion(8);
+        mysql8.setDatabaseMinorVersion(0);
+        mysql8.setSqlBeanConfig(new SqlBeanConfig());
+
+        // PostgreSQL 13
+        SqlBeanMeta pg13 = new SqlBeanMeta();
+        pg13.setDbType(DbType.Postgresql);
+        pg13.setDatabaseMajorVersion(13);
+        pg13.setDatabaseMinorVersion(0);
+        pg13.setSqlBeanConfig(new SqlBeanConfig());
+
+        // Oracle 19c
+        SqlBeanMeta oracle19 = new SqlBeanMeta();
+        oracle19.setDbType(DbType.Oracle);
+        oracle19.setDatabaseMajorVersion(19);
+        oracle19.setDatabaseMinorVersion(0);
+        oracle19.setSqlBeanConfig(new SqlBeanConfig());
+
+        // SQL Server 2019
+        SqlBeanMeta sqlServer = new SqlBeanMeta();
+        sqlServer.setDbType(DbType.SQLServer);
+        sqlServer.setSqlBeanConfig(new SqlBeanConfig());
+
+        // 1) MySQL 8.0 + 多个（非递归）CTE，子查询为 Select 形式
+        Select cteA = new Select();
+        cteA.setSqlBeanMeta(mysql8);
+        cteA.setBeanClass(User.class);
+        cteA.column(User::getId);
+        cteA.setTable(User.class);
+        cteA.where().gt(User::getId, 0);
+
+        Select cteB = new Select();
+        cteB.setSqlBeanMeta(mysql8);
+        cteB.setBeanClass(User.class);
+        cteB.column(User::getId);
+        cteB.setTable(User.class);
+        cteB.where().lt(User::getId, 100);
+
+        Select c1 = new Select();
+        c1.setSqlBeanMeta(mysql8);
+        c1.setBeanClass(User.class);
+        c1.column(User::getId);
+        c1.setTable("cteA");
+        c1.with("cteA", cteA).with("cteB", cteB);
+        System.out.println("---selectCte MySQL8 多CTE（子查询为 Select）---");
+        System.out.println(SqlHelper.buildSelectSql(c1));
+
+        // 2) MySQL 8.0 + 原生 SQL 子查询的 CTE（含列定义）
+        Cte rawCte = new Cte("t", "SELECT id, name FROM d_user WHERE status = 1");
+        rawCte.column("id").column("name");
+        Select c2 = new Select();
+        c2.setSqlBeanMeta(mysql8);
+        c2.setBeanClass(User.class);
+        c2.column(User::getId);
+        c2.setTable(User.class);
+        c2.with(rawCte);
+        System.out.println("---selectCte MySQL8 原生SQL子查询CTE（含列定义）---");
+        System.out.println(SqlHelper.buildSelectSql(c2));
+
+        // 3) MySQL 8.0 + 递归 CTE（WITH RECURSIVE）
+        Select c3 = new Select();
+        c3.setSqlBeanMeta(mysql8);
+        c3.setBeanClass(User.class);
+        c3.column("n");
+        c3.setTable("counter");
+        c3.recursive();
+        c3.with("counter", "SELECT 1 AS n UNION ALL SELECT n + 1 FROM counter WHERE n < 5");
+        System.out.println("---selectCte MySQL8 递归CTE（WITH RECURSIVE）---");
+        System.out.println(SqlHelper.buildSelectSql(c3));
+
+        // 4) PostgreSQL 13 + 递归 CTE（WITH RECURSIVE）
+        Select c4 = new Select();
+        c4.setSqlBeanMeta(pg13);
+        c4.setBeanClass(User.class);
+        c4.column("n");
+        c4.setTable("counter");
+        c4.recursive();
+        c4.with("counter", "SELECT 1 AS n UNION ALL SELECT n + 1 FROM counter WHERE n < 5");
+        System.out.println("---selectCte PG13 递归CTE（WITH RECURSIVE）---");
+        System.out.println(SqlHelper.buildSelectSql(c4));
+
+        // 5) Oracle 19c + 递归 CTE（无 RECURSIVE 关键字）
+        Select c5 = new Select();
+        c5.setSqlBeanMeta(oracle19);
+        c5.setBeanClass(User.class);
+        c5.column("n");
+        c5.setTable("counter");
+        c5.recursive();
+        c5.with("counter", "SELECT 1 AS n FROM dual UNION ALL SELECT n + 1 FROM counter WHERE n < 5");
+        System.out.println("---selectCte Oracle19 递归CTE（无 RECURSIVE 关键字）---");
+        System.out.println(SqlHelper.buildSelectSql(c5));
+
+        // 6) SQL Server 2019 + 非递归 CTE（无 RECURSIVE 关键字）
+        Select cteS = new Select();
+        cteS.setSqlBeanMeta(sqlServer);
+        cteS.setBeanClass(User.class);
+        cteS.column(User::getId);
+        cteS.setTable(User.class);
+        cteS.where().gt(User::getId, 0);
+        Select c6 = new Select();
+        c6.setSqlBeanMeta(sqlServer);
+        c6.setBeanClass(User.class);
+        c6.column(User::getId);
+        c6.setTable("cteS");
+        c6.with("cteS", cteS);
+        System.out.println("---selectCte SQLServer 非递归CTE（无 RECURSIVE 关键字）---");
+        System.out.println(SqlHelper.buildSelectSql(c6));
+
+        // 7) MySQL 8.0 + 组合：CTE + 分页 + SKIP LOCKED
+        Select c7sub = new Select();
+        c7sub.setSqlBeanMeta(mysql8);
+        c7sub.setBeanClass(User.class);
+        c7sub.column(User::getId);
+        c7sub.setTable(User.class);
+        c7sub.where().eq(User::getUsername, "jovi");
+        Select c7 = new Select();
+        c7.setSqlBeanMeta(mysql8);
+        c7.setBeanClass(User.class);
+        c7.column(User::getId);
+        c7.setTable("active_user");
+        c7.with("active_user", c7sub);
+        c7.orderByDesc(User::getId);
+        c7.page(0, 10);
+        c7.forUpdateSkipLocked();
+        System.out.println("---selectCte MySQL8 组合：CTE + 分页 + SKIP LOCKED---");
+        System.out.println(SqlHelper.buildSelectSql(c7));
+
+        // 8) SQL Server 2019 + CTE + 分页（验证 CTE 位于分页外层包裹之外）
+        Select cteSP = new Select();
+        cteSP.setSqlBeanMeta(sqlServer);
+        cteSP.setBeanClass(User.class);
+        cteSP.column(User::getId);
+        cteSP.setTable(User.class);
+        cteSP.where().gt(User::getId, 0);
+        Select c8 = new Select();
+        c8.setSqlBeanMeta(sqlServer);
+        c8.setBeanClass(User.class);
+        c8.column(User::getId);
+        c8.setTable("cteSP");
+        c8.with("cteSP", cteSP);
+        c8.orderByAsc(User::getId);
+        c8.page(0, 10);
+        System.out.println("---selectCte SQLServer CTE + 分页（CTE 在包裹外）---");
+        System.out.println(SqlHelper.buildSelectSql(c8));
     }
 
     /**

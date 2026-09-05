@@ -245,4 +245,9 @@ public class DB2Dialect extends AbstractDialect<JavaMapDB2Type> {
         return "DROP DATABASE " + this.getSchemaName(sqlBeanMeta, schemaName);
     }
 
+    @Override
+    public boolean useRecursiveKeyword() {
+        return false;
+    }
+
 }

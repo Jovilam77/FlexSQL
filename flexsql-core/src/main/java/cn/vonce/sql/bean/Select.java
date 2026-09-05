@@ -69,6 +69,17 @@ public class Select extends CommonCondition<Select> implements Serializable {
      */
     private LockType lockType = LockType.NONE;
     /**
+     * CTE（WITH 子句）列表
+     */
+    private List<Cte> ctes = new ArrayList<>();
+    /**
+     * 是否递归 CTE（WITH RECURSIVE）
+     * <p>
+     * 注意：是否真正输出 RECURSIVE 关键字由各方言决定
+     * （MySQL / PostgreSQL 需要，Oracle / SQL Server 不需要）。
+     */
+    private boolean recursive;
+    /**
      * having 条件表达式 优先级一
      */
     private String having = null;
@@ -781,6 +792,71 @@ public class Select extends CommonCondition<Select> implements Serializable {
     public Select forUpdateSkipLocked() {
         this.lockType = LockType.FOR_UPDATE_SKIP_LOCKED;
         return this;
+    }
+
+    /**
+     * 添加 CTE（WITH 子句）
+     *
+     * @param ctes CTE 数组
+     * @return
+     */
+    public Select with(Cte... ctes) {
+        if (ctes != null) {
+            for (Cte cte : ctes) {
+                this.ctes.add(cte);
+            }
+        }
+        return this;
+    }
+
+    /**
+     * 添加基于 Select 子查询的 CTE
+     *
+     * @param name      CTE 名称
+     * @param subSelect 子查询
+     * @return
+     */
+    public Select with(String name, Select subSelect) {
+        this.ctes.add(new Cte(name, subSelect));
+        return this;
+    }
+
+    /**
+     * 添加基于原生 SQL 子查询的 CTE
+     *
+     * @param name   CTE 名称
+     * @param rawSql 子查询 SQL
+     * @return
+     */
+    public Select with(String name, String rawSql) {
+        this.ctes.add(new Cte(name, rawSql));
+        return this;
+    }
+
+    /**
+     * 标记为递归 CTE（WITH RECURSIVE）
+     *
+     * @return
+     */
+    public Select recursive() {
+        this.recursive = true;
+        return this;
+    }
+
+    public List<Cte> getCtes() {
+        return ctes;
+    }
+
+    public void setCtes(List<Cte> ctes) {
+        this.ctes = ctes;
+    }
+
+    public boolean isRecursive() {
+        return recursive;
+    }
+
+    public void setRecursive(boolean recursive) {
+        this.recursive = recursive;
     }
 
     /**

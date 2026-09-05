@@ -46,10 +46,14 @@ public class SqlHelper {
             pageParam = pageParam(select);
         }
 
-        //方言分页前缀（在SELECT关键字之前插入）
+        //方言分页前缀（在SELECT关键字之前插入，如SQL Server的 SELECT ALL FROM ( 外层包裹）
         if (pageParam != null) {
             dialect.appendPageBeforePrefix(sqlSb, select, orderSql, pageParam);
         }
+
+        // CTE（WITH 子句）前缀，必须位于 SELECT 关键字之前，且在分页外层包裹之外
+        // （SQL Server 分页用 insert(0, "SELECT ALL FROM (") 前置包裹，CTE 需在其外，故在本行前置于 0）
+        dialect.appendCtePrefix(sqlSb, select);
 
         //标准Sql
         sqlSb.append(select.isDistinct() ? SqlConstant.SELECT_DISTINCT : SqlConstant.SELECT);

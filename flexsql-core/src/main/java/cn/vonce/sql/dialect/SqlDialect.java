@@ -1,10 +1,12 @@
 package cn.vonce.sql.dialect;
 
 import cn.vonce.sql.bean.Alter;
+import cn.vonce.sql.bean.Cte;
 import cn.vonce.sql.bean.Select;
 import cn.vonce.sql.config.SqlBeanMeta;
 import cn.vonce.sql.enumerate.JdbcType;
 import cn.vonce.sql.exception.SqlBeanException;
+import cn.vonce.sql.helper.SqlHelper;
 import cn.vonce.sql.uitls.SqlBeanUtil;
 
 import java.lang.reflect.Field;
@@ -186,6 +188,66 @@ public interface SqlDialect<T> {
      * @param select 查询对象
      */
     default void appendTableHint(StringBuilder sqlSb, Select select) {
+    }
+
+    /**
+     * 是否使用该方言的 RECURSIVE 关键字
+     * <p>
+     * MySQL / PostgreSQL / SQLite / H2 等需要在 WITH 之后显式写出 RECURSIVE；
+     * Oracle / SQL Server / DB2 的递归 CTE 不需要（也不支持）该关键字，重写为 false。
+     * 默认返回 true。
+     *
+     * @return 是否输出 WITH RECURSIVE
+     */
+    default boolean useRecursiveKeyword() {
+        return true;
+    }
+
+    /**
+     * 构建 CTE（WITH 子句）前缀，必须位于 SELECT 关键字之前、分页外层包裹之前插入。
+     * <p>
+     * 生成形如：WITH [RECURSIVE] name [(col,...)] AS (subquery) [, name2 AS (subquery)]。
+     * 子查询可以是 Select 形式（交由 SqlHelper 递归构建，继承当前方言）或原生 SQL。
+     * 仅在 select 含有 CTE 时由 SQL 构建器调用。默认实现为标准语法，各库一般无需重写。
+     *
+     * @param sqlSb  SQL构建器
+     * @param select 查询对象
+     */
+    default void appendCtePrefix(StringBuilder sqlSb, Select select) {
+        List<Cte> ctes = select.getCtes();
+        if (ctes == null || ctes.isEmpty()) {
+            return;
+        }
+        StringBuilder cteSb = new StringBuilder();
+        cteSb.append("WITH ");
+        if (select.isRecursive() && useRecursiveKeyword()) {
+            cteSb.append("RECURSIVE ");
+        }
+        for (int i = 0; i < ctes.size(); i++) {
+            Cte cte = ctes.get(i);
+            if (i > 0) {
+                cteSb.append(", ");
+            }
+            cteSb.append(cte.getName());
+            List<String> cols = cte.getColumns();
+            if (cols != null && !cols.isEmpty()) {
+                cteSb.append(" (").append(String.join(", ", cols)).append(")");
+            }
+            cteSb.append(" AS (");
+            Select sub = cte.getSubSelect();
+            if (sub != null) {
+                if (sub.getSqlBeanMeta() == null) {
+                    sub.setSqlBeanMeta(select.getSqlBeanMeta());
+                }
+                cteSb.append(SqlHelper.buildSelectSql(sub));
+            } else {
+                cteSb.append(cte.getRawSql());
+            }
+            cteSb.append(")");
+        }
+        cteSb.append(" ");
+        // 前置于 0：保证 CTE 位于 SELECT 关键字之前，且在 SQL Server 分页外层包裹（SELECT ALL FROM (）之外
+        sqlSb.insert(0, cteSb);
     }
 
 }

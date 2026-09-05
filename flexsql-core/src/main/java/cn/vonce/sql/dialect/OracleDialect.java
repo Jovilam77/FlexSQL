@@ -268,4 +268,9 @@ public class OracleDialect extends AbstractDialect<JavaMapOracleType> {
         return null;
     }
 
+    @Override
+    public boolean useRecursiveKeyword() {
+        return false;
+    }
+
 }
