@@ -11,6 +11,7 @@ import cn.vonce.sql.enumerate.AlterDifference;
 import cn.vonce.sql.enumerate.AlterType;
 import cn.vonce.sql.enumerate.JavaMapOracleType;
 import cn.vonce.sql.enumerate.JdbcType;
+import cn.vonce.sql.enumerate.LockType;
 import cn.vonce.sql.exception.SqlBeanException;
 import cn.vonce.sql.uitls.SqlBeanUtil;
 import cn.vonce.sql.uitls.StringUtil;
@@ -18,6 +19,7 @@ import cn.vonce.sql.uitls.StringUtil;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.logging.Logger;
 
 /**
  * Oracle方言
@@ -27,6 +29,8 @@ import java.util.List;
  * @date 2024/4/16 10:13
  */
 public class OracleDialect extends AbstractDialect<JavaMapOracleType> {
+
+    private static final Logger logger = Logger.getLogger(OracleDialect.class.getName());
 
     @Override
     public JavaMapOracleType getType(Field field) {
@@ -180,15 +184,67 @@ public class OracleDialect extends AbstractDialect<JavaMapOracleType> {
         if (select.isCount()) {
             return;
         }
+        // Oracle 的 ROWNUM 分页外层包裹非 key-preserving，FOR UPDATE 不能作用于外层；
+        // 因此将行锁子句注入到最内层查询（直接作用于基表，保持 key-preserving），
+        // 外层 ROWNUM 仍负责 offset/limit 分页。
+        String innerLock = buildLockClause(select);
         String sql = sqlSb.toString();
         sqlSb.setLength(0);
         sqlSb.append(SqlConstant.SELECT + SqlConstant.ALL + SqlConstant.FROM + SqlConstant.BEGIN_BRACKET);
         sqlSb.append(SqlConstant.SELECT + SqlConstant.TB + SqlConstant.POINT + SqlConstant.ALL + SqlConstant.COMMA + SqlConstant.ROWNUM + SqlConstant.RN + SqlConstant.FROM + SqlConstant.BEGIN_BRACKET);
         sqlSb.append(sql);
+        if (innerLock != null) {
+            sqlSb.append(innerLock);
+        }
         sqlSb.append(SqlConstant.END_BRACKET + SqlConstant.TB + SqlConstant.WHERE + SqlConstant.ROWNUM + SqlConstant.LESS_THAN_OR_EQUAL_TO);
         sqlSb.append(pageParam[1]);
         sqlSb.append(SqlConstant.END_BRACKET + SqlConstant.WHERE + SqlConstant.RN + SqlConstant.GREATER_THAN);
         sqlSb.append(pageParam[0]);
+    }
+
+    @Override
+    public void appendLockClause(StringBuilder sqlSb, Select select) {
+        // 分页路径已在最内层查询注入行锁，避免重复追加
+        if (sqlSb.toString().toUpperCase().contains(" FOR UPDATE")) {
+            return;
+        }
+        String lock = buildLockClause(select);
+        if (lock != null) {
+            sqlSb.append(lock);
+        }
+    }
+
+    /**
+     * 构建 Oracle 行锁子句文本（含版本门控）。
+     * <p>
+     * - FOR UPDATE：所有 Oracle 版本均支持；
+     * - FOR UPDATE SKIP LOCKED：需 Oracle 11g R1（major >= 11），
+     *   版本未探测（major=0，未做数据库元数据探测）时按已支持处理直接下发。
+     * 不支持时返回 null（由调用方跳过，并已在内部告警）。
+     *
+     * @param select 查询对象
+     * @return 行锁子句（含前导空格），无锁或不支持时返回 null
+     */
+    private String buildLockClause(Select select) {
+        LockType lockType = select.getLockType();
+        if (lockType == null || lockType == LockType.NONE) {
+            return null;
+        }
+        if (lockType == LockType.FOR_UPDATE) {
+            return SqlConstant.SPACES + "FOR UPDATE";
+        }
+        if (lockType == LockType.FOR_UPDATE_SKIP_LOCKED) {
+            int major = select.getSqlBeanMeta().getDatabaseMajorVersion();
+            // Oracle 自 11g R1 (11.1) 起正式支持 SKIP LOCKED；
+            // 版本未探测（major=0）时按已支持处理直接下发
+            if (major > 0 && major < 11) {
+                logger.warning("当前数据库（" + select.getSqlBeanMeta().getProductName() + " " + major
+                        + "）不支持 SKIP LOCKED（需 Oracle 11g+），已忽略该锁子句");
+                return null;
+            }
+            return SqlConstant.SPACES + "FOR UPDATE SKIP LOCKED";
+        }
+        return null;
     }
 
     @Override

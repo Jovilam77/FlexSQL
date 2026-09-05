@@ -67,7 +67,9 @@ public class SqlHelper {
         }
         sqlSb.append(SqlConstant.FROM);
         sqlSb.append(SqlBeanUtil.fromFullName(select.getTable().getSchema(), select.getTable().getName(), select.getTable().getAlias(), select));
-        sqlSb.append(joinSql(select));
+        // 表级锁提示（如 SQL Server 的 WITH (UPDLOCK, READPAST)），紧贴主表名之后注入
+        dialect.appendTableHint(sqlSb, select);
+        sqlSb.append(joinSql(select, dialect));
         sqlSb.append(whereSql(select, null));
         String groupBySql = groupBySql(select);
         sqlSb.append(groupBySql);
@@ -78,6 +80,10 @@ public class SqlHelper {
         //方言分页后缀（在COUNT包裹之前处理，以保持SQL Server原始行为）
         if (pageParam != null) {
             dialect.appendPageSuffix(sqlSb, select, orderSql, pageParam);
+        }
+        //行锁子句（必须在 LIMIT/OFFSET 之后、COUNT 包裹之前追加；count 查询不加锁）
+        if (!select.isCount()) {
+            dialect.appendLockClause(sqlSb, select);
         }
         //标准Sql 如果是克隆的select则为分页时的count
         if ((select.isCount() && select.isDistinct()) || (select.isCount() && StringUtil.isNotEmpty(groupBySql))) {
@@ -384,7 +390,7 @@ public class SqlHelper {
      * @param select
      * @return
      */
-    private static String joinSql(Select select) {
+    private static String joinSql(Select select, SqlDialect dialect) {
         StringBuilder joinSql = new StringBuilder();
         if (select != null && select.getJoin().size() != 0) {
             for (int i = 0; i < select.getJoin().size(); i++) {
@@ -407,6 +413,8 @@ public class SqlHelper {
                 String tableName = join.getTableName();
                 String tableAlias = join.getTableAlias();
                 joinSql.append(SqlBeanUtil.fromFullName(schema, tableName, tableAlias, select));
+                // 表级锁提示同样紧贴每个 join 表名之后注入
+                dialect.appendTableHint(joinSql, select);
                 joinSql.append(SqlConstant.ON);
                 if (join.on() != null && join.on().getDataList().size() > 0) {
                     joinSql.append(simpleConditionHandle(select, join.on().getDataList()));

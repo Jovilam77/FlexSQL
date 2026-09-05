@@ -160,4 +160,32 @@ public interface SqlDialect<T> {
     default void appendPageSuffix(StringBuilder sqlSb, Select select, String orderSql, Integer[] pageParam) {
     }
 
+    /**
+     * 构建行锁子句（在 ORDER BY 与 LIMIT/OFFSET 之后追加）
+     * <p>
+     * 例如 MySQL 8.0+ / PostgreSQL 9.5+ 的 FOR UPDATE SKIP LOCKED。
+     * 默认不追加；由支持行锁的方言（MySQL、PostgreSQL）重写实现。
+     * 仅在非 count 查询时由 SQL 构建器调用。
+     *
+     * @param sqlSb  SQL构建器
+     * @param select 查询对象
+     */
+    default void appendLockClause(StringBuilder sqlSb, Select select) {
+    }
+
+    /**
+     * 构建表级锁提示（紧跟 FROM / JOIN 后的表名之后追加）
+     * <p>
+     * 例如 SQL Server 的 WITH (UPDLOCK[, READPAST]) 表提示。
+     * 与 appendLockClause（尾部子句，用于 MySQL/PostgreSQL/Oracle）不同，
+     * 某些数据库（如 SQL Server）的行锁必须作为表提示紧贴表名，
+     * 因此单独提供此钩子，由需要表级提示的方言重写实现，其余方言保持默认 no-op。
+     * 仅在非 count 查询、且已设置行锁时由 SQL 构建器调用。
+     *
+     * @param sqlSb  SQL构建器
+     * @param select 查询对象
+     */
+    default void appendTableHint(StringBuilder sqlSb, Select select) {
+    }
+
 }

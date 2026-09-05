@@ -11,6 +11,7 @@ import cn.vonce.sql.enumerate.AlterType;
 import cn.vonce.sql.enumerate.DbType;
 import cn.vonce.sql.enumerate.JavaMapSqlServerType;
 import cn.vonce.sql.enumerate.JdbcType;
+import cn.vonce.sql.enumerate.LockType;
 import cn.vonce.sql.exception.SqlBeanException;
 import cn.vonce.sql.uitls.SqlBeanUtil;
 import cn.vonce.sql.uitls.StringUtil;
@@ -275,6 +276,38 @@ public class SqlServerDialect extends AbstractDialect<JavaMapSqlServerType> {
         sqlSb.append(SqlConstant.T + SqlConstant.POINT + SqlConstant.ROWNUM);
         sqlSb.append(SqlConstant.GREATER_THAN);
         sqlSb.append(pageParam[1]);
+    }
+
+    /**
+     * 表级锁提示（SQL Server 用 WITH (UPDLOCK[, READPAST]) 实现行锁语义）
+     * <p>
+     * SQL Server 没有 FOR UPDATE 语法，而是用表提示表达悲观行锁：
+     * - FOR_UPDATE            → WITH (UPDLOCK)            （对已读取行加更新锁，阻塞直至锁释放）
+     * - FOR_UPDATE_SKIP_LOCKED → WITH (UPDLOCK, READPAST) （在前者基础上跳过已被其它事务锁定的行）
+     * <p>
+     * 该提示必须紧贴 FROM / JOIN 后的表名，因此由 buildSelectSql 在拼接表名后立即调用本方法。
+     * UPDLOCK / READPAST 在所有受支持的 SQL Server 版本中均可用，无需版本门控；
+     * 版本未探测（major=0）时同样直接下发，与 MySQL/PostgreSQL 的处理口径一致。
+     * 由于锁已通过表提示注入，appendLockClause（尾部子句钩子）对 SQL Server 保持默认 no-op。
+     *
+     * @param sqlSb  SQL构建器
+     * @param select 查询对象
+     */
+    @Override
+    public void appendTableHint(StringBuilder sqlSb, Select select) {
+        LockType lockType = select.getLockType();
+        if (lockType == null || lockType == LockType.NONE) {
+            return;
+        }
+        sqlSb.append(SqlConstant.SPACES);
+        sqlSb.append("WITH ");
+        sqlSb.append(SqlConstant.BEGIN_BRACKET);
+        if (lockType == LockType.FOR_UPDATE) {
+            sqlSb.append("UPDLOCK");
+        } else if (lockType == LockType.FOR_UPDATE_SKIP_LOCKED) {
+            sqlSb.append("UPDLOCK, READPAST");
+        }
+        sqlSb.append(SqlConstant.END_BRACKET);
     }
 
     @Override

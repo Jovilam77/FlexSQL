@@ -3,6 +3,7 @@ package cn.vonce.sql.bean;
 import cn.vonce.sql.define.ColumnFun;
 import cn.vonce.sql.define.SqlFun;
 import cn.vonce.sql.enumerate.JoinType;
+import cn.vonce.sql.enumerate.LockType;
 import cn.vonce.sql.enumerate.SqlSort;
 import cn.vonce.sql.helper.SqlHelper;
 import cn.vonce.sql.helper.Wrapper;
@@ -63,6 +64,10 @@ public class Select extends CommonCondition<Select> implements Serializable {
      * 过滤的字段数组
      */
     private List<Column> filterColumns = new ArrayList<>();
+    /**
+     * 行锁（悲观锁）类型，默认不加锁
+     */
+    private LockType lockType = LockType.NONE;
     /**
      * having 条件表达式 优先级一
      */
@@ -742,6 +747,40 @@ public class Select extends CommonCondition<Select> implements Serializable {
      */
     public Condition<Select> having() {
         return havingCondition;
+    }
+
+    /**
+     * 获取行锁类型
+     *
+     * @return 行锁类型，默认 {@link LockType#NONE}
+     */
+    public LockType getLockType() {
+        return lockType;
+    }
+
+    /**
+     * 设置行锁为 FOR UPDATE（悲观行锁）
+     * <p>
+     * 对已读取的行加排他锁，直到当前事务结束。适用于 MySQL / MariaDB / PostgreSQL / Oracle 等主流数据库。
+     *
+     * @return
+     */
+    public Select forUpdate() {
+        this.lockType = LockType.FOR_UPDATE;
+        return this;
+    }
+
+    /**
+     * 设置行锁为 FOR UPDATE SKIP LOCKED（跳过已被锁定的行，避免并发等待）
+     * <p>
+     * 仅 MySQL 8.0+ / MariaDB 10.3+ / PostgreSQL 9.5+ 支持；
+     * 低版本数据库会自动忽略该子句并输出告警。行锁子句会拼接在 ORDER BY 与 LIMIT 之后。
+     *
+     * @return
+     */
+    public Select forUpdateSkipLocked() {
+        this.lockType = LockType.FOR_UPDATE_SKIP_LOCKED;
+        return this;
     }
 
     /**

@@ -10,6 +10,7 @@ import cn.vonce.sql.constant.SqlConstant;
 import cn.vonce.sql.enumerate.AlterType;
 import cn.vonce.sql.enumerate.JavaMapPostgresqlType;
 import cn.vonce.sql.enumerate.JdbcType;
+import cn.vonce.sql.enumerate.LockType;
 import cn.vonce.sql.exception.SqlBeanException;
 import cn.vonce.sql.uitls.SqlBeanUtil;
 import cn.vonce.sql.uitls.StringUtil;
@@ -17,6 +18,7 @@ import cn.vonce.sql.uitls.StringUtil;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.logging.Logger;
 
 /**
  * Postgresql方言
@@ -26,6 +28,8 @@ import java.util.List;
  * @date 2024/4/16 10:15
  */
 public class PostgresqlDialect extends AbstractDialect<JavaMapPostgresqlType> {
+
+    private static final Logger logger = Logger.getLogger(PostgresqlDialect.class.getName());
 
     @Override
     public JavaMapPostgresqlType getType(Field field) {
@@ -235,6 +239,27 @@ public class PostgresqlDialect extends AbstractDialect<JavaMapPostgresqlType> {
         sqlSb.append(pageParam[1]);
         sqlSb.append(SqlConstant.OFFSET);
         sqlSb.append(pageParam[0]);
+    }
+
+    @Override
+    public void appendLockClause(StringBuilder sqlSb, Select select) {
+        LockType lockType = select.getLockType();
+        if (lockType == null || lockType == LockType.NONE) {
+            return;
+        }
+        if (lockType == LockType.FOR_UPDATE_SKIP_LOCKED) {
+            // SKIP LOCKED 需 PostgreSQL 9.5+，版本未知（major=0，未做数据库探测）时按已支持处理
+            int major = select.getSqlBeanMeta().getDatabaseMajorVersion();
+            int minor = select.getSqlBeanMeta().getDatabaseMinorVersion();
+            if (major > 0 && (major < 9 || (major == 9 && minor < 5))) {
+                logger.warning("当前 PostgreSQL 版本（" + major + "." + minor
+                        + "）不支持 SKIP LOCKED（需 9.5+），已忽略该锁子句");
+                return;
+            }
+            sqlSb.append(SqlConstant.SPACES).append("FOR UPDATE SKIP LOCKED");
+        } else if (lockType == LockType.FOR_UPDATE) {
+            sqlSb.append(SqlConstant.SPACES).append("FOR UPDATE");
+        }
     }
 
     @Override

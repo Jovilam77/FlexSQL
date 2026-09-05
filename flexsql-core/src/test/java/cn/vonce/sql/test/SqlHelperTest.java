@@ -41,6 +41,9 @@ public class SqlHelperTest {
 
         // select3
         select3(sqlBeanMeta);
+
+        // selectLock（行锁 FOR UPDATE / SKIP LOCKED）
+        selectLock();
 //
 //        // select4
 //        select4(sqlBeanMeta);
@@ -131,6 +134,210 @@ public class SqlHelperTest {
         select3.having().eq("count", 5);
         System.out.println("---select3---");
         System.out.println(SqlHelper.buildSelectSql(select3));
+    }
+
+    /**
+     * 行锁查询（FOR UPDATE / FOR UPDATE SKIP LOCKED）
+     *
+     * @param
+     */
+    private static void selectLock() {
+        // MySQL 8.0
+        SqlBeanMeta mysql8 = new SqlBeanMeta();
+        mysql8.setDbType(DbType.MySQL);
+        mysql8.setDatabaseMajorVersion(8);
+        mysql8.setDatabaseMinorVersion(0);
+        mysql8.setSqlBeanConfig(new SqlBeanConfig());
+
+        // MySQL 5.7（不支持 SKIP LOCKED）
+        SqlBeanMeta mysql57 = new SqlBeanMeta();
+        mysql57.setDbType(DbType.MySQL);
+        mysql57.setDatabaseMajorVersion(5);
+        mysql57.setDatabaseMinorVersion(7);
+        mysql57.setSqlBeanConfig(new SqlBeanConfig());
+
+        // MySQL 未探测版本（major=0，按已支持处理）
+        SqlBeanMeta mysqlUnknown = new SqlBeanMeta();
+        mysqlUnknown.setDbType(DbType.MySQL);
+        mysqlUnknown.setSqlBeanConfig(new SqlBeanConfig());
+
+        // PostgreSQL 13
+        SqlBeanMeta pg13 = new SqlBeanMeta();
+        pg13.setDbType(DbType.Postgresql);
+        pg13.setDatabaseMajorVersion(13);
+        pg13.setDatabaseMinorVersion(0);
+        pg13.setSqlBeanConfig(new SqlBeanConfig());
+
+        // PostgreSQL 9.4（不支持 SKIP LOCKED）
+        SqlBeanMeta pg94 = new SqlBeanMeta();
+        pg94.setDbType(DbType.Postgresql);
+        pg94.setDatabaseMajorVersion(9);
+        pg94.setDatabaseMinorVersion(4);
+        pg94.setSqlBeanConfig(new SqlBeanConfig());
+
+        // Oracle 19c
+        SqlBeanMeta oracle19 = new SqlBeanMeta();
+        oracle19.setDbType(DbType.Oracle);
+        oracle19.setDatabaseMajorVersion(19);
+        oracle19.setDatabaseMinorVersion(0);
+        oracle19.setSqlBeanConfig(new SqlBeanConfig());
+
+        // Oracle 10g（不支持 SKIP LOCKED）
+        SqlBeanMeta oracle10 = new SqlBeanMeta();
+        oracle10.setDbType(DbType.Oracle);
+        oracle10.setDatabaseMajorVersion(10);
+        oracle10.setDatabaseMinorVersion(2);
+        oracle10.setSqlBeanConfig(new SqlBeanConfig());
+
+        // 1) MySQL 8.0 + SKIP LOCKED + 分页
+        Select s1 = new Select();
+        s1.setSqlBeanMeta(mysql8);
+        s1.setBeanClass(User.class);
+        s1.column(User::getId);
+        s1.setTable(User.class);
+        s1.where().eq(User::getUsername, "jovi");
+        s1.orderByDesc(User::getId);
+        s1.page(0, 10);
+        s1.forUpdateSkipLocked();
+        System.out.println("---selectLock MySQL8 SKIP LOCKED + page---");
+        System.out.println(SqlHelper.buildSelectSql(s1));
+
+        // 2) MySQL 5.7 + SKIP LOCKED（应忽略并告警，无锁子句）
+        Select s2 = new Select();
+        s2.setSqlBeanMeta(mysql57);
+        s2.setBeanClass(User.class);
+        s2.column(User::getId);
+        s2.setTable(User.class);
+        s2.where().eq(User::getUsername, "jovi");
+        s2.forUpdateSkipLocked();
+        System.out.println("---selectLock MySQL5.7 SKIP LOCKED（应无锁）---");
+        System.out.println(SqlHelper.buildSelectSql(s2));
+
+        // 3) MySQL 未知版本 + SKIP LOCKED（按已支持处理）
+        Select s3 = new Select();
+        s3.setSqlBeanMeta(mysqlUnknown);
+        s3.setBeanClass(User.class);
+        s3.column(User::getId);
+        s3.setTable(User.class);
+        s3.forUpdateSkipLocked();
+        System.out.println("---selectLock MySQL未知版本 SKIP LOCKED---");
+        System.out.println(SqlHelper.buildSelectSql(s3));
+
+        // 4) MySQL 8.0 + 普通 FOR UPDATE
+        Select s4 = new Select();
+        s4.setSqlBeanMeta(mysql8);
+        s4.setBeanClass(User.class);
+        s4.column(User::getId);
+        s4.setTable(User.class);
+        s4.forUpdate();
+        System.out.println("---selectLock MySQL8 FOR UPDATE---");
+        System.out.println(SqlHelper.buildSelectSql(s4));
+
+        // 5) PostgreSQL 13 + SKIP LOCKED
+        Select s5 = new Select();
+        s5.setSqlBeanMeta(pg13);
+        s5.setBeanClass(User.class);
+        s5.column(User::getId);
+        s5.setTable(User.class);
+        s5.orderByDesc(User::getId);
+        s5.page(0, 10);
+        s5.forUpdateSkipLocked();
+        System.out.println("---selectLock PG13 SKIP LOCKED + page---");
+        System.out.println(SqlHelper.buildSelectSql(s5));
+
+        // 6) PostgreSQL 9.4 + SKIP LOCKED（应忽略并告警，无锁子句）
+        Select s6 = new Select();
+        s6.setSqlBeanMeta(pg94);
+        s6.setBeanClass(User.class);
+        s6.column(User::getId);
+        s6.setTable(User.class);
+        s6.forUpdateSkipLocked();
+        System.out.println("---selectLock PG9.4 SKIP LOCKED（应无锁）---");
+        System.out.println(SqlHelper.buildSelectSql(s6));
+
+        // 7) Oracle 19c + SKIP LOCKED + 分页（锁注入最内层）
+        Select s7 = new Select();
+        s7.setSqlBeanMeta(oracle19);
+        s7.setBeanClass(User.class);
+        s7.column(User::getId);
+        s7.setTable(User.class);
+        s7.where().eq(User::getUsername, "jovi");
+        s7.orderByDesc(User::getId);
+        s7.page(0, 10);
+        s7.forUpdateSkipLocked();
+        System.out.println("---selectLock Oracle19 SKIP LOCKED + page（锁在最内层）---");
+        System.out.println(SqlHelper.buildSelectSql(s7));
+
+        // 8) Oracle 10g + SKIP LOCKED（应忽略并告警，无锁子句）
+        Select s8 = new Select();
+        s8.setSqlBeanMeta(oracle10);
+        s8.setBeanClass(User.class);
+        s8.column(User::getId);
+        s8.setTable(User.class);
+        s8.forUpdateSkipLocked();
+        System.out.println("---selectLock Oracle10 SKIP LOCKED（应无锁）---");
+        System.out.println(SqlHelper.buildSelectSql(s8));
+
+        // 9) Oracle 19c + 普通 FOR UPDATE（无分页，锁在末尾）
+        Select s9 = new Select();
+        s9.setSqlBeanMeta(oracle19);
+        s9.setBeanClass(User.class);
+        s9.column(User::getId);
+        s9.setTable(User.class);
+        s9.forUpdate();
+        System.out.println("---selectLock Oracle19 FOR UPDATE（无分页）---");
+        System.out.println(SqlHelper.buildSelectSql(s9));
+
+        // 10) Oracle 19c + SKIP LOCKED（无分页，锁在末尾）
+        Select s10 = new Select();
+        s10.setSqlBeanMeta(oracle19);
+        s10.setBeanClass(User.class);
+        s10.column(User::getId);
+        s10.setTable(User.class);
+        s10.forUpdateSkipLocked();
+        System.out.println("---selectLock Oracle19 SKIP LOCKED（无分页）---");
+        System.out.println(SqlHelper.buildSelectSql(s10));
+
+        // SQL Server 2019 元信息（UPDLOCK / READPAST 表提示全版本支持，无需版本门控）
+        SqlBeanMeta sqlServer = new SqlBeanMeta();
+        sqlServer.setDbType(DbType.SQLServer);
+        sqlServer.setDatabaseMajorVersion(15); // SQL Server 2019
+        sqlServer.setSqlBeanConfig(new SqlBeanConfig());
+
+        // 11) SQL Server 2019 + SKIP LOCKED + 分页（提示注入到内层 FROM，即 key-preserving 位置）
+        Select s11 = new Select();
+        s11.setSqlBeanMeta(sqlServer);
+        s11.setBeanClass(User.class);
+        s11.column(User::getId);
+        s11.setTable(User.class);
+        s11.where().eq(User::getUsername, "jovi");
+        s11.orderByDesc(User::getId);
+        s11.page(0, 10);
+        s11.forUpdateSkipLocked();
+        System.out.println("---selectLock SQLServer2019 SKIP LOCKED + page（提示在最内层 FROM）---");
+        System.out.println(SqlHelper.buildSelectSql(s11));
+
+        // 12) SQL Server 2019 + 普通 FOR UPDATE（无分页，提示在主表名之后）
+        Select s12 = new Select();
+        s12.setSqlBeanMeta(sqlServer);
+        s12.setBeanClass(User.class);
+        s12.column(User::getId);
+        s12.setTable(User.class);
+        s12.where().eq(User::getUsername, "jovi");
+        s12.forUpdate();
+        System.out.println("---selectLock SQLServer2019 FOR UPDATE（无分页）---");
+        System.out.println(SqlHelper.buildSelectSql(s12));
+
+        // 13) SQL Server 2019 + SKIP LOCKED + JOIN（提示同时作用于主表与 join 表）
+        Select s13 = new Select();
+        s13.setSqlBeanMeta(sqlServer);
+        s13.setBeanClass(User.class);
+        s13.column(User::getId);
+        s13.setTable(User.class);
+        s13.join("d_role", "d_user.id = d_role.user_id");
+        s13.forUpdateSkipLocked();
+        System.out.println("---selectLock SQLServer2019 SKIP LOCKED + JOIN（两表均有提示）---");
+        System.out.println(SqlHelper.buildSelectSql(s13));
     }
 
     /**

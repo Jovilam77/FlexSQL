@@ -9,6 +9,7 @@ import cn.vonce.sql.constant.SqlConstant;
 import cn.vonce.sql.enumerate.AlterType;
 import cn.vonce.sql.enumerate.DbType;
 import cn.vonce.sql.enumerate.JavaMapMySqlType;
+import cn.vonce.sql.enumerate.LockType;
 import cn.vonce.sql.exception.SqlBeanException;
 import cn.vonce.sql.uitls.SqlBeanUtil;
 import cn.vonce.sql.uitls.StringUtil;
@@ -16,6 +17,7 @@ import cn.vonce.sql.uitls.StringUtil;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.logging.Logger;
 
 /**
  * Mysql方言
@@ -25,6 +27,8 @@ import java.util.List;
  * @date 2024/4/16 9:41
  */
 public class MysqlDialect extends AbstractDialect<JavaMapMySqlType> {
+
+    private static final Logger logger = Logger.getLogger(MysqlDialect.class.getName());
 
     @Override
     public JavaMapMySqlType getType(Field field) {
@@ -169,6 +173,26 @@ public class MysqlDialect extends AbstractDialect<JavaMapMySqlType> {
         sqlSb.append(pageParam[0]);
         sqlSb.append(SqlConstant.COMMA);
         sqlSb.append(pageParam[1]);
+    }
+
+    @Override
+    public void appendLockClause(StringBuilder sqlSb, Select select) {
+        LockType lockType = select.getLockType();
+        if (lockType == null || lockType == LockType.NONE) {
+            return;
+        }
+        if (lockType == LockType.FOR_UPDATE_SKIP_LOCKED) {
+            // SKIP LOCKED 需 MySQL 8.0+ / MariaDB 10.3+，版本未知（major=0，未做数据库探测）时按已支持处理
+            int major = select.getSqlBeanMeta().getDatabaseMajorVersion();
+            if (major > 0 && major < 8) {
+                logger.warning("当前数据库（" + select.getSqlBeanMeta().getProductName() + " " + major
+                        + "）不支持 SKIP LOCKED（需 MySQL 8.0+/MariaDB 10.3+），已忽略该锁子句");
+                return;
+            }
+            sqlSb.append(SqlConstant.SPACES).append("FOR UPDATE SKIP LOCKED");
+        } else if (lockType == LockType.FOR_UPDATE) {
+            sqlSb.append(SqlConstant.SPACES).append("FOR UPDATE");
+        }
     }
 
     @Override
