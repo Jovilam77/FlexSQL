@@ -347,6 +347,136 @@ public class SqlHelperTest {
         s13.forUpdateSkipLocked();
         System.out.println("---selectLock SQLServer2019 SKIP LOCKED + JOIN（两表均有提示）---");
         System.out.println(SqlHelper.buildSelectSql(s13));
+
+        // H2 2.x（FOR UPDATE / FOR SHARE / NOWAIT / SKIP LOCKED 全支持）
+        SqlBeanMeta h2 = new SqlBeanMeta();
+        h2.setDbType(DbType.H2);
+        h2.setDatabaseMajorVersion(2);
+        h2.setSqlBeanConfig(new SqlBeanConfig());
+
+        // 14) H2 2.x + FOR UPDATE
+        Select s14 = new Select();
+        s14.setSqlBeanMeta(h2);
+        s14.setBeanClass(User.class);
+        s14.column(User::getId);
+        s14.setTable(User.class);
+        s14.forUpdate();
+        System.out.println("---selectLock H2 FOR UPDATE---");
+        System.out.println(SqlHelper.buildSelectSql(s14));
+
+        // 15) H2 2.x + FOR UPDATE SKIP LOCKED
+        Select s15 = new Select();
+        s15.setSqlBeanMeta(h2);
+        s15.setBeanClass(User.class);
+        s15.column(User::getId);
+        s15.setTable(User.class);
+        s15.forUpdateSkipLocked();
+        System.out.println("---selectLock H2 FOR UPDATE SKIP LOCKED---");
+        System.out.println(SqlHelper.buildSelectSql(s15));
+
+        // 16) H2 2.x + FOR SHARE NOWAIT
+        Select s16 = new Select();
+        s16.setSqlBeanMeta(h2);
+        s16.setBeanClass(User.class);
+        s16.column(User::getId);
+        s16.setTable(User.class);
+        s16.forShare().nowait();
+        System.out.println("---selectLock H2 FOR SHARE NOWAIT---");
+        System.out.println(SqlHelper.buildSelectSql(s16));
+
+        // HSQLDB 2.3.3（仅 FOR UPDATE / FOR UPDATE NOWAIT；无 FOR SHARE / SKIP LOCKED）
+        SqlBeanMeta hsql = new SqlBeanMeta();
+        hsql.setDbType(DbType.Hsql);
+        hsql.setDatabaseMajorVersion(2);
+        hsql.setDatabaseMinorVersion(3);
+        hsql.setSqlBeanConfig(new SqlBeanConfig());
+
+        // 17) HSQLDB + FOR UPDATE
+        Select s17 = new Select();
+        s17.setSqlBeanMeta(hsql);
+        s17.setBeanClass(User.class);
+        s17.column(User::getId);
+        s17.setTable(User.class);
+        s17.forUpdate();
+        System.out.println("---selectLock HSQLDB FOR UPDATE---");
+        System.out.println(SqlHelper.buildSelectSql(s17));
+
+        // 18) HSQLDB + FOR UPDATE NOWAIT
+        Select s18 = new Select();
+        s18.setSqlBeanMeta(hsql);
+        s18.setBeanClass(User.class);
+        s18.column(User::getId);
+        s18.setTable(User.class);
+        s18.forUpdate().nowait();
+        System.out.println("---selectLock HSQLDB FOR UPDATE NOWAIT---");
+        System.out.println(SqlHelper.buildSelectSql(s18));
+
+        // 19) HSQLDB + FOR SHARE（应告警并忽略，无锁子句）
+        Select s19 = new Select();
+        s19.setSqlBeanMeta(hsql);
+        s19.setBeanClass(User.class);
+        s19.column(User::getId);
+        s19.setTable(User.class);
+        s19.forShare();
+        System.out.println("---selectLock HSQLDB FOR SHARE（应无锁）---");
+        System.out.println(SqlHelper.buildSelectSql(s19));
+
+        // 20) HSQLDB + FOR UPDATE SKIP LOCKED（应告警并忽略，无锁子句）
+        Select s20 = new Select();
+        s20.setSqlBeanMeta(hsql);
+        s20.setBeanClass(User.class);
+        s20.column(User::getId);
+        s20.setTable(User.class);
+        s20.forUpdateSkipLocked();
+        System.out.println("---selectLock HSQLDB FOR UPDATE SKIP LOCKED（应无锁）---");
+        System.out.println(SqlHelper.buildSelectSql(s20));
+
+        // DB2 11.5（FOR UPDATE；NOWAIT / SKIP LOCKED 需 11.5+，SKIP LOCKED 写作 SKIP LOCKED DATA）
+        SqlBeanMeta db2 = new SqlBeanMeta();
+        db2.setDbType(DbType.DB2);
+        db2.setDatabaseMajorVersion(11);
+        db2.setDatabaseMinorVersion(5);
+        db2.setSqlBeanConfig(new SqlBeanConfig());
+
+        // 21) DB2 + FOR UPDATE
+        Select s21 = new Select();
+        s21.setSqlBeanMeta(db2);
+        s21.setBeanClass(User.class);
+        s21.column(User::getId);
+        s21.setTable(User.class);
+        s21.forUpdate();
+        System.out.println("---selectLock DB2 FOR UPDATE---");
+        System.out.println(SqlHelper.buildSelectSql(s21));
+
+        // 22) DB2 + FOR UPDATE SKIP LOCKED（应转写为 SKIP LOCKED DATA）
+        Select s22 = new Select();
+        s22.setSqlBeanMeta(db2);
+        s22.setBeanClass(User.class);
+        s22.column(User::getId);
+        s22.setTable(User.class);
+        s22.forUpdateSkipLocked();
+        System.out.println("---selectLock DB2 FOR UPDATE SKIP LOCKED（-> SKIP LOCKED DATA）---");
+        System.out.println(SqlHelper.buildSelectSql(s22));
+
+        // 23) DB2 + FOR UPDATE NOWAIT
+        Select s23 = new Select();
+        s23.setSqlBeanMeta(db2);
+        s23.setBeanClass(User.class);
+        s23.column(User::getId);
+        s23.setTable(User.class);
+        s23.forUpdate().nowait();
+        System.out.println("---selectLock DB2 FOR UPDATE NOWAIT---");
+        System.out.println(SqlHelper.buildSelectSql(s23));
+
+        // 24) DB2 + FOR SHARE（应告警并忽略，无锁子句）
+        Select s24 = new Select();
+        s24.setSqlBeanMeta(db2);
+        s24.setBeanClass(User.class);
+        s24.column(User::getId);
+        s24.setTable(User.class);
+        s24.forShare();
+        System.out.println("---selectLock DB2 FOR SHARE（应无锁）---");
+        System.out.println(SqlHelper.buildSelectSql(s24));
     }
 
     /**
@@ -934,6 +1064,9 @@ public class SqlHelperTest {
         SqlBeanMeta sqlite = meta(DbType.SQLite);
         SqlBeanMeta oracle = meta(DbType.Oracle);
         SqlBeanMeta sqlServer = meta(DbType.SQLServer);
+        SqlBeanMeta h2 = meta(DbType.H2);
+        SqlBeanMeta hsql = meta(DbType.Hsql);
+        SqlBeanMeta db2 = meta(DbType.DB2);
 
         // 1) MySQL 单行：onConflict(id) + setAll()
         Upsert<User> u1 = new Upsert<>();
@@ -1059,6 +1192,93 @@ public class SqlHelperTest {
         u13.onConflict(User::getId).setAll();
         System.out.println("---upsert SQLServer 多行 setAll（MERGE）---");
         System.out.println(SqlHelper.buildUpsertSql(u13));
+
+        // 14) H2 单行：onConflict(id) + setAll()（MERGE INTO）
+        Upsert<User> u14 = new Upsert<>();
+        u14.setSqlBeanMeta(h2);
+        u14.setBeanClass(User.class);
+        u14.setBean(sampleUser("10010", "h2a", "H2甲"));
+        u14.onConflict(User::getId).setAll();
+        System.out.println("---upsert H2 单行 setAll（MERGE）---");
+        System.out.println(SqlHelper.buildUpsertSql(u14));
+
+        // 15) H2 单行：onConflict(id) + doNothing()（MERGE 仅保留插入分支）
+        Upsert<User> u15 = new Upsert<>();
+        u15.setSqlBeanMeta(h2);
+        u15.setBeanClass(User.class);
+        u15.setBean(sampleUser("10011", "h2b", "H2乙"));
+        u15.onConflict(User::getId).doNothing();
+        System.out.println("---upsert H2 单行 doNothing（MERGE）---");
+        System.out.println(SqlHelper.buildUpsertSql(u15));
+
+        // 16) H2 多行（Column 模式）：onConflict(id) + setAll()（MERGE USING 表值构造器）
+        Upsert<User> u16 = new Upsert<>();
+        u16.setSqlBeanMeta(h2);
+        u16.setBeanClass(User.class);
+        u16.column(User::getId, User::getUsername, User::getNickname, User::getHeadPortrait, User::getGender, User::getIntegral)
+                .values("20007", "g", "G", "g.png", 1, 70)
+                .values("20008", "h", "H", "h.png", 0, 80);
+        u16.onConflict(User::getId).setAll();
+        System.out.println("---upsert H2 多行 setAll（MERGE）---");
+        System.out.println(SqlHelper.buildUpsertSql(u16));
+
+        // 17) HSQLDB 单行：onConflict(id) + setAll()（MERGE INTO）
+        Upsert<User> u17 = new Upsert<>();
+        u17.setSqlBeanMeta(hsql);
+        u17.setBeanClass(User.class);
+        u17.setBean(sampleUser("10012", "hs1", "HS甲"));
+        u17.onConflict(User::getId).setAll();
+        System.out.println("---upsert HSQLDB 单行 setAll（MERGE）---");
+        System.out.println(SqlHelper.buildUpsertSql(u17));
+
+        // 18) HSQLDB 单行：onConflict(id) + doNothing()（MERGE 仅保留插入分支）
+        Upsert<User> u18 = new Upsert<>();
+        u18.setSqlBeanMeta(hsql);
+        u18.setBeanClass(User.class);
+        u18.setBean(sampleUser("10013", "hs2", "HS乙"));
+        u18.onConflict(User::getId).doNothing();
+        System.out.println("---upsert HSQLDB 单行 doNothing（MERGE）---");
+        System.out.println(SqlHelper.buildUpsertSql(u18));
+
+        // 19) HSQLDB 多行（Column 模式）：onConflict(id) + setAll()（MERGE USING 表值构造器）
+        Upsert<User> u19 = new Upsert<>();
+        u19.setSqlBeanMeta(hsql);
+        u19.setBeanClass(User.class);
+        u19.column(User::getId, User::getUsername, User::getNickname, User::getHeadPortrait, User::getGender, User::getIntegral)
+                .values("20009", "i", "I", "i.png", 1, 90)
+                .values("20010", "j", "J", "j.png", 0, 100);
+        u19.onConflict(User::getId).setAll();
+        System.out.println("---upsert HSQLDB 多行 setAll（MERGE）---");
+        System.out.println(SqlHelper.buildUpsertSql(u19));
+
+        // 20) DB2 单行：onConflict(id) + setAll()（MERGE INTO）
+        Upsert<User> u20 = new Upsert<>();
+        u20.setSqlBeanMeta(db2);
+        u20.setBeanClass(User.class);
+        u20.setBean(sampleUser("10014", "db1", "DB甲"));
+        u20.onConflict(User::getId).setAll();
+        System.out.println("---upsert DB2 单行 setAll（MERGE）---");
+        System.out.println(SqlHelper.buildUpsertSql(u20));
+
+        // 21) DB2 单行：onConflict(id) + doNothing()（MERGE 仅保留插入分支）
+        Upsert<User> u21 = new Upsert<>();
+        u21.setSqlBeanMeta(db2);
+        u21.setBeanClass(User.class);
+        u21.setBean(sampleUser("10015", "db2", "DB乙"));
+        u21.onConflict(User::getId).doNothing();
+        System.out.println("---upsert DB2 单行 doNothing（MERGE）---");
+        System.out.println(SqlHelper.buildUpsertSql(u21));
+
+        // 22) DB2 多行（Column 模式）：onConflict(id) + setAll()（MERGE USING 表值构造器）
+        Upsert<User> u22 = new Upsert<>();
+        u22.setSqlBeanMeta(db2);
+        u22.setBeanClass(User.class);
+        u22.column(User::getId, User::getUsername, User::getNickname, User::getHeadPortrait, User::getGender, User::getIntegral)
+                .values("20011", "k", "K", "k.png", 1, 110)
+                .values("20012", "l", "L", "l.png", 0, 120);
+        u22.onConflict(User::getId).setAll();
+        System.out.println("---upsert DB2 多行 setAll（MERGE）---");
+        System.out.println(SqlHelper.buildUpsertSql(u22));
     }
 
     /**

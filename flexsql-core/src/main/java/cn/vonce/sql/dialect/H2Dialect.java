@@ -2,18 +2,25 @@ package cn.vonce.sql.dialect;
 
 import cn.vonce.sql.annotation.SqlJSON;
 import cn.vonce.sql.bean.Alter;
+import cn.vonce.sql.bean.Column;
 import cn.vonce.sql.bean.Select;
+import cn.vonce.sql.bean.Upsert;
 import cn.vonce.sql.config.SqlBeanMeta;
 import cn.vonce.sql.constant.SqlConstant;
 import cn.vonce.sql.enumerate.AlterType;
 import cn.vonce.sql.enumerate.JavaMapH2Type;
+import cn.vonce.sql.enumerate.LockType;
+import cn.vonce.sql.enumerate.LockWaitMode;
 import cn.vonce.sql.exception.SqlBeanException;
+import cn.vonce.sql.helper.SqlHelper;
 import cn.vonce.sql.uitls.SqlBeanUtil;
 import cn.vonce.sql.uitls.StringUtil;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.logging.Logger;
 
 /**
  * H2方言
@@ -23,6 +30,8 @@ import java.util.List;
  * @date 2024/4/16 10:17
  */
 public class H2Dialect extends AbstractDialect<JavaMapH2Type> {
+
+    private static final Logger logger = Logger.getLogger(H2Dialect.class.getName());
 
     @Override
     public JavaMapH2Type getType(Field field) {
@@ -209,6 +218,132 @@ public class H2Dialect extends AbstractDialect<JavaMapH2Type> {
     @Override
     public String getDropSchemaSql(SqlBeanMeta sqlBeanMeta, String schemaName) {
         return "DROP SCHEMA IF EXISTS " + this.getSchemaName(sqlBeanMeta, schemaName);
+    }
+
+    @Override
+    public boolean useMergeForUpsert() {
+        return true;
+    }
+
+    /**
+     * 追加行锁子句（H2 2.x 支持 FOR UPDATE / FOR SHARE / NOWAIT / SKIP LOCKED）。
+     * <p>
+     * H2 1.x 仅支持 {@code FOR UPDATE}（FOR SHARE 用旧式 {@code SHARE MODE}），高级锁特性需 2.0+。
+     * 版本未知（major=0）时按已支持处理。
+     *
+     * @param sqlSb  SQL 构建器
+     * @param select 查询对象
+     */
+    @Override
+    public void appendLockClause(StringBuilder sqlSb, Select select) {
+        LockType lockType = select.getLockType();
+        if (lockType == null || lockType == LockType.NONE) {
+            return;
+        }
+        int major = select.getSqlBeanMeta().getDatabaseMajorVersion();
+        // H2 2.0+ 支持 FOR SHARE / NOWAIT / SKIP LOCKED；1.x 仅 FOR UPDATE
+        String base;
+        if (lockType == LockType.FOR_UPDATE) {
+            base = "FOR UPDATE";
+        } else if (lockType == LockType.FOR_SHARE) {
+            if (major > 0 && major < 2) {
+                logger.warning("当前数据库（" + select.getSqlBeanMeta().getDbType().name() + " " + major
+                        + "）不支持 FOR SHARE（需 H2 2.0+），已忽略该锁子句");
+                return;
+            }
+            base = "FOR SHARE";
+        } else {
+            return;
+        }
+        StringBuilder lockSb = new StringBuilder();
+        lockSb.append(SqlConstant.SPACES).append(base);
+        // OF 表限制：仅锁定指定表（多表 JOIN 场景）
+        List<String> ofTables = select.getLockOfTables();
+        if (ofTables != null && !ofTables.isEmpty()) {
+            lockSb.append(" OF ").append(String.join(", ", ofTables));
+        }
+        // 等待模式
+        LockWaitMode waitMode = select.getLockWaitMode();
+        if (waitMode == LockWaitMode.NOWAIT) {
+            if (major > 0 && major < 2) {
+                logger.warning("当前数据库（" + select.getSqlBeanMeta().getDbType().name() + " " + major
+                        + "）不支持 NOWAIT（需 H2 2.0+），已忽略该锁子句");
+                return;
+            }
+            lockSb.append(" NOWAIT");
+        } else if (waitMode == LockWaitMode.SKIP_LOCKED) {
+            if (major > 0 && major < 2) {
+                logger.warning("当前数据库（" + select.getSqlBeanMeta().getDbType().name() + " " + major
+                        + "）不支持 SKIP LOCKED（需 H2 2.0+），已忽略该锁子句");
+                return;
+            }
+            lockSb.append(" SKIP LOCKED");
+        }
+        sqlSb.append(lockSb);
+    }
+
+    /**
+     * 构造 H2 的 UPSERT（以 MERGE INTO 实现）。
+     * <p>
+     * H2 支持标准 {@code MERGE INTO t T USING (VALUES (...),(...)) AS SRC (cols) ON (...) ...} 语法，
+     * 与 SQL Server 同构，直接复用 {@link SqlHelper#buildMergeSql} 公共辅助。
+     *
+     * @param upsert      UPSERT 对象
+     * @param tableName   目标表名（已按本方言格式化）
+     * @param fieldNames  已转义的列名列表
+     * @param valueRows   每行值表达式列表，元素形如 {@code (v1, v2, ...)}
+     * @param valueCells  每行的值单元列表（与 fieldNames 一一对应）
+     * @return 完整 MERGE SQL；无法生成（如缺匹配列）时返回 null 交由调用方降级
+     */
+    @Override
+    public String buildMergeSql(Upsert<?> upsert, String tableName, List<String> fieldNames,
+                                List<String> valueRows, List<List<String>> valueCells) {
+        String escape = SqlBeanUtil.getEscape(upsert);
+        boolean toUpper = SqlBeanUtil.isToUpperCase(upsert);
+        // 构造 USING 源：表值构造器 (VALUES (cells), ...) AS SRC (fieldNames)
+        StringBuilder sourceSql = new StringBuilder();
+        sourceSql.append(SqlConstant.BEGIN_BRACKET).append(SqlConstant.VALUES)
+                .append(String.join(SqlConstant.COMMA, valueRows))
+                .append(SqlConstant.END_BRACKET).append(SqlConstant.SPACES).append("AS SRC").append(SqlConstant.SPACES);
+        sourceSql.append(SqlConstant.BEGIN_BRACKET);
+        sourceSql.append(String.join(SqlConstant.COMMA, fieldNames));
+        sourceSql.append(SqlConstant.END_BRACKET);
+        String onClause = buildMergeOnClause(upsert, escape, toUpper);
+        if (onClause == null) {
+            return null;
+        }
+        return SqlHelper.buildMergeSql(upsert, tableName, fieldNames, sourceSql.toString(), onClause);
+    }
+
+    /**
+     * 构造 MERGE 的 ON 匹配条件（T.col = SRC.col）。
+     * 优先使用 {@code onConflict} 指定的列；未指定时回退到实体类主键。
+     *
+     * @return ON 条件文本（如 T."id" = SRC."id"）；无可用匹配列时返回 null
+     */
+    private String buildMergeOnClause(Upsert<?> upsert, String escape, boolean toUpper) {
+        List<Column> conflict = upsert.getConflictColumns();
+        if (conflict == null || conflict.isEmpty()) {
+            // 未显式指定冲突列，回退到主键
+            try {
+                Field idField = SqlBeanUtil.getIdField(upsert.getBeanClass());
+                conflict = Collections.singletonList(SqlBeanUtil.getColumnByField(idField, upsert.getBeanClass()));
+            } catch (SqlBeanException e) {
+                logger.warning("UPSERT 未指定 onConflict 且无法解析主键，无法生成 MERGE 的 ON 匹配条件（" + e.getMessage() + "），已降级为普通 INSERT");
+                return null;
+            }
+        }
+        StringBuilder on = new StringBuilder();
+        for (int i = 0; i < conflict.size(); i++) {
+            String col = escape + conflict.get(i).getName(toUpper) + escape;
+            on.append("T").append(SqlConstant.POINT).append(col)
+                    .append(SqlConstant.EQUAL_TO)
+                    .append("SRC").append(SqlConstant.POINT).append(col);
+            if (i < conflict.size() - 1) {
+                on.append(SqlConstant.AND);
+            }
+        }
+        return on.toString();
     }
 
 }
