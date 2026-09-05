@@ -335,7 +335,7 @@ public class OracleDialect extends AbstractDialect<JavaMapOracleType> {
                     sourceSql.append(SqlConstant.COMMA);
                 }
             }
-            sourceSql.append(SqlConstant.SELECT_DUAL);
+            sourceSql.append(SqlConstant.FROM_DUAL);
         }
         // ON 匹配条件：冲突列优先，否则回退主键
         String onClause = buildMergeOnClause(upsert, escape, toUpper);

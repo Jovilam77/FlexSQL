@@ -109,6 +109,7 @@ public class SqlConstant {
     public static final String INSERT_ALL_INTO = "INSERT ALL INTO ";
     public static final String INTO = " INTO ";
     public static final String SELECT_DUAL = " SELECT 1 FROM DUAL ";
+    public static final String FROM_DUAL = " FROM DUAL";
 
     public static final String OFFSET = " OFFSET ";
     public static final String ROWNUMBER = " ROWNUMBER() ";
