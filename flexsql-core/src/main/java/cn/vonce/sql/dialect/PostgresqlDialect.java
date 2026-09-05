@@ -2,9 +2,11 @@ package cn.vonce.sql.dialect;
 
 import cn.vonce.sql.annotation.SqlJSON;
 import cn.vonce.sql.bean.Alter;
+import cn.vonce.sql.bean.Column;
 import cn.vonce.sql.bean.ColumnInfo;
 import cn.vonce.sql.bean.Select;
 import cn.vonce.sql.bean.Table;
+import cn.vonce.sql.bean.Upsert;
 import cn.vonce.sql.config.SqlBeanMeta;
 import cn.vonce.sql.constant.SqlConstant;
 import cn.vonce.sql.enumerate.AlterType;
@@ -13,6 +15,7 @@ import cn.vonce.sql.enumerate.JdbcType;
 import cn.vonce.sql.enumerate.LockType;
 import cn.vonce.sql.enumerate.LockWaitMode;
 import cn.vonce.sql.exception.SqlBeanException;
+import cn.vonce.sql.helper.SqlHelper;
 import cn.vonce.sql.uitls.SqlBeanUtil;
 import cn.vonce.sql.uitls.StringUtil;
 
@@ -279,6 +282,46 @@ public class PostgresqlDialect extends AbstractDialect<JavaMapPostgresqlType> {
             lockSb.append(waitMode == LockWaitMode.NOWAIT ? " NOWAIT" : " SKIP LOCKED");
         }
         sqlSb.append(lockSb);
+    }
+
+    @Override
+    public void appendUpsertSuffix(StringBuilder sqlSb, Upsert<?> upsert, List<String> fieldNames, List<String> valueRows) {
+        String escape = SqlBeanUtil.getEscape(upsert);
+        boolean toUpper = SqlBeanUtil.isToUpperCase(upsert);
+        if (upsert.isDoNothing()) {
+            sqlSb.append(SqlConstant.ON_CONFLICT);
+            if (upsert.getConflictColumns() != null && !upsert.getConflictColumns().isEmpty()) {
+                sqlSb.append(SqlConstant.BEGIN_BRACKET)
+                        .append(String.join(SqlConstant.COMMA, escapeConflict(upsert, escape, toUpper)))
+                        .append(SqlConstant.END_BRACKET);
+            }
+            sqlSb.append(SqlConstant.DO_NOTHING);
+            return;
+        }
+        if (upsert.getConflictColumns() == null || upsert.getConflictColumns().isEmpty()) {
+            logger.warning("PostgreSQL 的 ON CONFLICT DO UPDATE 必须指定冲突列（onConflict），已忽略 UPSERT 后缀，降级为普通 INSERT");
+            return;
+        }
+        List<String> assigns = SqlHelper.buildUpsertAssignments(upsert, fieldNames, "",
+                col -> SqlConstant.EXCLUDED + SqlConstant.POINT + col);
+        if (assigns.isEmpty()) {
+            logger.warning("UPSERT 未指定任何更新项，PostgreSQL 下已忽略 DO UPDATE，降级为普通 INSERT");
+            return;
+        }
+        sqlSb.append(SqlConstant.ON_CONFLICT);
+        sqlSb.append(SqlConstant.BEGIN_BRACKET)
+                .append(String.join(SqlConstant.COMMA, escapeConflict(upsert, escape, toUpper)))
+                .append(SqlConstant.END_BRACKET);
+        sqlSb.append(SqlConstant.DO_UPDATE_SET);
+        sqlSb.append(String.join(SqlConstant.COMMA, assigns));
+    }
+
+    private static List<String> escapeConflict(Upsert<?> upsert, String escape, boolean toUpper) {
+        List<String> list = new ArrayList<>();
+        for (Column c : upsert.getConflictColumns()) {
+            list.add(escape + c.getName(toUpper) + escape);
+        }
+        return list;
     }
 
     @Override

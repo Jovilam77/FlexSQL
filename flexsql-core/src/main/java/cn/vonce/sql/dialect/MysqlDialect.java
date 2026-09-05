@@ -4,6 +4,7 @@ import cn.vonce.sql.annotation.SqlJSON;
 import cn.vonce.sql.bean.Alter;
 import cn.vonce.sql.bean.Select;
 import cn.vonce.sql.bean.Table;
+import cn.vonce.sql.bean.Upsert;
 import cn.vonce.sql.config.SqlBeanMeta;
 import cn.vonce.sql.constant.SqlConstant;
 import cn.vonce.sql.enumerate.AlterType;
@@ -12,6 +13,7 @@ import cn.vonce.sql.enumerate.JavaMapMySqlType;
 import cn.vonce.sql.enumerate.LockType;
 import cn.vonce.sql.enumerate.LockWaitMode;
 import cn.vonce.sql.exception.SqlBeanException;
+import cn.vonce.sql.helper.SqlHelper;
 import cn.vonce.sql.uitls.SqlBeanUtil;
 import cn.vonce.sql.uitls.StringUtil;
 
@@ -222,6 +224,22 @@ public class MysqlDialect extends AbstractDialect<JavaMapMySqlType> {
             lockSb.append(" SKIP LOCKED");
         }
         sqlSb.append(lockSb);
+    }
+
+    @Override
+    public void appendUpsertSuffix(StringBuilder sqlSb, Upsert<?> upsert, List<String> fieldNames, List<String> valueRows) {
+        if (upsert.isDoNothing()) {
+            // MySQL 无原生 DO NOTHING，已在 SqlHelper.buildUpsertSql 中切换为 INSERT IGNORE，此处不再追加后缀
+            return;
+        }
+        List<String> assigns = SqlHelper.buildUpsertAssignments(upsert, fieldNames, "",
+                col -> SqlConstant.VALUES_FUNC + SqlConstant.BEGIN_BRACKET + col + SqlConstant.END_BRACKET);
+        if (assigns.isEmpty()) {
+            logger.warning("UPSERT 未指定任何更新项（setAll/set/doNothing），MySQL 下已忽略 ON DUPLICATE KEY UPDATE，降级为普通 INSERT");
+            return;
+        }
+        sqlSb.append(SqlConstant.ON_DUPLICATE_KEY_UPDATE);
+        sqlSb.append(String.join(SqlConstant.COMMA, assigns));
     }
 
     @Override

@@ -14,6 +14,7 @@ import cn.vonce.sql.uitls.SqlBeanUtil;
 
 import java.lang.reflect.Field;
 import java.util.*;
+import java.util.function.Function;
 import java.util.logging.Logger;
 
 /**
@@ -469,7 +470,7 @@ public class SqlHelper {
         StringBuilder sql = new StringBuilder();
         appendInsertPrefix(sql, insert, objectList);
         StringBuilder fieldSql = new StringBuilder();
-        List<String> valueSqlList = buildInsertValues(insert, objectList, fieldList, fieldSql);
+        List<String> valueSqlList = buildInsertValues(insert, objectList, fieldList, fieldSql, null, null);
         assembleInsertBody(sql, tableName, fieldSql, valueSqlList, insert, objectList);
         return sql.toString();
     }
@@ -487,16 +488,19 @@ public class SqlHelper {
 
     /**
      * 构建字段SQL和值SQL列表（选择Bean模式或Column模式）
+     * <p>
+     * fieldNames / valueCells 可为 null：传入时分别收集「已转义列名列表」与「每行值单元列表」，供 UPSERT 复用。
      */
     private static List<String> buildInsertValues(Insert insert, List<?> objectList,
-                                                  List<Field> fieldList, StringBuilder fieldSql) {
+                                                  List<Field> fieldList, StringBuilder fieldSql,
+                                                  List<String> fieldNames, List<List<String>> valueCells) {
         StringBuilder valueSql = new StringBuilder();
         List<String> valueSqlList = new ArrayList<>();
         if (objectList != null && !objectList.isEmpty()) {
             SqlTable sqlTable = SqlBeanUtil.getSqlTable(insert.getBeanClass());
-            buildBeanValues(insert, objectList, fieldList, sqlTable, fieldSql, valueSql, valueSqlList);
+            buildBeanValues(insert, objectList, fieldList, sqlTable, fieldSql, valueSql, valueSqlList, fieldNames, valueCells);
         } else {
-            buildColumnValues(insert, fieldSql, valueSql, valueSqlList);
+            buildColumnValues(insert, fieldSql, valueSql, valueSqlList, fieldNames, valueCells);
         }
         return valueSqlList;
     }
@@ -506,10 +510,12 @@ public class SqlHelper {
      */
     private static void buildBeanValues(Insert insert, List<?> objectList, List<Field> fieldList,
                                         SqlTable sqlTable, StringBuilder fieldSql,
-                                        StringBuilder valueSql, List<String> valueSqlList) {
+                                        StringBuilder valueSql, List<String> valueSqlList,
+                                        List<String> fieldNames, List<List<String>> valueCells) {
         for (int i = 0; i < objectList.size(); i++) {
             //每次必须清空
             valueSql.delete(0, valueSql.length());
+            List<String> rowCells = valueCells != null ? new ArrayList<>() : null;
             //只有在循环第一遍的时候才会处理
             if (i == 0) {
                 fieldSql.append(SqlConstant.BEGIN_BRACKET);
@@ -537,6 +543,9 @@ public class SqlHelper {
                     if (sqlId == null || (sqlId != null && sqlId.type() != IdType.AUTO)) {
                         fieldSql.append(tableFieldName);
                         fieldSql.append(SqlConstant.COMMA);
+                        if (fieldNames != null) {
+                            fieldNames.add(tableFieldName);
+                        }
                     }
                 }
                 if (sqlId != null && sqlId.type() == IdType.AUTO) {
@@ -546,29 +555,37 @@ public class SqlHelper {
                 if (sqlJSON != null) {
                     value = SqlBeanUtil.getJSONValue(sqlJSON, value);
                 }
+                String cell;
                 //如果此字段为id且需要生成唯一id
                 if (sqlId != null && sqlId.type() != IdType.AUTO && sqlId.type() != IdType.NORMAL) {
                     if (StringUtil.isEmpty(value)) {
                         value = insert.getSqlBeanMeta().getSqlBeanConfig().getUniqueIdProcessor().uniqueId(sqlId.type());
                         ReflectUtil.instance().set(objectList.get(i).getClass(), objectList.get(i), field.getName(), value);
                     }
-                    valueSql.append(SqlBeanUtil.getSqlValue(insert, value, jdbcType));
+                    cell = SqlBeanUtil.getSqlValue(insert, value, jdbcType);
                 } else if (field.isAnnotationPresent(SqlLogically.class) && value == null) {
                     //如果标识逻辑删除的字段为空则自动填充
                     Object defaultValue = SqlBeanUtil.assignInitialValue(SqlBeanUtil.getEntityClassFieldType(field));
-                    valueSql.append(SqlBeanUtil.getSqlValue(insert, defaultValue, jdbcType));
+                    cell = SqlBeanUtil.getSqlValue(insert, defaultValue, jdbcType);
                     ReflectUtil.instance().set(objectList.get(i).getClass(), objectList.get(i), field.getName(), field.getType() == Boolean.class || field.getType() == boolean.class ? false : 0);
                 } else if (value == null && sqlDefaultValue != null && (sqlDefaultValue.with() == FillWith.INSERT || sqlDefaultValue.with() == FillWith.TOGETHER)) {
                     Object defaultValue = SqlHelper.setDefaultValue(objectList.get(i).getClass(), objectList.get(i), field);
-                    valueSql.append(SqlBeanUtil.getSqlValue(insert, defaultValue, jdbcType));
+                    cell = SqlBeanUtil.getSqlValue(insert, defaultValue, jdbcType);
                 } else {
-                    valueSql.append(SqlBeanUtil.getSqlValue(insert, value, jdbcType));
+                    cell = SqlBeanUtil.getSqlValue(insert, value, jdbcType);
                 }
+                valueSql.append(cell);
                 valueSql.append(SqlConstant.COMMA);
+                if (rowCells != null) {
+                    rowCells.add(cell);
+                }
             }
             valueSql.deleteCharAt(valueSql.length() - SqlConstant.COMMA.length());
             valueSql.append(SqlConstant.END_BRACKET);
             valueSqlList.add(valueSql.toString());
+            if (rowCells != null) {
+                valueCells.add(rowCells);
+            }
             //只有在循环第一遍的时候才会处理
             if (i == 0) {
                 fieldSql.deleteCharAt(fieldSql.length() - SqlConstant.COMMA.length());
@@ -581,7 +598,8 @@ public class SqlHelper {
      * Column模式：从显式指定的列和值列表构建字段SQL和值SQL
      */
     private static void buildColumnValues(Insert insert, StringBuilder fieldSql,
-                                          StringBuilder valueSql, List<String> valueSqlList) {
+                                          StringBuilder valueSql, List<String> valueSqlList,
+                                          List<String> fieldNames, List<List<String>> valueCells) {
         List<Column> columnList = insert.getColumnList();
         List<List<Object>> valuesList = insert.getValuesList();
         if (columnList == null || columnList.size() == 0) {
@@ -592,7 +610,11 @@ public class SqlHelper {
         }
         fieldSql.append(SqlConstant.BEGIN_BRACKET);
         for (int i = 0; i < columnList.size(); i++) {
-            fieldSql.append(SqlBeanUtil.getTableFieldName(insert, columnList.get(i).getName()));
+            String tableFieldName = SqlBeanUtil.getTableFieldName(insert, columnList.get(i).getName());
+            fieldSql.append(tableFieldName);
+            if (fieldNames != null) {
+                fieldNames.add(tableFieldName);
+            }
             if (i < columnList.size() - 1) {
                 fieldSql.append(SqlConstant.COMMA);
             }
@@ -605,16 +627,183 @@ public class SqlHelper {
             if (valueList.size() != columnList.size()) {
                 throw new SqlBeanException("指定Insert的value数量与column数量不一致");
             }
+            List<String> rowCells = valueCells != null ? new ArrayList<>() : null;
             valueSql.append(SqlConstant.BEGIN_BRACKET);
             for (int j = 0; j < valueList.size(); j++) {
-                valueSql.append(SqlBeanUtil.getSqlValue(insert, valueList.get(j)));
+                String cell = SqlBeanUtil.getSqlValue(insert, valueList.get(j));
+                valueSql.append(cell);
+                if (rowCells != null) {
+                    rowCells.add(cell);
+                }
                 if (j < columnList.size() - 1) {
                     valueSql.append(SqlConstant.COMMA);
                 }
             }
             valueSql.append(SqlConstant.END_BRACKET);
             valueSqlList.add(valueSql.toString());
+            if (rowCells != null) {
+                valueCells.add(rowCells);
+            }
         }
+    }
+
+    /**
+     * UPSERT 解析结果（字段名与值单元），供 INSERT 系方言后缀与 MERGE 系方言整句构造复用
+     */
+    private static class InsertParts {
+        String tableName;
+        List<String> fieldNames;          // 已按方言转义的列名
+        List<String> valueRows;           // 每行值表达式，元素形如 (v1, v2, ...)
+        List<List<String>> valueCells;    // 每行的值单元列表（MERGE 源构造用）
+    }
+
+    /**
+     * 解析 UPSERT 的字段名与值（复用 INSERT 的字段/值构建逻辑）
+     */
+    private static InsertParts buildUpsertParts(Upsert<?> upsert) {
+        InsertParts parts = new InsertParts();
+        // 解析目标表名：优先取显式 setTable，未设置时回退到实体类 @SqlTable 注解
+        Table table = upsert.getTable();
+        if (table == null || StringUtil.isEmpty(table.getName())) {
+            table = SqlBeanUtil.getTable(upsert.getBeanClass());
+        }
+        parts.tableName = SqlBeanUtil.getTableName(table, upsert);
+        List<?> objectList = upsert.getBean();
+        List<Field> fieldList = objectList != null && !objectList.isEmpty()
+                ? SqlBeanUtil.getBeanAllField(upsert.getBeanClass()) : null;
+        StringBuilder fieldSql = new StringBuilder();
+        parts.fieldNames = new ArrayList<>();
+        parts.valueCells = new ArrayList<>();
+        parts.valueRows = buildInsertValues(upsert, objectList, fieldList, fieldSql, parts.fieldNames, parts.valueCells);
+        return parts;
+    }
+
+    /**
+     * 生成 UPSERT（存在则更新，不存在则插入）SQL 语句
+     * <p>
+     * 按方言分派：
+     * - INSERT 系（MySQL / PostgreSQL / SQLite）：{@code INSERT ...} + {@code appendUpsertSuffix} 后缀；
+     * - MERGE 系（Oracle / SQL Server）：由 {@code buildMergeSql} 直接产出完整 MERGE 语句。
+     *
+     * @param upsert UPSERT 对象
+     * @return UPSERT SQL
+     */
+    public static String buildUpsertSql(Upsert<?> upsert) {
+        SqlBeanUtil.check(upsert);
+        InsertParts parts = buildUpsertParts(upsert);
+        DbType dbType = upsert.getSqlBeanMeta().getDbType();
+        SqlDialect dialect = dbType.getSqlDialect();
+
+        if (dialect.useMergeForUpsert()) {
+            String mergeSql = dialect.buildMergeSql(upsert, parts.tableName, parts.fieldNames, parts.valueRows, parts.valueCells);
+            if (mergeSql != null) {
+                return mergeSql;
+            }
+            // 方言未实现 MERGE 时降级为普通 INSERT，避免产生无效 SQL
+            logger.warning("方言 " + dbType.name() + " 声明使用 MERGE 但未实现 buildMergeSql，UPSERT 降级为普通 INSERT");
+        }
+
+        // INSERT 系方言：INSERT INTO t (cols) VALUES (...)[, (...)] + 后缀
+        StringBuilder sql = new StringBuilder();
+        boolean doNothing = upsert.isDoNothing();
+        if ((dbType == DbType.MySQL || dbType == DbType.MariaDB) && doNothing) {
+            // MySQL 无 DO NOTHING，用 INSERT IGNORE 表达「冲突则跳过」
+            sql.append("INSERT IGNORE INTO ");
+        } else {
+            sql.append(SqlConstant.INSERT_INTO);
+        }
+        sql.append(parts.tableName);
+        sql.append(SqlConstant.BEGIN_BRACKET);
+        sql.append(String.join(SqlConstant.COMMA, parts.fieldNames));
+        sql.append(SqlConstant.END_BRACKET);
+        sql.append(SqlConstant.VALUES);
+        sql.append(String.join(SqlConstant.COMMA, parts.valueRows));
+        dialect.appendUpsertSuffix(sql, upsert, parts.fieldNames, parts.valueRows);
+        return sql.toString();
+    }
+
+    /**
+     * 构建 UPSERT 冲突时的更新赋值片段（形如 "col = expr"，未用逗号连接）。
+     * <p>
+     * 三种来源的赋值都会被纳入：
+     * - 字面量：{@code set(col, value)} → {@code targetPrefix + col = <value>}
+     * - 引用待插入值：{@code setAll()}（排除冲突列）/ {@code set(col)} → {@code targetPrefix + col = refExpr(col)}
+     *
+     * @param upsert       UPSERT 对象
+     * @param fieldNames   已转义列名（用于 setAll 排除冲突列的判断）
+     * @param targetPrefix 更新目标前缀（INSERT 系为空串；MERGE 系为 "T." 等）
+     * @param refExpr      引用「待插入值」的表达式生成器（传入已转义列名，返回如 VALUES(col) / EXCLUDED.col / SRC.col）
+     * @return 赋值片段列表
+     */
+    public static List<String> buildUpsertAssignments(Upsert<?> upsert, List<String> fieldNames,
+                                              String targetPrefix, Function<String, String> refExpr) {
+        List<String> assigns = new ArrayList<>();
+        String escape = SqlBeanUtil.getEscape(upsert);
+        boolean toUpper = SqlBeanUtil.isToUpperCase(upsert);
+        // 1) 显式字面量赋值
+        for (SetInfo setInfo : upsert.getUpdateSetList()) {
+            String col = escape + setInfo.getName(toUpper) + escape;
+            Object val = SqlBeanUtil.getActualValue(upsert, setInfo.getValue());
+            assigns.add(targetPrefix + col + SqlConstant.EQUAL_TO + val);
+        }
+        // 2) 需以「待插入值」更新的列
+        Set<String> refCols = new LinkedHashSet<>();
+        if (upsert.isUpdateAll()) {
+            List<String> conflictEscaped = new ArrayList<>();
+            for (Column c : upsert.getConflictColumns()) {
+                conflictEscaped.add(escape + c.getName(toUpper) + escape);
+            }
+            for (String f : fieldNames) {
+                if (!conflictEscaped.contains(f)) {
+                    refCols.add(f);
+                }
+            }
+        }
+        for (Column c : upsert.getReferenceColumns()) {
+            refCols.add(escape + c.getName(toUpper) + escape);
+        }
+        for (String f : refCols) {
+            assigns.add(targetPrefix + f + SqlConstant.EQUAL_TO + refExpr.apply(f));
+        }
+        return assigns;
+    }
+
+    /**
+     * 组装完整 MERGE 语句（Oracle / SQL Server 等 MERGE 系方言通用）。
+     * <p>
+     * sourceSql 已是完整的 USING 源表达式（含别名），由方言自行构造。
+     *
+     * @param upsert      UPSERT 对象（用于判断是否 doNothing / 取更新项）
+     * @param tableName   目标表名
+     * @param fieldNames  已转义列名
+     * @param sourceSql   USING 源表达式（含别名）
+     * @param onClause    ON 匹配条件（如 T."id" = SRC."id"）
+     * @return 完整 MERGE SQL
+     */
+    public static String buildMergeSql(Upsert<?> upsert, String tableName, List<String> fieldNames,
+                               String sourceSql, String onClause) {
+        StringBuilder sql = new StringBuilder();
+        sql.append(SqlConstant.MERGE_INTO).append(tableName).append(SqlConstant.SPACES).append("T")
+                .append(SqlConstant.USING).append(SqlConstant.BEGIN_BRACKET).append(sourceSql).append(SqlConstant.END_BRACKET);
+        sql.append(SqlConstant.ON).append(SqlConstant.BEGIN_BRACKET).append(onClause).append(SqlConstant.END_BRACKET);
+        // WHEN MATCHED THEN UPDATE SET ...
+        if (!upsert.isDoNothing()) {
+            List<String> assigns = buildUpsertAssignments(upsert, fieldNames, "T" + SqlConstant.POINT,
+                    col -> "SRC" + SqlConstant.POINT + col);
+            if (!assigns.isEmpty()) {
+                sql.append(SqlConstant.WHEN_MATCHED).append(String.join(SqlConstant.COMMA, assigns));
+            }
+        }
+        // WHEN NOT MATCHED THEN INSERT (fields) VALUES (SRC.f, ...)
+        sql.append(SqlConstant.WHEN_NOT_MATCHED).append(SqlConstant.BEGIN_BRACKET)
+                .append(String.join(SqlConstant.COMMA, fieldNames)).append(SqlConstant.END_BRACKET)
+                .append(SqlConstant.VALUES).append(SqlConstant.BEGIN_BRACKET);
+        List<String> insertVals = new ArrayList<>();
+        for (String f : fieldNames) {
+            insertVals.add("SRC" + SqlConstant.POINT + f);
+        }
+        sql.append(String.join(SqlConstant.COMMA, insertVals)).append(SqlConstant.END_BRACKET);
+        return sql.toString();
     }
 
     /**

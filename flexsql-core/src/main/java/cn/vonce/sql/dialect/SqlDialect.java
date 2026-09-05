@@ -3,6 +3,7 @@ package cn.vonce.sql.dialect;
 import cn.vonce.sql.bean.Alter;
 import cn.vonce.sql.bean.Cte;
 import cn.vonce.sql.bean.Select;
+import cn.vonce.sql.bean.Upsert;
 import cn.vonce.sql.config.SqlBeanMeta;
 import cn.vonce.sql.enumerate.JdbcType;
 import cn.vonce.sql.exception.SqlBeanException;
@@ -248,6 +249,55 @@ public interface SqlDialect<T> {
         cteSb.append(" ");
         // 前置于 0：保证 CTE 位于 SELECT 关键字之前，且在 SQL Server 分页外层包裹（SELECT ALL FROM (）之外
         sqlSb.insert(0, cteSb);
+    }
+
+    /**
+     * 该方言是否使用 MERGE 语法实现 UPSERT（而非 INSERT ... ON CONFLICT / ON DUPLICATE KEY）。
+     * <p>
+     * Oracle / SQL Server 没有 INSERT ... ON CONFLICT 语法，需要用 {@code MERGE INTO ...} 表达，重写为 true；
+     * MySQL / PostgreSQL / SQLite 等用 INSERT 系语法，保持默认 false（由 {@link #appendUpsertSuffix} 追加后缀）。
+     *
+     * @return 是否使用 MERGE 语法
+     */
+    default boolean useMergeForUpsert() {
+        return false;
+    }
+
+    /**
+     * 追加 UPSERT 后缀（INSERT 系方言：MySQL / PostgreSQL / SQLite）。
+     * <p>
+     * 由 {@link cn.vonce.sql.helper.SqlHelper#buildUpsertSql} 在拼好
+     * {@code INSERT INTO t (cols) VALUES (...)} 基础串之后调用，负责追加：
+     * MySQL 的 {@code ON DUPLICATE KEY UPDATE ...}、PG/SQLite 的 {@code ON CONFLICT (...) DO UPDATE SET ... / DO NOTHING}。
+     * 各列名（fieldNames）已按本方言转义，valueRows 为每行 {@code (v1, v2, ...)} 形式（多行时多个）。
+     * 冲突/更新细节（onConflict、setAll、doNothing 等）从 upsert 对象读取。默认实现为空（no-op）。
+     *
+     * @param sqlSb      SQL 构建器（已含 INSERT 基础串）
+     * @param upsert     UPSERT 对象
+     * @param fieldNames 已转义的列名列表（与 valueRows 中各值一一对应）
+     * @param valueRows  每行值表达式列表，元素形如 {@code (v1, v2, ...)}
+     */
+    default void appendUpsertSuffix(StringBuilder sqlSb, Upsert<?> upsert, List<String> fieldNames, List<String> valueRows) {
+    }
+
+    /**
+     * 生成完整的 MERGE 语句（MERGE 系方言：Oracle / SQL Server）。
+     * <p>
+     * 这些方言无法复用 INSERT 体，需自行组装 {@code MERGE INTO t T USING (...) SRC ON (...) WHEN MATCHED THEN UPDATE SET ... WHEN NOT MATCHED THEN INSERT ...}。
+     * 列名（fieldNames）已按本方言转义；valueRows 为每行 {@code (v1, v2, ...)} 形式；valueCells 为每行的值单元列表，
+     * 用于构造 MERGE 的 USING 源（多行时尤为重要）。冲突/更新细节（onConflict、setAll、doNothing 等）从 upsert 对象读取。
+     * 默认实现返回 null（交由调用方降级为普通 INSERT）。
+     *
+     * @param upsert      UPSERT 对象
+     * @param tableName   目标表名（已按本方言格式化）
+     * @param fieldNames  已转义的列名列表
+     * @param valueRows   每行值表达式列表，元素形如 {@code (v1, v2, ...)}
+     * @param valueCells  每行的值单元列表（与 fieldNames 一一对应），用于构造 USING 源
+     * @return 完整 MERGE SQL；若无法生成则返回 null
+     */
+    default String buildMergeSql(Upsert<?> upsert, String tableName, List<String> fieldNames,
+                                List<String> valueRows, List<List<String>> valueCells) {
+        return null;
     }
 
 }

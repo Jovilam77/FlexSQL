@@ -2,9 +2,11 @@ package cn.vonce.sql.dialect;
 
 import cn.vonce.sql.annotation.SqlJSON;
 import cn.vonce.sql.bean.Alter;
+import cn.vonce.sql.bean.Column;
 import cn.vonce.sql.bean.ColumnInfo;
 import cn.vonce.sql.bean.Select;
 import cn.vonce.sql.bean.Table;
+import cn.vonce.sql.bean.Upsert;
 import cn.vonce.sql.config.SqlBeanMeta;
 import cn.vonce.sql.constant.SqlConstant;
 import cn.vonce.sql.enumerate.AlterDifference;
@@ -14,11 +16,13 @@ import cn.vonce.sql.enumerate.JdbcType;
 import cn.vonce.sql.enumerate.LockType;
 import cn.vonce.sql.enumerate.LockWaitMode;
 import cn.vonce.sql.exception.SqlBeanException;
+import cn.vonce.sql.helper.SqlHelper;
 import cn.vonce.sql.uitls.SqlBeanUtil;
 import cn.vonce.sql.uitls.StringUtil;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.logging.Logger;
 
@@ -291,6 +295,85 @@ public class OracleDialect extends AbstractDialect<JavaMapOracleType> {
     @Override
     public boolean useRecursiveKeyword() {
         return false;
+    }
+
+    @Override
+    public boolean useMergeForUpsert() {
+        return true;
+    }
+
+    /**
+     * 构造 Oracle 的 UPSERT（以 MERGE INTO 实现）。
+     * <p>
+     * Oracle 没有 INSERT ... ON CONFLICT 语法，故用 {@code MERGE INTO t T USING (...) SRC ON (...) ...} 表达。
+     * USING 源为多行 {@code SELECT <cells> FROM dual} 经 {@code UNION ALL} 拼接的派生表；
+     * ON 匹配条件优先取 {@code onConflict} 指定的列，未指定时回退到主键。
+     *
+     * @param upsert      UPSERT 对象
+     * @param tableName   目标表名（已按本方言格式化）
+     * @param fieldNames  已转义的列名列表
+     * @param valueRows   每行值表达式列表，元素形如 {@code (v1, v2, ...)}
+     * @param valueCells  每行的值单元列表（与 fieldNames 一一对应）
+     * @return 完整 MERGE SQL；无法生成（如缺匹配列）时返回 null 交由调用方降级
+     */
+    @Override
+    public String buildMergeSql(Upsert<?> upsert, String tableName, List<String> fieldNames,
+                                List<String> valueRows, List<List<String>> valueCells) {
+        String escape = SqlBeanUtil.getEscape(upsert);
+        boolean toUpper = SqlBeanUtil.isToUpperCase(upsert);
+        // 构造 USING 源：每行 SELECT <cell> AS <field> FROM dual，多行用 UNION ALL 连接
+        StringBuilder sourceSql = new StringBuilder();
+        for (int r = 0; r < valueCells.size(); r++) {
+            List<String> cells = valueCells.get(r);
+            if (r > 0) {
+                sourceSql.append(SqlConstant.UNION_ALL_SPACE);
+            }
+            sourceSql.append(SqlConstant.SELECT);
+            for (int c = 0; c < cells.size(); c++) {
+                sourceSql.append(cells.get(c)).append(SqlConstant.SPACES).append(SqlConstant.AS).append(fieldNames.get(c));
+                if (c < cells.size() - 1) {
+                    sourceSql.append(SqlConstant.COMMA);
+                }
+            }
+            sourceSql.append(SqlConstant.SELECT_DUAL);
+        }
+        // ON 匹配条件：冲突列优先，否则回退主键
+        String onClause = buildMergeOnClause(upsert, escape, toUpper);
+        if (onClause == null) {
+            return null;
+        }
+        return SqlHelper.buildMergeSql(upsert, tableName, fieldNames, sourceSql.toString(), onClause);
+    }
+
+    /**
+     * 构造 MERGE 的 ON 匹配条件（T.col = SRC.col）。
+     * 优先使用 {@code onConflict} 指定的列；未指定时回退到实体类主键。
+     *
+     * @return ON 条件文本（如 T."id" = SRC."id"）；无可用匹配列时返回 null
+     */
+    private String buildMergeOnClause(Upsert<?> upsert, String escape, boolean toUpper) {
+        List<Column> conflict = upsert.getConflictColumns();
+        if (conflict == null || conflict.isEmpty()) {
+            // 未显式指定冲突列，回退到主键
+            try {
+                Field idField = SqlBeanUtil.getIdField(upsert.getBeanClass());
+                conflict = Collections.singletonList(SqlBeanUtil.getColumnByField(idField, upsert.getBeanClass()));
+            } catch (SqlBeanException e) {
+                logger.warning("UPSERT 未指定 onConflict 且无法解析主键，无法生成 MERGE 的 ON 匹配条件（" + e.getMessage() + "），已降级为普通 INSERT");
+                return null;
+            }
+        }
+        StringBuilder on = new StringBuilder();
+        for (int i = 0; i < conflict.size(); i++) {
+            String col = escape + conflict.get(i).getName(toUpper) + escape;
+            on.append("T").append(SqlConstant.POINT).append(col)
+                    .append(SqlConstant.EQUAL_TO)
+                    .append("SRC").append(SqlConstant.POINT).append(col);
+            if (i < conflict.size() - 1) {
+                on.append(SqlConstant.AND);
+            }
+        }
+        return on.toString();
     }
 
 }

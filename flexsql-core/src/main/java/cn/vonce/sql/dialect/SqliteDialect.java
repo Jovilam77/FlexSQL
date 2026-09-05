@@ -15,6 +15,7 @@ import cn.vonce.sql.uitls.StringUtil;
 
 import java.lang.reflect.Field;
 import java.util.*;
+import java.util.logging.Logger;
 
 /**
  * Sqlite方言
@@ -24,6 +25,8 @@ import java.util.*;
  * @date 2024/4/16 10:24
  */
 public class SqliteDialect extends AbstractDialect<JavaMapSqliteType> {
+
+    private static final Logger logger = Logger.getLogger(SqliteDialect.class.getName());
 
     @Override
     public JavaMapSqliteType getType(Field field) {
@@ -152,6 +155,46 @@ public class SqliteDialect extends AbstractDialect<JavaMapSqliteType> {
     @Override
     public String addRemarks(boolean isTable, Alter item, String escape) {
         return null;
+    }
+
+    @Override
+    public void appendUpsertSuffix(StringBuilder sqlSb, Upsert<?> upsert, List<String> fieldNames, List<String> valueRows) {
+        String escape = SqlBeanUtil.getEscape(upsert);
+        boolean toUpper = SqlBeanUtil.isToUpperCase(upsert);
+        if (upsert.isDoNothing()) {
+            sqlSb.append(SqlConstant.ON_CONFLICT);
+            if (upsert.getConflictColumns() != null && !upsert.getConflictColumns().isEmpty()) {
+                sqlSb.append(SqlConstant.BEGIN_BRACKET)
+                        .append(String.join(SqlConstant.COMMA, escapeConflict(upsert, escape, toUpper)))
+                        .append(SqlConstant.END_BRACKET);
+            }
+            sqlSb.append(SqlConstant.DO_NOTHING);
+            return;
+        }
+        if (upsert.getConflictColumns() == null || upsert.getConflictColumns().isEmpty()) {
+            logger.warning("SQLite 的 ON CONFLICT DO UPDATE 必须指定冲突列（onConflict），已忽略 UPSERT 后缀，降级为普通 INSERT");
+            return;
+        }
+        List<String> assigns = SqlHelper.buildUpsertAssignments(upsert, fieldNames, "",
+                col -> SqlConstant.EXCLUDED + SqlConstant.POINT + col);
+        if (assigns.isEmpty()) {
+            logger.warning("UPSERT 未指定任何更新项，SQLite 下已忽略 DO UPDATE，降级为普通 INSERT");
+            return;
+        }
+        sqlSb.append(SqlConstant.ON_CONFLICT);
+        sqlSb.append(SqlConstant.BEGIN_BRACKET)
+                .append(String.join(SqlConstant.COMMA, escapeConflict(upsert, escape, toUpper)))
+                .append(SqlConstant.END_BRACKET);
+        sqlSb.append(SqlConstant.DO_UPDATE_SET);
+        sqlSb.append(String.join(SqlConstant.COMMA, assigns));
+    }
+
+    private static List<String> escapeConflict(Upsert<?> upsert, String escape, boolean toUpper) {
+        List<String> list = new ArrayList<>();
+        for (Column c : upsert.getConflictColumns()) {
+            list.add(escape + c.getName(toUpper) + escape);
+        }
+        return list;
     }
 
     @Override

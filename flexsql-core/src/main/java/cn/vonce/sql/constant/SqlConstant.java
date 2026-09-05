@@ -128,4 +128,16 @@ public class SqlConstant {
     public static final String CONSTRAINT = "CONSTRAINT ";
     public static final String PKEY = "pkey";
 
+    // upsert / merge
+    public static final String ON_DUPLICATE_KEY_UPDATE = " ON DUPLICATE KEY UPDATE ";
+    public static final String ON_CONFLICT = " ON CONFLICT ";
+    public static final String DO_UPDATE_SET = " DO UPDATE SET ";
+    public static final String DO_NOTHING = " DO NOTHING";
+    public static final String EXCLUDED = "EXCLUDED";
+    public static final String MERGE_INTO = "MERGE INTO ";
+    public static final String WHEN_MATCHED = " WHEN MATCHED THEN UPDATE SET ";
+    public static final String WHEN_NOT_MATCHED = " WHEN NOT MATCHED THEN INSERT ";
+    public static final String VALUES_FUNC = "VALUES";
+    public static final String UNION_ALL_SPACE = " UNION ALL ";
+
 }

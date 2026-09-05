@@ -50,6 +50,9 @@ public class SqlHelperTest {
 
         // selectCte（CTE / WITH 子句）
         selectCte();
+
+        // upsertTest（UPSERT / MERGE 支持）
+        upsertTest();
 //
 //        // select4
 //        select4(sqlBeanMeta);
@@ -919,6 +922,167 @@ public class SqlHelperTest {
         delete.where().gt(User::getId, 1).and().eq(User::getNickname, "jovi");
         System.out.println("---delete---");
         System.out.println(SqlHelper.buildDeleteSql(delete));
+    }
+
+    /**
+     * UPSERT / MERGE 生成测试（覆盖 4 主方言 + SQLite、单行/多行、setAll / 字面量 / doNothing）
+     */
+    private static void upsertTest() {
+        // 构造各方言 SqlBeanMeta（默认 toUpperCase=false）
+        SqlBeanMeta mysql = meta(DbType.MySQL);
+        SqlBeanMeta pg = meta(DbType.Postgresql);
+        SqlBeanMeta sqlite = meta(DbType.SQLite);
+        SqlBeanMeta oracle = meta(DbType.Oracle);
+        SqlBeanMeta sqlServer = meta(DbType.SQLServer);
+
+        // 1) MySQL 单行：onConflict(id) + setAll()
+        Upsert<User> u1 = new Upsert<>();
+        u1.setSqlBeanMeta(mysql);
+        u1.setBeanClass(User.class);
+        u1.setBean(sampleUser("10000", "jovi", "麻花疼"));
+        u1.onConflict(User::getId).setAll();
+        System.out.println("---upsert MySQL 单行 setAll---");
+        System.out.println(SqlHelper.buildUpsertSql(u1));
+
+        // 2) MySQL 单行：onConflict(id) + doNothing()（MySQL 用 INSERT IGNORE）
+        Upsert<User> u2 = new Upsert<>();
+        u2.setSqlBeanMeta(mysql);
+        u2.setBeanClass(User.class);
+        u2.setBean(sampleUser("10001", "vicky", "薇琪"));
+        u2.onConflict(User::getId).doNothing();
+        System.out.println("---upsert MySQL 单行 doNothing---");
+        System.out.println(SqlHelper.buildUpsertSql(u2));
+
+        // 3) MySQL 单行：字面量 set + 引用待插入值 set
+        Upsert<User> u3 = new Upsert<>();
+        u3.setSqlBeanMeta(mysql);
+        u3.setBeanClass(User.class);
+        u3.setBean(sampleUser("10002", "tom", "汤姆"));
+        u3.onConflict(User::getId)
+                .set(User::getNickname, "固定昵称")      // 字面量
+                .set(User::getHeadPortrait);            // 引用待插入值 → VALUES(headPortrait)
+        System.out.println("---upsert MySQL 字面量+引用---");
+        System.out.println(SqlHelper.buildUpsertSql(u3));
+
+        // 4) PostgreSQL 单行：onConflict(id) + setAll()
+        Upsert<User> u4 = new Upsert<>();
+        u4.setSqlBeanMeta(pg);
+        u4.setBeanClass(User.class);
+        u4.setBean(sampleUser("10003", "lily", "莉莉"));
+        u4.onConflict(User::getId).setAll();
+        System.out.println("---upsert PG 单行 setAll---");
+        System.out.println(SqlHelper.buildUpsertSql(u4));
+
+        // 5) PostgreSQL 单行：onConflict(id) + doNothing()
+        Upsert<User> u5 = new Upsert<>();
+        u5.setSqlBeanMeta(pg);
+        u5.setBeanClass(User.class);
+        u5.setBean(sampleUser("10004", "lucy", "露西"));
+        u5.onConflict(User::getId).doNothing();
+        System.out.println("---upsert PG 单行 doNothing---");
+        System.out.println(SqlHelper.buildUpsertSql(u5));
+
+        // 6) SQLite 单行：onConflict(id) + setAll()
+        Upsert<User> u6 = new Upsert<>();
+        u6.setSqlBeanMeta(sqlite);
+        u6.setBeanClass(User.class);
+        u6.setBean(sampleUser("10005", "jack", "杰克"));
+        u6.onConflict(User::getId).setAll();
+        System.out.println("---upsert SQLite 单行 setAll---");
+        System.out.println(SqlHelper.buildUpsertSql(u6));
+
+        // 7) Oracle 单行：onConflict(id) + setAll()（MERGE INTO）
+        Upsert<User> u7 = new Upsert<>();
+        u7.setSqlBeanMeta(oracle);
+        u7.setBeanClass(User.class);
+        u7.setBean(sampleUser("10006", "rose", "萝丝"));
+        u7.onConflict(User::getId).setAll();
+        System.out.println("---upsert Oracle 单行 setAll（MERGE）---");
+        System.out.println(SqlHelper.buildUpsertSql(u7));
+
+        // 8) Oracle 单行：onConflict(id) + doNothing()（MERGE 仅保留插入分支）
+        Upsert<User> u8 = new Upsert<>();
+        u8.setSqlBeanMeta(oracle);
+        u8.setBeanClass(User.class);
+        u8.setBean(sampleUser("10007", "bob", "鲍勃"));
+        u8.onConflict(User::getId).doNothing();
+        System.out.println("---upsert Oracle 单行 doNothing（MERGE）---");
+        System.out.println(SqlHelper.buildUpsertSql(u8));
+
+        // 9) SQL Server 单行：onConflict(id) + setAll()（MERGE INTO）
+        Upsert<User> u9 = new Upsert<>();
+        u9.setSqlBeanMeta(sqlServer);
+        u9.setBeanClass(User.class);
+        u9.setBean(sampleUser("10008", "kate", "凯特"));
+        u9.onConflict(User::getId).setAll();
+        System.out.println("---upsert SQLServer 单行 setAll（MERGE）---");
+        System.out.println(SqlHelper.buildUpsertSql(u9));
+
+        // 10) SQL Server 单行：onConflict(id) + doNothing()（MERGE 仅保留插入分支）
+        Upsert<User> u10 = new Upsert<>();
+        u10.setSqlBeanMeta(sqlServer);
+        u10.setBeanClass(User.class);
+        u10.setBean(sampleUser("10009", "neo", "尼奥"));
+        u10.onConflict(User::getId).doNothing();
+        System.out.println("---upsert SQLServer 单行 doNothing（MERGE）---");
+        System.out.println(SqlHelper.buildUpsertSql(u10));
+
+        // 11) MySQL 多行（Column 模式）：onConflict(id) + setAll()
+        Upsert<User> u11 = new Upsert<>();
+        u11.setSqlBeanMeta(mysql);
+        u11.setBeanClass(User.class);
+        u11.column(User::getId, User::getUsername, User::getNickname, User::getHeadPortrait, User::getGender, User::getIntegral)
+                .values("20001", "a", "A", "a.png", 1, 10)
+                .values("20002", "b", "B", "b.png", 0, 20);
+        u11.onConflict(User::getId).setAll();
+        System.out.println("---upsert MySQL 多行 setAll---");
+        System.out.println(SqlHelper.buildUpsertSql(u11));
+
+        // 12) Oracle 多行（Column 模式）：onConflict(id) + setAll()（MERGE USING 多行 UNION ALL）
+        Upsert<User> u12 = new Upsert<>();
+        u12.setSqlBeanMeta(oracle);
+        u12.setBeanClass(User.class);
+        u12.column(User::getId, User::getUsername, User::getNickname, User::getHeadPortrait, User::getGender, User::getIntegral)
+                .values("20003", "c", "C", "c.png", 1, 30)
+                .values("20004", "d", "D", "d.png", 0, 40);
+        u12.onConflict(User::getId).setAll();
+        System.out.println("---upsert Oracle 多行 setAll（MERGE）---");
+        System.out.println(SqlHelper.buildUpsertSql(u12));
+
+        // 13) SQL Server 多行（Column 模式）：onConflict(id) + setAll()（MERGE USING 表值构造器）
+        Upsert<User> u13 = new Upsert<>();
+        u13.setSqlBeanMeta(sqlServer);
+        u13.setBeanClass(User.class);
+        u13.column(User::getId, User::getUsername, User::getNickname, User::getHeadPortrait, User::getGender, User::getIntegral)
+                .values("20005", "e", "E", "e.png", 1, 50)
+                .values("20006", "f", "F", "f.png", 0, 60);
+        u13.onConflict(User::getId).setAll();
+        System.out.println("---upsert SQLServer 多行 setAll（MERGE）---");
+        System.out.println(SqlHelper.buildUpsertSql(u13));
+    }
+
+    /**
+     * 构造测试的 SqlBeanMeta（默认 toUpperCase=false）
+     */
+    private static SqlBeanMeta meta(DbType dbType) {
+        SqlBeanMeta m = new SqlBeanMeta();
+        m.setDbType(dbType);
+        m.setSqlBeanConfig(new SqlBeanConfig());
+        return m;
+    }
+
+    /**
+     * 构造一个带完整字段的测试用户对象
+     */
+    private static User sampleUser(String id, String username, String nickname) {
+        User user = new User();
+        user.setId(id);
+        user.setUsername(username);
+        user.setNickname(nickname);
+        user.setHeadPortrait(username + ".png");
+        user.setGender(id.hashCode() % 2 == 0 ? 0 : 1);
+        user.setIntegral(100);
+        return user;
     }
 
 }
