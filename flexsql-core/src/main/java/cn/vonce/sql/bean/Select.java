@@ -80,6 +80,20 @@ public class Select extends CommonCondition<Select> implements Serializable {
      */
     private boolean recursive;
     /**
+     * UNION / UNION ALL 子查询集合（与 unionAlls 一一对应）
+     */
+    private List<Select> unionSelects = new ArrayList<>();
+    /**
+     * 对应每个 union 是否为 UNION ALL（true=UNION ALL，false=UNION）
+     */
+    private List<Boolean> unionAlls = new ArrayList<>();
+    /**
+     * 无 FROM 子句（如 SELECT 1、SELECT NOW()）
+     * <p>
+     * 用于 UNION 中的常量锚点（如递归 CTE 的 SELECT 1 AS n）或纯表达式查询。
+     */
+    private boolean noFrom;
+    /**
      * having 条件表达式 优先级一
      */
     private String having = null;
@@ -857,6 +871,70 @@ public class Select extends CommonCondition<Select> implements Serializable {
 
     public void setRecursive(boolean recursive) {
         this.recursive = recursive;
+    }
+
+    /**
+     * 追加 UNION 子查询（去重合并）
+     *
+     * @param select 参与 UNION 的查询
+     * @return
+     */
+    public Select union(Select select) {
+        if (select != null) {
+            this.unionSelects.add(select);
+            this.unionAlls.add(false);
+        }
+        return this;
+    }
+
+    /**
+     * 追加 UNION ALL 子查询（不去重合并，性能优于 UNION）
+     *
+     * @param select 参与 UNION ALL 的查询
+     * @return
+     */
+    public Select unionAll(Select select) {
+        if (select != null) {
+            this.unionSelects.add(select);
+            this.unionAlls.add(true);
+        }
+        return this;
+    }
+
+    public List<Select> getUnionSelects() {
+        return unionSelects;
+    }
+
+    public void setUnionSelects(List<Select> unionSelects) {
+        this.unionSelects = unionSelects;
+    }
+
+    public List<Boolean> getUnionAlls() {
+        return unionAlls;
+    }
+
+    public void setUnionAlls(List<Boolean> unionAlls) {
+        this.unionAlls = unionAlls;
+    }
+
+    /**
+     * 标记本查询无 FROM 子句（如 SELECT 1、SELECT NOW()）
+     * <p>
+     * 常用于 UNION 的常量锚点（递归 CTE 的 SELECT 1 AS n）或纯表达式查询。
+     *
+     * @return
+     */
+    public Select noFrom() {
+        this.noFrom = true;
+        return this;
+    }
+
+    public boolean isNoFrom() {
+        return noFrom;
+    }
+
+    public void setNoFrom(boolean noFrom) {
+        this.noFrom = noFrom;
     }
 
     /**

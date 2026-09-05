@@ -409,37 +409,68 @@ public class SqlHelperTest {
         System.out.println("---selectCte MySQL8 原生SQL子查询CTE（含列定义）---");
         System.out.println(SqlHelper.buildSelectSql(c2));
 
-        // 3) MySQL 8.0 + 递归 CTE（WITH RECURSIVE）
+        // 3) MySQL 8.0 + 递归 CTE（builder UNION ALL）
+        // 锚点：SELECT 1 AS n（无 FROM）；递归：SELECT n + 1 FROM counter WHERE n < 5
+        Select anchor3 = new Select();
+        anchor3.setSqlBeanMeta(mysql8);
+        anchor3.column(new Column("1 AS n"));
+        anchor3.noFrom();
+        Select recursive3 = new Select();
+        recursive3.setSqlBeanMeta(mysql8);
+        recursive3.column(new Column("n + 1"));
+        recursive3.setTable("counter");
+        recursive3.where().lt("n", 5);
+        Select counterCte3 = anchor3.unionAll(recursive3);
         Select c3 = new Select();
         c3.setSqlBeanMeta(mysql8);
         c3.setBeanClass(User.class);
         c3.column("n");
         c3.setTable("counter");
         c3.recursive();
-        c3.with("counter", "SELECT 1 AS n UNION ALL SELECT n + 1 FROM counter WHERE n < 5");
-        System.out.println("---selectCte MySQL8 递归CTE（WITH RECURSIVE）---");
+        c3.with("counter", counterCte3);
+        System.out.println("---selectCte MySQL8 递归CTE（builder UNION ALL）---");
         System.out.println(SqlHelper.buildSelectSql(c3));
 
-        // 4) PostgreSQL 13 + 递归 CTE（WITH RECURSIVE）
+        // 4) PostgreSQL 13 + 递归 CTE（builder UNION ALL）
+        Select anchor4 = new Select();
+        anchor4.setSqlBeanMeta(pg13);
+        anchor4.column(new Column("1 AS n"));
+        anchor4.noFrom();
+        Select recursive4 = new Select();
+        recursive4.setSqlBeanMeta(pg13);
+        recursive4.column(new Column("n + 1"));
+        recursive4.setTable("counter");
+        recursive4.where().lt("n", 5);
+        Select counterCte4 = anchor4.unionAll(recursive4);
         Select c4 = new Select();
         c4.setSqlBeanMeta(pg13);
         c4.setBeanClass(User.class);
         c4.column("n");
         c4.setTable("counter");
         c4.recursive();
-        c4.with("counter", "SELECT 1 AS n UNION ALL SELECT n + 1 FROM counter WHERE n < 5");
-        System.out.println("---selectCte PG13 递归CTE（WITH RECURSIVE）---");
+        c4.with("counter", counterCte4);
+        System.out.println("---selectCte PG13 递归CTE（builder UNION ALL）---");
         System.out.println(SqlHelper.buildSelectSql(c4));
 
-        // 5) Oracle 19c + 递归 CTE（无 RECURSIVE 关键字）
+        // 5) Oracle 19c + 递归 CTE（builder UNION ALL，无 RECURSIVE 关键字，锚点需 FROM dual）
+        Select anchor5 = new Select();
+        anchor5.setSqlBeanMeta(oracle19);
+        anchor5.column(new Column("1 AS n"));
+        anchor5.setTable("dual");
+        Select recursive5 = new Select();
+        recursive5.setSqlBeanMeta(oracle19);
+        recursive5.column(new Column("n + 1"));
+        recursive5.setTable("counter");
+        recursive5.where().lt("n", 5);
+        Select counterCte5 = anchor5.unionAll(recursive5);
         Select c5 = new Select();
         c5.setSqlBeanMeta(oracle19);
         c5.setBeanClass(User.class);
         c5.column("n");
         c5.setTable("counter");
         c5.recursive();
-        c5.with("counter", "SELECT 1 AS n FROM dual UNION ALL SELECT n + 1 FROM counter WHERE n < 5");
-        System.out.println("---selectCte Oracle19 递归CTE（无 RECURSIVE 关键字）---");
+        c5.with("counter", counterCte5);
+        System.out.println("---selectCte Oracle19 递归CTE（builder UNION ALL）---");
         System.out.println(SqlHelper.buildSelectSql(c5));
 
         // 6) SQL Server 2019 + 非递归 CTE（无 RECURSIVE 关键字）
@@ -494,6 +525,63 @@ public class SqlHelperTest {
         c8.page(0, 10);
         System.out.println("---selectCte SQLServer CTE + 分页（CTE 在包裹外）---");
         System.out.println(SqlHelper.buildSelectSql(c8));
+
+        // 9) MySQL 8.0 + 顶层 UNION（普通合并，去重）
+        Select u1 = new Select();
+        u1.setSqlBeanMeta(mysql8);
+        u1.setBeanClass(User.class);
+        u1.column(User::getId);
+        u1.setTable(User.class);
+        u1.where().gt(User::getId, 0);
+        Select u2 = new Select();
+        u2.setSqlBeanMeta(mysql8);
+        u2.setBeanClass(User.class);
+        u2.column(User::getId);
+        u2.setTable(User.class);
+        u2.where().lt(User::getId, 100);
+        Select unionSel = u1.union(u2);
+        System.out.println("---selectCte MySQL8 顶层 UNION（去重）---");
+        System.out.println(SqlHelper.buildSelectSql(unionSel));
+
+        // 10) MySQL 8.0 + 顶层 UNION ALL（不去重，性能更优）
+        Select a1 = new Select();
+        a1.setSqlBeanMeta(mysql8);
+        a1.setBeanClass(User.class);
+        a1.column(User::getId);
+        a1.setTable(User.class);
+        a1.where().eq(User::getGender, 1);
+        Select a2 = new Select();
+        a2.setSqlBeanMeta(mysql8);
+        a2.setBeanClass(User.class);
+        a2.column(User::getId);
+        a2.setTable(User.class);
+        a2.where().eq(User::getGender, 0);
+        Select unionAllSel = a1.unionAll(a2);
+        System.out.println("---selectCte MySQL8 顶层 UNION ALL（不去重）---");
+        System.out.println(SqlHelper.buildSelectSql(unionAllSel));
+
+        // 11) MySQL 8.0 + CTE + UNION ALL 组合（CTE 内联 UNION，主查询引用）
+        Select activeA = new Select();
+        activeA.setSqlBeanMeta(mysql8);
+        activeA.setBeanClass(User.class);
+        activeA.column(User::getId);
+        activeA.setTable(User.class);
+        activeA.where().eq(User::getGender, 1);
+        Select activeB = new Select();
+        activeB.setSqlBeanMeta(mysql8);
+        activeB.setBeanClass(User.class);
+        activeB.column(User::getId);
+        activeB.setTable(User.class);
+        activeB.where().eq(User::getGender, 0);
+        Select activeCte = activeA.unionAll(activeB);
+        Select c9 = new Select();
+        c9.setSqlBeanMeta(mysql8);
+        c9.setBeanClass(User.class);
+        c9.column(User::getId);
+        c9.setTable("active_users");
+        c9.with("active_users", activeCte);
+        System.out.println("---selectCte MySQL8 CTE + UNION ALL 组合---");
+        System.out.println(SqlHelper.buildSelectSql(c9));
     }
 
     /**

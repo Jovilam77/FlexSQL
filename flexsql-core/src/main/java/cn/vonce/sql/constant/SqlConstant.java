@@ -18,6 +18,8 @@ public class SqlConstant {
     public static final String GROUP_BY = " GROUP BY ";
     public static final String HAVING = " HAVING ";
     public static final String ORDER_BY = " ORDER BY ";
+    public static final String UNION = " UNION ";
+    public static final String UNION_ALL = " UNION ALL ";
     public static final String LIMIT = " LIMIT ";
     public static final String BEGIN_BRACKET = "(";
     public static final String END_BRACKET = ")";

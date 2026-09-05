@@ -69,12 +69,14 @@ public class SqlHelper {
         } else {
             sqlSb.append(column(select));
         }
-        sqlSb.append(SqlConstant.FROM);
-        sqlSb.append(SqlBeanUtil.fromFullName(select.getTable().getSchema(), select.getTable().getName(), select.getTable().getAlias(), select));
-        // 表级锁提示（如 SQL Server 的 WITH (UPDLOCK, READPAST)），紧贴主表名之后注入
-        dialect.appendTableHint(sqlSb, select);
-        sqlSb.append(joinSql(select, dialect));
-        sqlSb.append(whereSql(select, null));
+        if (!select.isNoFrom()) {
+            sqlSb.append(SqlConstant.FROM);
+            sqlSb.append(SqlBeanUtil.fromFullName(select.getTable().getSchema(), select.getTable().getName(), select.getTable().getAlias(), select));
+            // 表级锁提示（如 SQL Server 的 WITH (UPDLOCK, READPAST)），紧贴主表名之后注入
+            dialect.appendTableHint(sqlSb, select);
+            sqlSb.append(joinSql(select, dialect));
+            sqlSb.append(whereSql(select, null));
+        }
         String groupBySql = groupBySql(select);
         sqlSb.append(groupBySql);
         sqlSb.append(havingSql(select));
@@ -88,6 +90,17 @@ public class SqlHelper {
         //行锁子句（必须在 LIMIT/OFFSET 之后、COUNT 包裹之前追加；count 查询不加锁）
         if (!select.isCount()) {
             dialect.appendLockClause(sqlSb, select);
+        }
+        // UNION / UNION ALL 子查询（追加在主体 SELECT 之后、COUNT 包裹之前）
+        if (!select.isCount() && select.getUnionSelects() != null && !select.getUnionSelects().isEmpty()) {
+            for (int i = 0; i < select.getUnionSelects().size(); i++) {
+                Select unionSelect = select.getUnionSelects().get(i);
+                if (unionSelect.getSqlBeanMeta() == null) {
+                    unionSelect.setSqlBeanMeta(select.getSqlBeanMeta());
+                }
+                sqlSb.append(select.getUnionAlls().get(i) ? SqlConstant.UNION_ALL : SqlConstant.UNION);
+                sqlSb.append(SqlHelper.buildSelectSql(unionSelect));
+            }
         }
         //标准Sql 如果是克隆的select则为分页时的count
         if ((select.isCount() && select.isDistinct()) || (select.isCount() && StringUtil.isNotEmpty(groupBySql))) {
