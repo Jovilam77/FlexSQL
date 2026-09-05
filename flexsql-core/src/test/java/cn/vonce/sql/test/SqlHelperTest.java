@@ -53,6 +53,9 @@ public class SqlHelperTest {
 
         // upsertTest（UPSERT / MERGE 支持）
         upsertTest();
+
+        // windowFunTest（窗口函数 OVER (PARTITION BY .. ORDER BY ..)）
+        windowFunTest();
 //
 //        // select4
 //        select4(sqlBeanMeta);
@@ -1279,6 +1282,57 @@ public class SqlHelperTest {
         u22.onConflict(User::getId).setAll();
         System.out.println("---upsert DB2 多行 setAll（MERGE）---");
         System.out.println(SqlHelper.buildUpsertSql(u22));
+    }
+
+    /**
+     * 窗口函数（OVER (PARTITION BY .. ORDER BY ..)）测试
+     */
+    private static void windowFunTest() {
+        // 1) ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY create_time DESC)
+        Select s1 = new Select();
+        s1.setSqlBeanMeta(meta(DbType.MySQL));
+        s1.setBeanClass(Essay.class);
+        s1.column(SqlFun.rowNumber().over().partitionBy("user_id").orderByDesc("create_time"), "rn");
+        s1.setTable(Essay.class);
+        System.out.println("---windowFun 1: ROW_NUMBER() OVER (PARTITION BY .. ORDER BY ..)---");
+        System.out.println(SqlHelper.buildSelectSql(s1));
+
+        // 2) SUM(amount) OVER (PARTITION BY dept_id) 聚合窗口
+        Select s2 = new Select();
+        s2.setSqlBeanMeta(meta(DbType.MySQL));
+        s2.setBeanClass(Essay.class);
+        s2.column(SqlFun.sum(new Column("amount")).over().partitionBy("dept_id"));
+        s2.setTable(Essay.class);
+        System.out.println("---windowFun 2: SUM() OVER (PARTITION BY ..)---");
+        System.out.println(SqlHelper.buildSelectSql(s2));
+
+        // 3) RANK() OVER (ORDER BY score DESC) 仅排序、无分区
+        Select s3 = new Select();
+        s3.setSqlBeanMeta(meta(DbType.MySQL));
+        s3.setBeanClass(Essay.class);
+        s3.column(SqlFun.rank().over().orderByDesc("score"));
+        s3.setTable(Essay.class);
+        System.out.println("---windowFun 3: RANK() OVER (ORDER BY ..) 无分区---");
+        System.out.println(SqlHelper.buildSelectSql(s3));
+
+        // 4) LAG(nickname, 1) OVER (PARTITION BY dept ORDER BY id ASC) Lambda 列
+        Select s4 = new Select();
+        s4.setSqlBeanMeta(meta(DbType.MySQL));
+        s4.setBeanClass(User.class);
+        s4.column(SqlFun.lag(User::getNickname, 1).over().partitionBy("dept").orderByAsc(User::getId));
+        s4.setTable(User.class);
+        System.out.println("---windowFun 4: LAG() OVER (PARTITION BY .. ORDER BY ..) Lambda 列---");
+        System.out.println(SqlHelper.buildSelectSql(s4));
+
+        // 5) SUM(amount) OVER (ORDER BY create_time ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) 帧子句
+        Select s5 = new Select();
+        s5.setSqlBeanMeta(meta(DbType.MySQL));
+        s5.setBeanClass(Essay.class);
+        s5.column(SqlFun.sum(new Column("amount")).over().orderByAsc("create_time")
+                .frame("ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW"));
+        s5.setTable(Essay.class);
+        System.out.println("---windowFun 5: 帧子句 ROWS BETWEEN ... AND CURRENT ROW---");
+        System.out.println(SqlHelper.buildSelectSql(s5));
     }
 
     /**

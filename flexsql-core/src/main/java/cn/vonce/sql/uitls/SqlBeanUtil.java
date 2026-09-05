@@ -938,7 +938,64 @@ public class SqlBeanUtil {
             fun.deleteCharAt(fun.length() - SqlConstant.COMMA.length());
         }
         fun.append(SqlConstant.END_BRACKET);
+        String windowSpec = getWindowSpec(common, sqlFun);
+        if (windowSpec != null) {
+            fun.append(windowSpec);
+        }
         return fun.toString();
+    }
+
+    /**
+     * 获取窗口函数 OVER 子句
+     *
+     * @param common 通用上下文（Select / Update 等）
+     * @param sqlFun 函数
+     * @return OVER (PARTITION BY ... ORDER BY ... [frame])，非窗口函数返回 null
+     */
+    public static String getWindowSpec(Common common, SqlFun sqlFun) {
+        if (sqlFun == null || !sqlFun.hasWindow()) {
+            return null;
+        }
+        StringBuilder sb = new StringBuilder(SqlConstant.OVER);
+        sb.append(SqlConstant.BEGIN_BRACKET);
+        boolean hasContent = false;
+        if (!sqlFun.getPartitionByList().isEmpty()) {
+            sb.append(SqlConstant.PARTITION_BY);
+            for (int i = 0; i < sqlFun.getPartitionByList().size(); i++) {
+                sb.append(SqlBeanUtil.getTableFieldFullName(common, sqlFun.getPartitionByList().get(i)));
+                sb.append(SqlConstant.COMMA);
+            }
+            sb.deleteCharAt(sb.length() - SqlConstant.COMMA.length());
+            hasContent = true;
+        }
+        if (!sqlFun.getOrderByList().isEmpty()) {
+            if (hasContent) {
+                sb.append(SqlConstant.SPACES);
+            }
+            sb.append(SqlConstant.ORDER_BY);
+            for (int i = 0; i < sqlFun.getOrderByList().size(); i++) {
+                Order order = sqlFun.getOrderByList().get(i);
+                sb.append(SqlBeanUtil.getTableFieldFullName(common, order.getColumn()));
+                sb.append(SqlConstant.SPACES);
+                sb.append(order.getSqlSort().name());
+                sb.append(SqlConstant.SPACES);
+            }
+            // 去除排序部分末尾多余空格
+            int len = sb.length();
+            while (len > 0 && sb.charAt(len - 1) == ' ') {
+                sb.deleteCharAt(len - 1);
+                len--;
+            }
+            hasContent = true;
+        }
+        if (StringUtil.isNotEmpty(sqlFun.getFrame())) {
+            if (hasContent) {
+                sb.append(SqlConstant.SPACES);
+            }
+            sb.append(sqlFun.getFrame());
+        }
+        sb.append(SqlConstant.END_BRACKET);
+        return sb.toString();
     }
 
     /**

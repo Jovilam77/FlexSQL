@@ -93,6 +93,14 @@ public class SqlConstant {
     public static final String TOP = " TOP ";
     public static final String ROW_NUMBER = " ROW_NUMBER() ";
     public static final String OVER = " OVER ";
+    public static final String PARTITION_BY = " PARTITION BY ";
+    public static final String ROWS = " ROWS ";
+    public static final String RANGE = " RANGE ";
+    public static final String UNBOUNDED_PRECEDING = " UNBOUNDED PRECEDING ";
+    public static final String UNBOUNDED_FOLLOWING = " UNBOUNDED FOLLOWING ";
+    public static final String CURRENT_ROW = " CURRENT ROW ";
+    public static final String PRECEDING = " PRECEDING ";
+    public static final String FOLLOWING = " FOLLOWING ";
     public static final String ID = "ID";
     public static final String ROWNUM = " ROWNUM ";
     public static final String T = " T";

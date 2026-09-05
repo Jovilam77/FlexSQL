@@ -1,8 +1,11 @@
 package cn.vonce.sql.define;
 
 import cn.vonce.sql.bean.Column;
+import cn.vonce.sql.bean.Order;
 import cn.vonce.sql.bean.RawValue;
+import cn.vonce.sql.enumerate.SqlSort;
 import cn.vonce.sql.enumerate.TimeUnit;
+import cn.vonce.sql.uitls.LambdaUtil;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -36,6 +39,342 @@ public class SqlFun extends Column {
     @Override
     public String toString() {
         return "SqlFun{" + "funName" + funName + '\'' + ", values=" + Arrays.toString(values) + '}';
+    }
+
+    /**
+     * 是否作为窗口函数使用（OVER 子句）
+     */
+    private boolean windowMode = false;
+
+    /**
+     * 窗口分区列 PARTITION BY
+     */
+    private List<Column> partitionByList = new ArrayList<>();
+
+    /**
+     * 窗口排序列 ORDER BY
+     */
+    private List<Order> orderByList = new ArrayList<>();
+
+    /**
+     * 窗口帧子句，如 "ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW"
+     */
+    private String frame;
+
+    /**
+     * 标记为窗口函数，后续接 partitionBy / orderBy / frame。
+     * 例：SqlFun.sum("amount").over().partitionBy("user_id").orderByDesc("create_time")
+     *
+     * @return this
+     */
+    public SqlFun over() {
+        this.windowMode = true;
+        return this;
+    }
+
+    /**
+     * 添加窗口分区列 PARTITION BY
+     *
+     * @param columns 列
+     * @return this
+     */
+    public SqlFun partitionBy(Column... columns) {
+        if (columns != null) {
+            this.partitionByList.addAll(Arrays.asList(columns));
+            this.windowMode = true;
+        }
+        return this;
+    }
+
+    /**
+     * 添加窗口分区列 PARTITION BY（Lambda 形式）
+     *
+     * @param columnFuns 列
+     * @return this
+     */
+    public <T, R> SqlFun partitionBy(ColumnFun<T, R>... columnFuns) {
+        if (columnFuns != null) {
+            for (ColumnFun<T, R> columnFun : columnFuns) {
+                this.partitionByList.add(LambdaUtil.getColumn(columnFun));
+            }
+            this.windowMode = true;
+        }
+        return this;
+    }
+
+    /**
+     * 添加窗口分区列 PARTITION BY（列名形式）
+     *
+     * @param columNames 列名
+     * @return this
+     */
+    public SqlFun partitionBy(String... columNames) {
+        if (columNames != null) {
+            for (String name : columNames) {
+                this.partitionByList.add(new Column(name));
+            }
+            this.windowMode = true;
+        }
+        return this;
+    }
+
+    /**
+     * 添加窗口排序列 ORDER BY
+     *
+     * @param orders 排序列
+     * @return this
+     */
+    public SqlFun orderBy(Order... orders) {
+        if (orders != null) {
+            this.orderByList.addAll(Arrays.asList(orders));
+            this.windowMode = true;
+        }
+        return this;
+    }
+
+    /**
+     * 添加窗口排序列 ORDER BY ASC
+     *
+     * @param column 列
+     * @return this
+     */
+    public SqlFun orderByAsc(Column column) {
+        this.orderByList.add(new Order(column, SqlSort.ASC));
+        this.windowMode = true;
+        return this;
+    }
+
+    /**
+     * 添加窗口排序列 ORDER BY ASC（Lambda 形式）
+     *
+     * @param columnFun 列
+     * @return this
+     */
+    public <T, R> SqlFun orderByAsc(ColumnFun<T, R> columnFun) {
+        this.orderByList.add(new Order(LambdaUtil.getColumn(columnFun), SqlSort.ASC));
+        this.windowMode = true;
+        return this;
+    }
+
+    /**
+     * 添加窗口排序列 ORDER BY DESC
+     *
+     * @param column 列
+     * @return this
+     */
+    public SqlFun orderByDesc(Column column) {
+        this.orderByList.add(new Order(column, SqlSort.DESC));
+        this.windowMode = true;
+        return this;
+    }
+
+    /**
+     * 添加窗口排序列 ORDER BY DESC（Lambda 形式）
+     *
+     * @param columnFun 列
+     * @return this
+     */
+    public <T, R> SqlFun orderByDesc(ColumnFun<T, R> columnFun) {
+        this.orderByList.add(new Order(LambdaUtil.getColumn(columnFun), SqlSort.DESC));
+        this.windowMode = true;
+        return this;
+    }
+
+    /**
+     * 添加窗口排序列 ORDER BY ASC（列名形式）
+     *
+     * @param columName 列名
+     * @return this
+     */
+    public SqlFun orderByAsc(String columName) {
+        this.orderByList.add(new Order(columName, SqlSort.ASC));
+        this.windowMode = true;
+        return this;
+    }
+
+    /**
+     * 添加窗口排序列 ORDER BY DESC（列名形式）
+     *
+     * @param columName 列名
+     * @return this
+     */
+    public SqlFun orderByDesc(String columName) {
+        this.orderByList.add(new Order(columName, SqlSort.DESC));
+        this.windowMode = true;
+        return this;
+    }
+
+    /**
+     * 设置窗口帧子句（如 "ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW"）
+     *
+     * @param frameClause 帧子句
+     * @return this
+     */
+    public SqlFun frame(String frameClause) {
+        this.frame = frameClause;
+        this.windowMode = true;
+        return this;
+    }
+
+    /**
+     * 是否包含窗口定义
+     *
+     * @return 是否窗口函数
+     */
+    public boolean hasWindow() {
+        return windowMode;
+    }
+
+    public List<Column> getPartitionByList() {
+        return partitionByList;
+    }
+
+    public List<Order> getOrderByList() {
+        return orderByList;
+    }
+
+    public String getFrame() {
+        return frame;
+    }
+
+    /**
+     * 行号（无参数窗口函数）
+     *
+     * @return SqlFun
+     */
+    public static SqlFun rowNumber() {
+        return new SqlFun("row_number", null);
+    }
+
+    /**
+     * 排名（并列同名次，后续跳号）
+     *
+     * @return SqlFun
+     */
+    public static SqlFun rank() {
+        return new SqlFun("rank", null);
+    }
+
+    /**
+     * 密集排名（并列同名次，后续不跳号）
+     *
+     * @return SqlFun
+     */
+    public static SqlFun denseRank() {
+        return new SqlFun("dense_rank", null);
+    }
+
+    /**
+     * 分桶（将有序窗口均分为 n 个分组）
+     *
+     * @param n 桶数
+     * @return SqlFun
+     */
+    public static SqlFun ntile(int n) {
+        return new SqlFun("ntile", new Object[]{n});
+    }
+
+    /**
+     * 访问当前行之前第 offset 行的 expr 值
+     *
+     * @param expr 表达式
+     * @return SqlFun
+     */
+    public static SqlFun lag(Object expr) {
+        return new SqlFun("lag", new Object[]{expr});
+    }
+
+    public static SqlFun lag(Object expr, int offset) {
+        return new SqlFun("lag", new Object[]{expr, offset});
+    }
+
+    public static SqlFun lag(Object expr, int offset, Object defaultValue) {
+        return new SqlFun("lag", new Object[]{expr, offset, defaultValue});
+    }
+
+    public static <T, R> SqlFun lag(ColumnFun<T, R> expr) {
+        return new SqlFun("lag", new Object[]{expr});
+    }
+
+    public static <T, R> SqlFun lag(ColumnFun<T, R> expr, int offset) {
+        return new SqlFun("lag", new Object[]{expr, offset});
+    }
+
+    public static <T, R> SqlFun lag(ColumnFun<T, R> expr, int offset, Object defaultValue) {
+        return new SqlFun("lag", new Object[]{expr, offset, defaultValue});
+    }
+
+    /**
+     * 访问当前行之后第 offset 行的 expr 值
+     *
+     * @param expr 表达式
+     * @return SqlFun
+     */
+    public static SqlFun lead(Object expr) {
+        return new SqlFun("lead", new Object[]{expr});
+    }
+
+    public static SqlFun lead(Object expr, int offset) {
+        return new SqlFun("lead", new Object[]{expr, offset});
+    }
+
+    public static SqlFun lead(Object expr, int offset, Object defaultValue) {
+        return new SqlFun("lead", new Object[]{expr, offset, defaultValue});
+    }
+
+    public static <T, R> SqlFun lead(ColumnFun<T, R> expr) {
+        return new SqlFun("lead", new Object[]{expr});
+    }
+
+    public static <T, R> SqlFun lead(ColumnFun<T, R> expr, int offset) {
+        return new SqlFun("lead", new Object[]{expr, offset});
+    }
+
+    public static <T, R> SqlFun lead(ColumnFun<T, R> expr, int offset, Object defaultValue) {
+        return new SqlFun("lead", new Object[]{expr, offset, defaultValue});
+    }
+
+    /**
+     * 窗口内第一行 expr 值
+     *
+     * @param expr 表达式
+     * @return SqlFun
+     */
+    public static SqlFun firstValue(Object expr) {
+        return new SqlFun("first_value", new Object[]{expr});
+    }
+
+    public static <T, R> SqlFun firstValue(ColumnFun<T, R> expr) {
+        return new SqlFun("first_value", new Object[]{expr});
+    }
+
+    /**
+     * 窗口内最后一行 expr 值
+     *
+     * @param expr 表达式
+     * @return SqlFun
+     */
+    public static SqlFun lastValue(Object expr) {
+        return new SqlFun("last_value", new Object[]{expr});
+    }
+
+    public static <T, R> SqlFun lastValue(ColumnFun<T, R> expr) {
+        return new SqlFun("last_value", new Object[]{expr});
+    }
+
+    /**
+     * 窗口内第 n 行 expr 值
+     *
+     * @param expr 表达式
+     * @param n    行号
+     * @return SqlFun
+     */
+    public static SqlFun nthValue(Object expr, int n) {
+        return new SqlFun("nth_value", new Object[]{expr, n});
+    }
+
+    public static <T, R> SqlFun nthValue(ColumnFun<T, R> expr, int n) {
+        return new SqlFun("nth_value", new Object[]{expr, n});
     }
 
     /**
