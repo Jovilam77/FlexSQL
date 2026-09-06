@@ -38,8 +38,8 @@ public class SqlConstant {
     public static final String IS_NOT = " IS NOT ";
     public static final String IN = " IN (";
     public static final String NOT_IN = " NOT IN (";
-    //    public static final String EXISTS = " EXISTS (";
-//    public static final String NOT_EXISTS = " NOT EXISTS (";
+    public static final String EXISTS = " EXISTS ";
+    public static final String NOT_EXISTS = " NOT EXISTS ";
     public static final String LIKE = " LIKE ";
     public static final String NOT_LIKE = " NOT LIKE ";
     public static final String PERCENT = "%";

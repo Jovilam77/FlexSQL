@@ -2,6 +2,8 @@ package cn.vonce.sql.helper;
 
 import cn.vonce.sql.bean.Column;
 import cn.vonce.sql.bean.ConditionInfo;
+import cn.vonce.sql.bean.RawValue;
+import cn.vonce.sql.bean.Select;
 import cn.vonce.sql.define.ColumnFun;
 import cn.vonce.sql.enumerate.SqlOperator;
 import cn.vonce.sql.uitls.LambdaUtil;
@@ -907,6 +909,46 @@ public class Cond extends ConditionInfo {
      */
     public static <T, R> Cond notIn(ColumnFun<T, R> columnFun, Object value) {
         return new Cond(LambdaUtil.getColumn(columnFun), SqlOperator.NOT_IN, value);
+    }
+
+    /**
+     * 存在（EXISTS 子查询）
+     *
+     * @param subQuery 子查询（Select 形式）
+     * @return
+     */
+    public static Cond exists(Select subQuery) {
+        return new Cond((Column) null, SqlOperator.EXISTS, subQuery);
+    }
+
+    /**
+     * 存在（EXISTS 原生子查询）
+     *
+     * @param rawSql 原生 SQL 子查询（不含外层括号）
+     * @return
+     */
+    public static Cond exists(String rawSql) {
+        return new Cond((Column) null, SqlOperator.EXISTS, new RawValue(rawSql));
+    }
+
+    /**
+     * 不存在（NOT EXISTS 子查询）
+     *
+     * @param subQuery 子查询（Select 形式）
+     * @return
+     */
+    public static Cond notExists(Select subQuery) {
+        return new Cond((Column) null, SqlOperator.NOT_EXISTS, subQuery);
+    }
+
+    /**
+     * 不存在（NOT EXISTS 原生子查询）
+     *
+     * @param rawSql 原生 SQL 子查询（不含外层括号）
+     * @return
+     */
+    public static Cond notExists(String rawSql) {
+        return new Cond((Column) null, SqlOperator.NOT_EXISTS, new RawValue(rawSql));
     }
 
     /**

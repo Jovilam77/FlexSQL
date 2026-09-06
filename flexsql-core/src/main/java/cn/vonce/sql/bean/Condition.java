@@ -1036,6 +1036,50 @@ public class Condition<Action> implements Serializable {
     }
 
     /**
+     * 存在（EXISTS 子查询）
+     *
+     * @param subQuery 子查询（Select 形式）
+     * @return
+     */
+    public Logic<Action> exists(Select subQuery) {
+        dataList.add(new ConditionData(sqlLogic, newConditionInfo((Column) null, SqlOperator.EXISTS, subQuery)));
+        return logic;
+    }
+
+    /**
+     * 存在（EXISTS 原生子查询）
+     *
+     * @param rawSql 原生 SQL 子查询（不含外层括号）
+     * @return
+     */
+    public Logic<Action> exists(String rawSql) {
+        dataList.add(new ConditionData(sqlLogic, newConditionInfo((Column) null, SqlOperator.EXISTS, new RawValue(rawSql))));
+        return logic;
+    }
+
+    /**
+     * 不存在（NOT EXISTS 子查询）
+     *
+     * @param subQuery 子查询（Select 形式）
+     * @return
+     */
+    public Logic<Action> notExists(Select subQuery) {
+        dataList.add(new ConditionData(sqlLogic, newConditionInfo((Column) null, SqlOperator.NOT_EXISTS, subQuery)));
+        return logic;
+    }
+
+    /**
+     * 不存在（NOT EXISTS 原生子查询）
+     *
+     * @param rawSql 原生 SQL 子查询（不含外层括号）
+     * @return
+     */
+    public Logic<Action> notExists(String rawSql) {
+        dataList.add(new ConditionData(sqlLogic, newConditionInfo((Column) null, SqlOperator.NOT_EXISTS, new RawValue(rawSql))));
+        return logic;
+    }
+
+    /**
      * 介于
      *
      * @param field

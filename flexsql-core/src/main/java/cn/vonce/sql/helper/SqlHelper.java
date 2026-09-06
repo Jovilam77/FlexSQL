@@ -1467,6 +1467,30 @@ public class SqlHelper {
      */
     private static StringBuilder valueOperator(Common common, ConditionInfo conditionInfo) {
         StringBuilder sql = new StringBuilder();
+        // EXISTS / NOT EXISTS：一元前缀操作符，操作数为子查询（Select 或原生 SQL），无左列与右值。
+        // 子查询复用 buildSelectSql 递归构建，并继承当前 sqlBeanMeta（与 UNION 子查询同源处理）。
+        SqlOperator op = conditionInfo.getSqlOperator();
+        if (op == SqlOperator.EXISTS || op == SqlOperator.NOT_EXISTS) {
+            Object operand = conditionInfo.getValue();
+            String subSql;
+            if (operand instanceof Select) {
+                Select sub = (Select) operand;
+                if (sub.getSqlBeanMeta() == null) {
+                    sub.setSqlBeanMeta(common.getSqlBeanMeta());
+                }
+                subSql = SqlHelper.buildSelectSql(sub);
+            } else if (operand instanceof RawValue) {
+                Object raw = ((RawValue) operand).getValue();
+                subSql = raw != null ? raw.toString() : "";
+            } else {
+                subSql = operand != null ? operand.toString() : "";
+            }
+            sql.append(op == SqlOperator.NOT_EXISTS ? SqlConstant.NOT_EXISTS : SqlConstant.EXISTS);
+            sql.append(SqlConstant.BEGIN_BRACKET);
+            sql.append(subSql);
+            sql.append(SqlConstant.END_BRACKET);
+            return sql;
+        }
         String operator = getOperator(conditionInfo);
         boolean needEndBracket = false;
         Object[] betweenValues = null;

@@ -75,6 +75,7 @@ public class SqlHelperTest {
 
         // joinSchemaTenantTest（JOIN / 子查询 多租户与动态Schema 隔离覆盖）
         joinSchemaTenantTest(sqlBeanMeta);
+        existsSubqueryTest(sqlBeanMeta);
 //
 //        // select4
 //        select4(sqlBeanMeta);
@@ -1589,5 +1590,54 @@ public class SqlHelperTest {
             TenantContextHolder.clearTenantId();
         }
     }
+
+    /**
+     * EXISTS / NOT EXISTS 子查询测试：
+     * 1) exists(Select) 类型安全子查询
+     * 2) notExists(原生 SQL) 原生子查询（验证 RawValue 路径）
+     * 3) EXISTS 与 AND 组合
+     */
+    private static void existsSubqueryTest(SqlBeanMeta sqlBeanMeta) {
+        // 子查询：SELECT ... FROM t_tenant WHERE tenant_id = 't-abc'
+        Select sub = new Select();
+        sub.setSqlBeanMeta(sqlBeanMeta);
+        sub.setBeanClass(TenantBean.class);
+        sub.setTable(TenantBean.class);
+        sub.where().eq(TenantBean::getTenantId, "t-abc");
+
+        // 1) EXISTS（Select 形式）
+        Select select = new Select();
+        select.setSqlBeanMeta(sqlBeanMeta);
+        select.setBeanClass(OrderBean.class);
+        select.setTable(OrderBean.class);
+        select.where().exists(sub);
+        String sql = SqlHelper.buildSelectSql(select);
+        System.out.println("---exists(Select)---");
+        System.out.println(sql);
+        System.out.println("[断言] EXISTS 子查询生成 => " + (sql.contains("EXISTS (") && sql.contains("t_tenant") && sql.contains("'t-abc'")));
+
+        // 2) NOT EXISTS（原生 SQL 形式，验证 RawValue 路径）
+        Select select2 = new Select();
+        select2.setSqlBeanMeta(sqlBeanMeta);
+        select2.setBeanClass(OrderBean.class);
+        select2.setTable(OrderBean.class);
+        select2.where().notExists("SELECT 1 FROM t_tenant WHERE tenant_id = 'x'");
+        String sql2 = SqlHelper.buildSelectSql(select2);
+        System.out.println("---notExists(raw)---");
+        System.out.println(sql2);
+        System.out.println("[断言] NOT EXISTS 原生子查询生成 => " + (sql2.contains("NOT EXISTS (") && sql2.contains("SELECT 1 FROM t_tenant")));
+
+        // 3) EXISTS 与 AND 组合
+        Select select3 = new Select();
+        select3.setSqlBeanMeta(sqlBeanMeta);
+        select3.setBeanClass(OrderBean.class);
+        select3.setTable(OrderBean.class);
+        select3.where().eq(OrderBean::getOrderNo, "k").and().exists(sub);
+        String sql3 = SqlHelper.buildSelectSql(select3);
+        System.out.println("---exists AND combine---");
+        System.out.println(sql3);
+        System.out.println("[断言] EXISTS 与 AND 组合 => " + (sql3.contains("= 'k'") && sql3.contains("EXISTS (") && sql3.contains("AND")));
+    }
+
 
 }

@@ -28,7 +28,8 @@ public enum SqlOperator {
     LESS_THAN,
     LESS_THAN_OR_EQUAL_TO,
     EQUAL_TO,
-    NOT_EQUAL_TO
-    /*, EXISTS, NOT_EXISTS*/
+    NOT_EQUAL_TO,
+    EXISTS,
+    NOT_EXISTS
 
 }
