@@ -107,6 +107,15 @@ public class SQLiteHelper {
         return sqlBeanHelper;
     }
 
+    /**
+     * 获得带查询缓存的 service（按 {@code SqlBeanConfig} 自动判断是否开启，未开启则等价于 {@link #get(Class)}）。
+     * <p>注意：返回类型为 {@link cn.vonce.sql.service.SqlBeanService} 接口而非 {@link SqlBeanHelper}，
+     * 以兼容缓存装饰器；如需具体类型请用 {@link #get(Class)} 再自行包裹。</p>
+     */
+    public <T, ID> cn.vonce.sql.service.SqlBeanService<T, ID> getCached(Class<T> clazz) {
+        return cn.vonce.sql.cache.SqlBeanServices.caching(get(clazz));
+    }
+
     private void initSqlBeanHelper(Class beanClazz) {
         new Thread(() -> {
             List<String> classNames = PackageUtil.getClasses(context, beanClazz.getPackage().getName());
