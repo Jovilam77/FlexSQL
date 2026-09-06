@@ -471,6 +471,44 @@ public class SqlBeanUtil {
     }
 
     /**
+     * 是否使用租户隔离（实体含 @SqlTenantId 字段）
+     *
+     * @param clazz
+     * @return
+     */
+    public static boolean checkTenant(Class<?> clazz) {
+        List<Field> fieldList = getBeanAllField(clazz);
+        for (Field field : fieldList) {
+            if (field.isAnnotationPresent(SqlTenantId.class)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 获取租户ID标识字段（@SqlTenantId）
+     *
+     * @param clazz
+     * @return
+     */
+    public static Field getTenantField(Class<?> clazz) throws SqlBeanException {
+        List<Field> fieldList = getBeanAllField(clazz);
+        Field tenantField = null;
+        int existTenantField = 0;
+        for (Field field : fieldList) {
+            if (field.isAnnotationPresent(SqlTenantId.class)) {
+                tenantField = field;
+                existTenantField++;
+            }
+            if (existTenantField > 1) {
+                throw new SqlBeanException("请正确标识@SqlTenantId注解，租户字段只能标识一个，但我们在'" + field.getDeclaringClass().getName() + "'此实体类或其父类找到了不止一处");
+            }
+        }
+        return tenantField;
+    }
+
+    /**
      * 获取列信息
      *
      * @param sqlBeanMeta

@@ -10,6 +10,7 @@ import cn.vonce.sql.constant.SqlConstant;
 import cn.vonce.sql.dialect.SqlDialect;
 import cn.vonce.sql.enumerate.*;
 import cn.vonce.sql.exception.SqlBeanException;
+import cn.vonce.sql.provider.TenantContextHolder;
 import cn.vonce.sql.uitls.SqlBeanUtil;
 
 import java.lang.reflect.Field;
@@ -555,6 +556,19 @@ public class SqlHelper {
                 if (sqlJSON != null) {
                     value = SqlBeanUtil.getJSONValue(sqlJSON, value);
                 }
+                // 租户字段：始终以上下文租户ID覆盖，业务层不可指定租户（防止越权写入）
+                if (field.isAnnotationPresent(SqlTenantId.class)) {
+                    Object ctxTenant = TenantContextHolder.getTenantId();
+                    if (ctxTenant != null) {
+                        String tenantCell = SqlBeanUtil.getSqlValue(insert, ctxTenant, jdbcType);
+                        valueSql.append(tenantCell);
+                        valueSql.append(SqlConstant.COMMA);
+                        if (rowCells != null) {
+                            rowCells.add(tenantCell);
+                        }
+                        continue;
+                    }
+                }
                 String cell;
                 //如果此字段为id且需要生成唯一id
                 if (sqlId != null && sqlId.type() != IdType.AUTO && sqlId.type() != IdType.NORMAL) {
@@ -870,6 +884,10 @@ public class SqlHelper {
                 if (sqlDefaultValue != null && sqlDefaultValue.readonly()) {
                     continue;
                 }
+                // 租户字段：UPDATE 的 SET 子句中跳过，防止业务层误改租户归属
+                if (field.isAnnotationPresent(SqlTenantId.class)) {
+                    continue;
+                }
                 if (sqlJSON != null && objectValue != null) {
                     objectValue = SqlBeanUtil.getJSONValue(sqlJSON, objectValue);
                 }
@@ -1092,9 +1110,20 @@ public class SqlHelper {
      */
     private static String conditionHandle(ConditionType conditionType, Common common, String conditionString, Object[] args, Object bean, Condition condition, Wrapper wrapper) {
         StringBuilder conditionSql = new StringBuilder();
-        if (ConditionType.WHERE == conditionType && StringUtil.isBlank(conditionString)) {
-            conditionSql.append(versionCondition(common, bean));
-            conditionSql.append(logicallyDeleteCondition(common));
+        if (ConditionType.WHERE == conditionType) {
+            if (StringUtil.isBlank(conditionString)) {
+                conditionSql.append(versionCondition(common, bean));
+                conditionSql.append(logicallyDeleteCondition(common));
+            }
+            // 行级多租户隔离：实体声明 @SqlTenantId 且当前上下文有租户ID时，强制追加 tenant_id 过滤。
+            // 与逻辑删除不同，租户过滤始终生效（无论是否显式传入 where），防止跨租户数据越权访问。
+            String tenantCond = tenantCondition(common);
+            if (tenantCond.length() > 0) {
+                if (conditionSql.length() > 0) {
+                    conditionSql.append(SqlConstant.AND);
+                }
+                conditionSql.append(tenantCond);
+            }
         }
         // 优先级1 使用条件字符串拼接
         if (StringUtil.isNotBlank(conditionString)) {
@@ -1257,6 +1286,42 @@ public class SqlHelper {
             }
         }
         return "";
+    }
+
+    /**
+     * 租户隔离处理（SELECT / UPDATE / DELETE）
+     * <p>
+     * 若实体声明了 @SqlTenantId 字段且当前租户上下文存在，则生成 {@code (tableAlias.tenant_id = <值>)} 条件片段。
+     * 返回值不带 WHERE 关键字，由调用方在 conditionHandle 中按需用 AND 连接。
+     *
+     * @param common
+     * @return 租户过滤条件片段；不满足注入条件时返回空串
+     */
+    private static String tenantCondition(Common common) {
+        Class<?> clazz = common.getBeanClass();
+        if (clazz == null || !(common instanceof Select || common instanceof Update || common instanceof Delete)) {
+            return "";
+        }
+        if (!SqlBeanUtil.checkTenant(clazz)) {
+            return "";
+        }
+        Object tenantId = TenantContextHolder.getTenantId();
+        if (tenantId == null) {
+            return "";
+        }
+        Field tenantField = SqlBeanUtil.getTenantField(clazz);
+        if (tenantField == null) {
+            return "";
+        }
+        SqlTable sqlTable = SqlBeanUtil.getSqlTable(clazz);
+        String columnName = SqlBeanUtil.getTableFieldName(tenantField, sqlTable);
+        StringBuilder tenantSql = new StringBuilder();
+        tenantSql.append(SqlConstant.BEGIN_BRACKET);
+        tenantSql.append(SqlBeanUtil.getTableFieldFullName(common, common.getTable().getAlias(), columnName));
+        tenantSql.append(SqlConstant.EQUAL_TO);
+        tenantSql.append(SqlBeanUtil.getSqlValue(common, tenantId));
+        tenantSql.append(SqlConstant.END_BRACKET);
+        return tenantSql.toString();
     }
 
     /**

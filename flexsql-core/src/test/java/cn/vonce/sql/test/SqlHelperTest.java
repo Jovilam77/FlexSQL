@@ -10,9 +10,11 @@ import cn.vonce.sql.helper.SqlHelper;
 import cn.vonce.sql.helper.Wrapper;
 import cn.vonce.sql.model.AuditBean;
 import cn.vonce.sql.model.Essay;
+import cn.vonce.sql.model.TenantBean;
 import cn.vonce.sql.model.User;
 import cn.vonce.sql.model.union.EssayUnion;
 import cn.vonce.sql.provider.DynSchemaContextHolder;
+import cn.vonce.sql.provider.TenantContextHolder;
 import cn.vonce.sql.provider.SqlBeanProvider;
 import cn.vonce.sql.uitls.SqlBeanUtil;
 
@@ -66,6 +68,9 @@ public class SqlHelperTest {
 
         // dynSchemaTest（动态Schema 注入安全校验）
         dynSchemaTest();
+
+        // tenantTest（行级多租户隔离：tenant_id 自动注入 + WHERE 强制过滤）
+        tenantInjectionTest(sqlBeanMeta);
 //
 //        // select4
 //        select4(sqlBeanMeta);
@@ -1460,6 +1465,81 @@ public class SqlHelperTest {
             DynSchemaContextHolder.clearSchema();
         }
         System.out.println("[断言] 非法 schema 抛异常 => " + threw);
+    }
+
+    /**
+     * 行级多租户隔离测试：tenant_id 自动注入 + WHERE 强制过滤
+     */
+    private static void tenantInjectionTest(SqlBeanMeta sqlBeanMeta) {
+        // 设置当前租户上下文（模拟拦截器/切面从登录信息注入）
+        TenantContextHolder.setTenantId("t-abc");
+        try {
+            // ---- INSERT：tenant_id 被上下文覆盖，业务层设置的 "evil" 被忽略 ----
+            TenantBean insertBean = new TenantBean();
+            insertBean.setName("租户数据");
+            insertBean.setTenantId("evil"); // 业务层越权指定，应被忽略
+            Insert<TenantBean> insert = new Insert<>();
+            insert.setSqlBeanMeta(sqlBeanMeta);
+            insert.table(TenantBean.class);
+            insert.setBean(insertBean);
+            String insertSql = SqlHelper.buildInsertSql(insert);
+            System.out.println("---tenant INSERT---");
+            System.out.println(insertSql);
+            System.out.println("[断言] INSERT 含 tenant_id 列 => " + insertSql.contains("tenant_id"));
+            System.out.println("[断言] INSERT 写入上下文租户 t-abc => " + insertSql.contains("'t-abc'"));
+            System.out.println("[断言] INSERT 忽略业务层 evil => " + !insertSql.contains("'evil'"));
+
+            // ---- SELECT（无显式 where）：自动追加 tenant_id 过滤 ----
+            Select selectNoWhere = new Select();
+            selectNoWhere.setSqlBeanMeta(sqlBeanMeta);
+            selectNoWhere.setBeanClass(TenantBean.class);
+            selectNoWhere.setTable(TenantBean.class);
+            String selectNoWhereSql = SqlHelper.buildSelectSql(selectNoWhere);
+            System.out.println("---tenant SELECT（无 where）---");
+            System.out.println(selectNoWhereSql);
+            System.out.println("[断言] SELECT 无 where 时追加租户过滤 => " + (selectNoWhereSql.contains("tenant_id") && selectNoWhereSql.contains("'t-abc'")));
+
+            // ---- SELECT（有显式 where）：租户过滤始终生效（AND 连接） ----
+            Select selectWithWhere = new Select();
+            selectWithWhere.setSqlBeanMeta(sqlBeanMeta);
+            selectWithWhere.setBeanClass(TenantBean.class);
+            selectWithWhere.setTable(TenantBean.class);
+            selectWithWhere.where().eq(TenantBean::getName, "租户数据");
+            String selectWithWhereSql = SqlHelper.buildSelectSql(selectWithWhere);
+            System.out.println("---tenant SELECT（有 where）---");
+            System.out.println(selectWithWhereSql);
+            System.out.println("[断言] SELECT 有 where 时仍强制租户过滤 => " + (selectWithWhereSql.contains("'租户数据'") && selectWithWhereSql.contains("tenant_id") && selectWithWhereSql.contains("'t-abc'")));
+
+            // ---- UPDATE（bean 模式）：SET 跳过 tenant_id，WHERE 强制租户过滤 ----
+            TenantBean updateBean = new TenantBean();
+            updateBean.setId(1L);
+            updateBean.setName("更新");
+            updateBean.setTenantId("evil"); // 业务层误设，SET 应跳过
+            Update<TenantBean> update = new Update<>();
+            update.setSqlBeanMeta(sqlBeanMeta);
+            update.setBeanClass(TenantBean.class);
+            update.table(TenantBean.class);
+            update.bean(updateBean);
+            update.where().eq(TenantBean::getId, 1L);
+            String updateSql = SqlHelper.buildUpdateSql(update);
+            System.out.println("---tenant UPDATE---");
+            System.out.println(updateSql);
+            System.out.println("[断言] UPDATE 的 SET 跳过 tenant_id => " + !containsSetColumn(updateSql, "tenant_id"));
+            System.out.println("[断言] UPDATE 的 WHERE 强制租户过滤 => " + (updateSql.contains("tenant_id") && updateSql.contains("'t-abc'")));
+
+            // ---- DELETE（有 where）：WHERE 强制租户过滤 ----
+            Delete delete = new Delete();
+            delete.setSqlBeanMeta(sqlBeanMeta);
+            delete.setBeanClass(TenantBean.class);
+            delete.setTable(TenantBean.class);
+            delete.where().eq(TenantBean::getId, 1L);
+            String deleteSql = SqlHelper.buildDeleteSql(delete);
+            System.out.println("---tenant DELETE---");
+            System.out.println(deleteSql);
+            System.out.println("[断言] DELETE 的 WHERE 强制租户过滤 => " + (deleteSql.contains("tenant_id") && deleteSql.contains("'t-abc'")));
+        } finally {
+            TenantContextHolder.clearTenantId();
+        }
     }
 
 }
