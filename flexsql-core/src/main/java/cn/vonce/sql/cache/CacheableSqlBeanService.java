@@ -74,6 +74,14 @@ public final class CacheableSqlBeanService {
                 handler);
     }
 
+    /**
+     * 判断一个对象是否已经是本装饰器生成的缓存代理，避免重复包裹。
+     */
+    public static boolean isCacheProxy(Object bean) {
+        return bean != null && Proxy.isProxyClass(bean.getClass())
+                && Proxy.getInvocationHandler(bean) instanceof Handler;
+    }
+
     public static SqlBeanMeta resolveMeta(SqlBeanService<?, ?> delegate) {
         try {
             Method m = delegate.getClass().getMethod("getSqlBeanMeta");
