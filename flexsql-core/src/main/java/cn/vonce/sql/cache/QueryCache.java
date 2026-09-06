@@ -21,7 +21,7 @@ public interface QueryCache {
     /**
      * 写入缓存
      *
-     * @param key        缓存键
+     * @param key        缓存键（其 {@code schema} 字段会进入按表失效索引，实现跨 schema 隔离）
      * @param value      结果对象（建议调用方传入深拷贝副本，避免被外部引用篡改）
      * @param table      该查询主表名（用于写时按表失效）；可空
      * @param tenantId   租户 ID（用于写时按表+租户精准失效）；可空
@@ -29,13 +29,14 @@ public interface QueryCache {
     void put(QueryCacheKey key, Object value, String table, Object tenantId);
 
     /**
-     * 按「表 + 租户」失效。任意写操作（insert/update/delete）成功后调用，
-     * 清掉所有 key 含该表（且租户匹配）的缓存项，保证读不到脏数据。
+     * 按「表 + 动态schema + 租户」失效。任意写操作（insert/update/delete/copy/backup）成功后调用，
+     * 清掉所有 key 含该表（且 schema、租户匹配）的缓存项，保证读不到脏数据，同时避免跨 schema 同表名被过度失效。
      *
      * @param table    表名
+     * @param schema   动态 schema（null 或空表示默认 schema）
      * @param tenantId 租户 ID（null 表示不区分租户）
      */
-    void evictByTable(String table, Object tenantId);
+    void evictByTable(String table, String schema, Object tenantId);
 
     /** 清空全部缓存 */
     void clear();

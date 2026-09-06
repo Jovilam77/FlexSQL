@@ -37,7 +37,8 @@ public final class SqlBeanServices {
         QueryCache cache = config.getQueryCache();
         if (cache == null) {
             cache = new SimpleQueryCache(config.getQueryCacheMaxSize(),
-                    config.getQueryCacheExpireAfterWriteSeconds());
+                    config.getQueryCacheExpireAfterWriteSeconds(),
+                    config.getQueryCacheExpireAfterAccessSeconds());
         }
         return CacheableSqlBeanService.wrap(delegate, cache);
     }

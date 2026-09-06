@@ -18,6 +18,9 @@ import cn.vonce.sql.uitls.SqlBeanUtil;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 查询缓存装饰器（基于 JDK 动态代理，后端无关）。
@@ -25,13 +28,18 @@ import java.lang.reflect.Proxy;
  * <ul>
  *   <li>查询方法（select、count 等）：以「SQL + 租户 + 动态 schema + 分页 + 返回类型」为键查缓存；
  *       命中返回深拷贝副本，未命中执行原方法并回填（同样存副本）。</li>
- *   <li>写方法（insert、update、delete）：执行原方法后按「表 + 租户」失效相关缓存项。</li>
+ *   <li>写方法（insert、update、delete、copy、backup）：执行原方法后按「表 + 动态 schema + 租户」失效相关缓存项；
+ *       copy/backup 的失效目标是其 {@code targetTableName}（而非源表）。</li>
  *   <li>其余方法（含分页 {@code paging}、ConditionHandle 等难以稳定构建 key 的入口）直接透传，不参与缓存。</li>
  * </ul>
- * 注意：缓存键强制包含租户与动态 schema，避免多租户串号。</p>
+ * 注意：缓存键强制包含租户与动态 schema，避免多租户串号。
+ * <p><b>一致性说明（cache-aside）</b>：写时在事务提交前即触发失效，因此并发读可能回源到未提交事务可见的数据，
+ * 在 RC/RR 隔离级别下读到已提交的旧值，整体可接受（若写事务回滚，仅多几次缓存 miss，无正确性问题）。
+ * 分布式场景（Redis）存在经典的 cache-aside 竞态（节点 A 回源尚未写回时节点 B 写入并失效，A 可能把旧值写回），
+ * 由 TTL + 写时失效兜底，属于最终一致，业务不应依赖毫秒级强一致。</p>
  *
  * @author Jovi
- * @version 1.0
+ * @version 1.1
  */
 public final class CacheableSqlBeanService {
 
@@ -80,6 +88,7 @@ public final class CacheableSqlBeanService {
         private final QueryCache cache;
         private final SqlBeanMeta meta;
         private final Class<?> beanClass;
+        private final ConcurrentHashMap<QueryCacheKey, Object> loadLocks = new ConcurrentHashMap<>();
 
         Handler(SqlBeanService<?, ?> delegate, QueryCache cache) {
             this.delegate = delegate;
@@ -93,7 +102,7 @@ public final class CacheableSqlBeanService {
             String name = method.getName();
             if (isWrite(name)) {
                 Object result = method.invoke(delegate, args);
-                evictForWrite(args);
+                evictForWrite(args, name);
                 return result;
             }
             QueryCacheKey key = buildKey(name, args);
@@ -102,21 +111,54 @@ public final class CacheableSqlBeanService {
                 if (cached != null) {
                     return BeanCopier.copyValue(cached);
                 }
-                Object result = method.invoke(delegate, args);
-                cache.put(key, BeanCopier.copyValue(result), tableOf(args), TenantContextHolder.getTenantId());
-                return result;
+                // 缓存击穿保护：同一 key 同一时刻仅一个线程回源，其余线程复用重建结果（Double-Checked Locking）
+                Object lock = loadLocks.computeIfAbsent(key, k -> new Object());
+                synchronized (lock) {
+                    Object re = cache.get(key);
+                    if (re != null) {
+                        return BeanCopier.copyValue(re);
+                    }
+                    Object result = method.invoke(delegate, args);
+                    cache.put(key, BeanCopier.copyValue(result), tableOf(args), TenantContextHolder.getTenantId());
+                    return result;
+                }
             }
             return method.invoke(delegate, args);
         }
 
         private boolean isWrite(String name) {
-            return name.startsWith("insert") || name.startsWith("update") || name.startsWith("delete");
+            if (name.startsWith("insert") || name.startsWith("update") || name.startsWith("delete")) {
+                return true;
+            }
+            // copy/backup 会写目标表，必须触发失效（避免目标表被缓存读到旧值）
+            return "copy".equals(name) || "backup".equals(name);
         }
 
-        private void evictForWrite(Object[] args) {
+        private void evictForWrite(Object[] args, String name) {
+            Object tenant = TenantContextHolder.getTenantId();
+            if ("copy".equals(name) || "backup".equals(name)) {
+                // 目标表名是最后一个 String 参数；若存在两个 String，则前一个是 targetSchema
+                List<String> strs = new ArrayList<>();
+                if (args != null) {
+                    for (Object a : args) {
+                        if (a instanceof String) {
+                            strs.add((String) a);
+                        }
+                    }
+                }
+                if (strs.isEmpty()) {
+                    // 无参 backup() 目标表名在内部自动生成（<table>_时间戳），无法确定，跳过失效；
+                    // 源表未被写入，无需失效。
+                    return;
+                }
+                String table = strs.get(strs.size() - 1);
+                String schema = strs.size() >= 2 ? strs.get(strs.size() - 2) : DynSchemaContextHolder.getSchema();
+                cache.evictByTable(table, schema, tenant);
+                return;
+            }
             String table = tableOf(args);
             if (table != null) {
-                cache.evictByTable(table, TenantContextHolder.getTenantId());
+                cache.evictByTable(table, DynSchemaContextHolder.getSchema(), tenant);
             }
         }
 
