@@ -4,6 +4,7 @@ import cn.vonce.sql.cache.CacheableSqlBeanService;
 import cn.vonce.sql.cache.RedisOps;
 import cn.vonce.sql.cache.SqlBeanServices;
 import cn.vonce.sql.config.CacheMode;
+import cn.vonce.sql.config.FlexsqlCacheProperties;
 import cn.vonce.sql.config.SqlBeanConfig;
 import cn.vonce.sql.config.SqlBeanMeta;
 import cn.vonce.sql.java.annotation.DbSwitch;
@@ -31,7 +32,15 @@ import java.util.Collection;
 import java.util.List;
 
 /**
- * Solon Mybatis 配置
+ * Solon Mybatis & 查询缓存配置
+ *
+ * <p><b>cache 配置应用优先级（从高到低）</b>：</p>
+ * <ol>
+ *   <li>用户已编程式调用 {@link SqlBeanServices#setCacheConfig}（最高优先级，Bean/yml 都不覆盖）</li>
+ *   <li>用户写了 {@code @Bean SqlBeanConfig}（yml 即使配了也不会覆盖该 Bean）</li>
+ *   <li>用户没写 Bean 时，回退到 {@code flexsql.cache.*} yml / properties 属性绑定</li>
+ *   <li>都没有 → 默认 OFF，零干扰</li>
+ * </ol>
  *
  * @author Jovi
  * @email imjovi@qq.com
@@ -58,26 +67,8 @@ public class AutoConfigSolon implements Plugin {
             for (BeanWrap bw : sqlBeanServiceWraps) {
                 wrapSqlBeanServiceIfEnabled(bw);
             }
-            // ===== SqlBeanConfig Bean 拾取：把 cache 字段应用到全局 QueryCacheConfig =====
-            Collection<SqlBeanConfig> cfgBeans = e.context().getBeansOfType(SqlBeanConfig.class);
-            if (cfgBeans.size() > 1) {
-                throw new IllegalStateException(
-                        "FlexSQL 检测到 " + cfgBeans.size() + " 个 SqlBeanConfig Bean，请只保留一个。" +
-                                "多个 SqlBeanConfig 会造成 cache 配置歧义。");
-            }
-            SqlBeanConfig cfg = cfgBeans.isEmpty() ? null : cfgBeans.iterator().next();
-            RedisOps redisOps = null;
-            Collection<RedisOps> redisOpsBeans = e.context().getBeansOfType(RedisOps.class);
-            if (!redisOpsBeans.isEmpty()) {
-                redisOps = redisOpsBeans.iterator().next();
-            }
-            if (cfg != null) {
-                if (cfg.getCacheMode() == CacheMode.REDIS && redisOps == null) {
-                    System.err.println("[FlexSQL WARN] SqlBeanConfig.cacheMode=REDIS 但容器内未找到 RedisOps Bean，" +
-                            "已降级为 OFF。请实现 RedisOps 接口并注册为 Bean。");
-                }
-                SqlBeanServices.applyFromSqlBeanConfig(cfg, redisOps);
-            }
+            // ===== SqlBeanConfig Bean 拾取；yml 回退；apply + 注册 reporter =====
+            applyCacheConfig(e.context());
         });
 
         // 当前数据源名（多数据源 / @DbSwitch 场景），供缓存键区分数据源，避免跨数据源串数据。
@@ -99,6 +90,97 @@ public class AutoConfigSolon implements Plugin {
                 });
             }
         });
+    }
+
+    /**
+     * 解析"最终生效的 SqlBeanConfig"：{@code @Bean SqlBeanConfig} 优先；没有 Bean 时回退到 yml / cfg()。
+     * 用户编程式 {@code setCacheConfig} 已调用 → apply 内部会跳过（非 OFF 即不动全局）。
+     */
+    private static void applyCacheConfig(AppContext context) {
+        // 1. 用户 @Bean SqlBeanConfig
+        Collection<SqlBeanConfig> cfgBeans = context.getBeansOfType(SqlBeanConfig.class);
+        if (cfgBeans.size() > 1) {
+            throw new IllegalStateException(
+                    "FlexSQL 检测到 " + cfgBeans.size() + " 个 SqlBeanConfig Bean，请只保留一个。" +
+                            "多个 SqlBeanConfig 会造成 cache 配置歧义。");
+        }
+        SqlBeanConfig effective = cfgBeans.isEmpty() ? null : cfgBeans.iterator().next();
+
+        // 2. yml 回退（仅在用户没写 Bean 时生效）
+        if (effective == null) {
+            FlexsqlCacheProperties props = bindFromSolonCfg(context);
+            if (!props.isEmpty()) {
+                effective = props.toSqlBeanConfig();
+            }
+        }
+
+        // 3. RedisOps Bean 拾取
+        RedisOps redisOps = null;
+        Collection<RedisOps> redisOpsBeans = context.getBeansOfType(RedisOps.class);
+        if (!redisOpsBeans.isEmpty()) {
+            redisOps = redisOpsBeans.iterator().next();
+        }
+
+        // 4. 没有 cfg → 完全 OFF，零干扰
+        if (effective == null) {
+            return;
+        }
+
+        // 5. REDIS 模式但缺 RedisOps：WARN 并降级 OFF（不阻断启动）
+        if (effective.getCacheMode() == CacheMode.REDIS && redisOps == null) {
+            System.err.println("[FlexSQL WARN] cache.mode=REDIS 但容器内未找到 RedisOps Bean，" +
+                    "已降级为 OFF。请实现 RedisOps 接口并注册为 Bean。");
+        }
+
+        // 6. 应用到全局 QueryCacheConfig（编程式优先语义在 SqlBeanServices.applyFromSqlBeanConfig 内部处理）
+        SqlBeanServices.applyFromSqlBeanConfig(effective, redisOps);
+
+        // 7. 启动 slf4j 周期日志 reporter（cfg.cacheMetricsLogIntervalSeconds > 0）
+        CacheMetricsSlf4jReporter reporter = new CacheMetricsSlf4jReporter(effective);
+        reporter.start();
+    }
+
+    /**
+     * 从 Solon {@code AppContext.cfg()} 读 {@code flexsql.cache.*} 字段。
+     * <p>key 不存在 → 字段保持 null（{@link FlexsqlCacheProperties#isEmpty()} 关键）。
+     * 字段值非法（enum 名称错误）→ fail-fast 抛 IllegalStateException。</p>
+     */
+    static FlexsqlCacheProperties bindFromSolonCfg(AppContext context) {
+        FlexsqlCacheProperties props = new FlexsqlCacheProperties();
+        String modeStr = context.cfg().getProperty("flexsql.cache.mode");
+        if (modeStr != null && !modeStr.isEmpty()) {
+            try {
+                props.setMode(CacheMode.valueOf(modeStr.trim().toUpperCase()));
+            } catch (IllegalArgumentException e) {
+                throw new IllegalStateException(
+                        "flexsql.cache.mode 非法: '" + modeStr + "', 必须是 off / local / redis 之一", e);
+            }
+        }
+        setIfPresent(props.getLocal()::setMaximumSize, readLong(context, "flexsql.cache.local.maximum-size"), "local.maximum-size");
+        setIfPresent(props.getLocal()::setExpireAfterWrite, readLong(context, "flexsql.cache.local.expire-after-write"), "local.expire-after-write");
+        setIfPresent(props.getLocal()::setExpireAfterAccess, readLong(context, "flexsql.cache.local.expire-after-access"), "local.expire-after-access");
+        setIfPresent(props.getRedis()::setExpireAfterWrite, readLong(context, "flexsql.cache.redis.expire-after-write"), "redis.expire-after-write");
+        setIfPresent(props::setMetricsLogIntervalSeconds, readLong(context, "flexsql.cache.metrics-log-interval-seconds"), "metrics-log-interval-seconds");
+        return props;
+    }
+
+    private static Long readLong(AppContext context, String key) {
+        // solon 2.6 cfg().getProperty 仅返回 String，自行 parse Long；空/null/缺失返回 null（"零干扰"）
+        String raw = context.cfg().getProperty(key);
+        if (raw == null || raw.isEmpty()) {
+            return null;
+        }
+        try {
+            return Long.parseLong(raw.trim());
+        } catch (NumberFormatException e) {
+            throw new IllegalStateException("flexsql.cache.* 字段 '" + key + "' 解析失败（值='" + raw + "' 必须为整数）", e);
+        }
+    }
+
+    private static void setIfPresent(java.util.function.Consumer<Long> setter, Long value, String keyForLog) {
+        if (value != null) {
+            setter.accept(value);
+        }
     }
 
     /**
@@ -156,7 +238,7 @@ public class AutoConfigSolon implements Plugin {
         }
         bw.context().beanMake(SolonAutoCreateTableListener.class);
         bw.context().beanInterceptorAdd(DbSwitch.class, new DataSourceInterceptor());
-        
+
         if (mybatisAdapter != null) {
             Connection connection = null;
             try {

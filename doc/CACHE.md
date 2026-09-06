@@ -8,11 +8,14 @@
 
 启用后会按以下顺序自动应用：
 
-1. 编程式 `SqlBeanServices.setCacheConfig(...)` — 启动早期直接调用
+1. 编程式 `SqlBeanServices.setCacheConfig(...)` — 启动早期直接调用（最高优先级）
 2. 容器内 `SqlBeanConfig` Bean — spring/solon 启动时拾取（见下）
-3. **优先级**：编程式优先；Bean 仅在当前为 OFF 时才覆盖
+3. **yml / properties 绑定**（`flexsql.cache.*`）— 用户没写 Bean 时回退到这里
+4. **优先级**：编程式 > Bean > yml；Bean 不会读取 yml（避免覆盖用户显式意图）
 
 > 多个 `SqlBeanConfig` Bean 同时存在会启动失败（`IllegalStateException`），避免歧义。
+> yml 字段值非法（如 `flexsql.cache.mode: invalid`）会启动失败（`IllegalStateException`），
+> 启动期错误比运行时静默降级更易排查。
 
 ## 二、模式：本地 vs 分布式（二选一）
 
@@ -23,7 +26,7 @@
 
 > 不要混用 L1+L2（本地 + Redis 叠加）：除非额外加 pub/sub 失效广播，否则分布式下会脏读。
 
-## 三、配置方式（三种）
+## 三、配置方式（四种）
 
 ### 1. 编程式（最直接）
 
@@ -57,9 +60,43 @@ public RedisOps redisOps() {
 }
 ```
 
-### 3. yml + Bean 互补（间接）
+### 3. yml / properties 直接绑定（最简 — 推荐新手）
 
-无预制 yml 绑定类；用户自己用 `@Value` 注入到 Bean：
+**用户只写 yml，不写一行 Java 代码**。框架启动时从 `flexsql.cache.*` 读字段，
+自动激活配置。**不写任何 `flexsql.cache.*` → 零干扰**，缓存保持默认 OFF。
+
+```yaml
+# application.yml（或 app.yml / application.properties）
+flexsql:
+  cache:
+    mode: local                              # off | local | redis
+    local:
+      maximum-size: 1000                     # 单机最大条目数
+      expire-after-write: 600                # 写入后过期秒数（0 = 不设）
+      expire-after-access: 0                  # 访问后过期秒数（0 = 不设）
+    redis:
+      expire-after-write: 600                 # 分布式模式下写入后过期秒数（0 = 用 RedisOps 默认）
+    metrics-log-interval-seconds: 60         # slf4j 周期日志间隔（0 = 关闭）
+```
+
+字段映射：
+
+| yml key | 含义 | 默认 |
+|---|---|---|
+| `flexsql.cache.mode` | `off` / `local` / `redis`，**非法值启动失败** | 未设置 = 不激活 |
+| `flexsql.cache.local.maximum-size` | LOCAL 模式最大条目数 | 1000 |
+| `flexsql.cache.local.expire-after-write` | LOCAL 模式写入后过期（秒） | 0 |
+| `flexsql.cache.local.expire-after-access` | LOCAL 模式访问后过期（秒） | 0 |
+| `flexsql.cache.redis.expire-after-write` | REDIS 模式写入后过期（秒） | RedisOps 默认 |
+| `flexsql.cache.metrics-log-interval-seconds` | slf4j 周期日志间隔 | 60 |
+
+> **优先级提醒**：如果用户同时配置了 yml **又**写了 `@Bean SqlBeanConfig`，以 **Bean 为准**
+> （Bean 是显式意图，yml 只在没有 Bean 时生效）。
+> `flexsql.cache.mode=redis` 但容器内无 `RedisOps` Bean → WARN 降级 OFF（不阻断启动）。
+
+### 4. yml + Bean 桥接（高级：需要更细颗粒控制时）
+
+如果你需要在 Bean 构造里做条件判断/动态计算，不希望框架自动绑定，可以自己写桥接 Bean：
 
 ```java
 @Bean
@@ -76,7 +113,6 @@ public SqlBeanConfig sqlBeanConfig(
 ```
 
 ```yaml
-# application.yml
 flexsql:
   cache:
     mode: local
@@ -84,6 +120,8 @@ flexsql:
       maximum-size: 1000
       expire-after-write: 600
 ```
+
+> 这是旧的"间接"方案。现在更推荐第 3 节"yml 直接绑定"——零 Java 代码、字段由框架统一管理。
 
 ## 四、可选：Caffeine 后端
 
