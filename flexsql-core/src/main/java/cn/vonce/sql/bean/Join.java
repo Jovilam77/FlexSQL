@@ -39,6 +39,11 @@ public class Join implements Serializable {
     private String schema;
     private String tableName;
     private String tableAlias;
+    /**
+     * 关联实体类（用于行级多租户隔离：内省 @SqlTenantId 以在 ON 子句追加租户过滤）
+     * 仅由 @SqlJoin 注解 bean 关联时写入；流式裸表 join 无实体可内省，为 null。
+     */
+    private Class<?> joinClass;
     @Deprecated
     private String tableKeyword;
     @Deprecated
@@ -86,6 +91,14 @@ public class Join implements Serializable {
 
     public void setTableAlias(String tableAlias) {
         this.tableAlias = tableAlias;
+    }
+
+    public Class<?> getJoinClass() {
+        return joinClass;
+    }
+
+    public void setJoinClass(Class<?> joinClass) {
+        this.joinClass = joinClass;
     }
 
     @Deprecated
@@ -149,6 +162,7 @@ public class Join implements Serializable {
                 ", schema='" + schema + '\'' +
                 ", tableName='" + tableName + '\'' +
                 ", tableAlias='" + tableAlias + '\'' +
+                ", joinClass=" + joinClass +
                 ", on='" + on + '\'' +
                 '}';
     }

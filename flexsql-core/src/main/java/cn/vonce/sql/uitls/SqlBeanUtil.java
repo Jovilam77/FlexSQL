@@ -889,6 +889,10 @@ public class SqlBeanUtil {
             join.setSchema(table != null ? table.getSchema() : sqlJoin.schema());
             join.setTableName(table != null ? table.getName() : sqlJoin.table());
             join.setTableAlias(table != null ? table.getAlias() : StringUtil.isEmpty(sqlJoin.tableAlias()) ? sqlJoin.table() : sqlJoin.tableAlias());
+            // 记录关联实体类，供渲染期行级多租户隔离（ON 子句追加租户过滤）内省 @SqlTenantId 使用
+            if (table != null) {
+                join.setJoinClass(subClazz);
+            }
 
             //如果指定了条件对象
             if (sqlJoin.on() != null && sqlJoin.on() != void.class) {

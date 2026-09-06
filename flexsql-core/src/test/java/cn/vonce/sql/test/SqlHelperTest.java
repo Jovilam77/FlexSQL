@@ -10,6 +10,7 @@ import cn.vonce.sql.helper.SqlHelper;
 import cn.vonce.sql.helper.Wrapper;
 import cn.vonce.sql.model.AuditBean;
 import cn.vonce.sql.model.Essay;
+import cn.vonce.sql.model.OrderBean;
 import cn.vonce.sql.model.TenantBean;
 import cn.vonce.sql.model.User;
 import cn.vonce.sql.model.union.EssayUnion;
@@ -71,6 +72,9 @@ public class SqlHelperTest {
 
         // tenantTest（行级多租户隔离：tenant_id 自动注入 + WHERE 强制过滤）
         tenantInjectionTest(sqlBeanMeta);
+
+        // joinSchemaTenantTest（JOIN / 子查询 多租户与动态Schema 隔离覆盖）
+        joinSchemaTenantTest(sqlBeanMeta);
 //
 //        // select4
 //        select4(sqlBeanMeta);
@@ -1538,6 +1542,50 @@ public class SqlHelperTest {
             System.out.println(deleteSql);
             System.out.println("[断言] DELETE 的 WHERE 强制租户过滤 => " + (deleteSql.contains("tenant_id") && deleteSql.contains("'t-abc'")));
         } finally {
+            TenantContextHolder.clearTenantId();
+        }
+    }
+
+    /**
+     * JOIN / 子查询 多租户与动态Schema 隔离测试：
+     * 1) 关联表（@SqlJoin bean）在 ON 子句追加租户过滤
+     * 2) 动态 schema 覆盖主表与关联表
+     * 3) UNION 子查询主表同样覆盖动态 schema
+     */
+    private static void joinSchemaTenantTest(SqlBeanMeta sqlBeanMeta) {
+        DynSchemaContextHolder.setSchema("tenant_a");
+        TenantContextHolder.setTenantId("t-abc");
+        try {
+            // ---- SELECT + @SqlJoin bean：验证主表/关联表动态 schema 覆盖 + 关联表 ON 租户过滤 ----
+            Select select = new Select();
+            select.setSqlBeanMeta(sqlBeanMeta);
+            select.setBeanClass(OrderBean.class);
+            select.setTable(OrderBean.class);
+            String joinSql = SqlBeanProvider.selectSql(sqlBeanMeta, OrderBean.class, OrderBean.class, select);
+            System.out.println("---join + schema + tenant---");
+            System.out.println(joinSql);
+            System.out.println("[断言] 主表带动态 schema 前缀 => " + joinSql.contains("tenant_a.t_order"));
+            System.out.println("[断言] 关联表带动态 schema 前缀 => " + joinSql.contains("tenant_a.t_tenant"));
+            System.out.println("[断言] 关联表 ON 子句追加租户过滤 => " + (joinSql.contains("`jt`.`tenant_id`") && joinSql.contains("'t-abc'")));
+            System.out.println("[断言] 主表 WHERE 强制租户过滤 => " + (joinSql.contains("`o`.`tenant_id`") && joinSql.contains("'t-abc'")));
+
+            // ---- UNION 子查询：验证子查询主表同样覆盖动态 schema ----
+            Select u1 = new Select();
+            u1.setSqlBeanMeta(sqlBeanMeta);
+            u1.setBeanClass(TenantBean.class);
+            u1.setTable(TenantBean.class);
+            Select u2 = new Select();
+            u2.setSqlBeanMeta(sqlBeanMeta);
+            u2.setBeanClass(TenantBean.class);
+            u2.setTable(TenantBean.class);
+            Select unionSel = u1.union(u2);
+            String unionSql = SqlHelper.buildSelectSql(unionSel);
+            System.out.println("---union + schema---");
+            System.out.println(unionSql);
+            System.out.println("[断言] UNION 子查询主表覆盖动态 schema（出现两次） => "
+                    + (unionSql.indexOf("tenant_a") != unionSql.lastIndexOf("tenant_a") && unionSql.contains("tenant_a.t_tenant")));
+        } finally {
+            DynSchemaContextHolder.clearSchema();
             TenantContextHolder.clearTenantId();
         }
     }

@@ -10,6 +10,7 @@ import cn.vonce.sql.constant.SqlConstant;
 import cn.vonce.sql.dialect.SqlDialect;
 import cn.vonce.sql.enumerate.*;
 import cn.vonce.sql.exception.SqlBeanException;
+import cn.vonce.sql.provider.DynSchemaContextHolder;
 import cn.vonce.sql.provider.TenantContextHolder;
 import cn.vonce.sql.uitls.SqlBeanUtil;
 
@@ -38,6 +39,8 @@ public class SqlHelper {
      */
     public static String buildSelectSql(Select select) {
         SqlBeanUtil.check(select);
+        // 动态Schema（多租户）：渲染期统一解析（主表 FROM 与 UNION 子查询均复用），非法则抛异常
+        String dynSchema = resolveDynamicSchema();
         StringBuilder sqlSb = new StringBuilder();
         Integer[] pageParam = null;
         String orderSql = orderBySql(select);
@@ -73,7 +76,8 @@ public class SqlHelper {
         }
         if (!select.isNoFrom()) {
             sqlSb.append(SqlConstant.FROM);
-            sqlSb.append(SqlBeanUtil.fromFullName(select.getTable().getSchema(), select.getTable().getName(), select.getTable().getAlias(), select));
+            String baseSchema = dynSchema != null ? dynSchema : select.getTable().getSchema();
+            sqlSb.append(SqlBeanUtil.fromFullName(baseSchema, select.getTable().getName(), select.getTable().getAlias(), select));
             // 表级锁提示（如 SQL Server 的 WITH (UPDLOCK, READPAST)），紧贴主表名之后注入
             dialect.appendTableHint(sqlSb, select);
             sqlSb.append(joinSql(select, dialect));
@@ -94,11 +98,15 @@ public class SqlHelper {
             dialect.appendLockClause(sqlSb, select);
         }
         // UNION / UNION ALL 子查询（追加在主体 SELECT 之后、COUNT 包裹之前）
+        // 关联子查询主表同样覆盖动态 schema（与 setSchema 主表逻辑一致，纯渲染期覆盖）
         if (!select.isCount() && select.getUnionSelects() != null && !select.getUnionSelects().isEmpty()) {
             for (int i = 0; i < select.getUnionSelects().size(); i++) {
                 Select unionSelect = select.getUnionSelects().get(i);
                 if (unionSelect.getSqlBeanMeta() == null) {
                     unionSelect.setSqlBeanMeta(select.getSqlBeanMeta());
+                }
+                if (dynSchema != null && unionSelect.getTable() != null) {
+                    unionSelect.getTable().setSchema(dynSchema);
                 }
                 sqlSb.append(select.getUnionAlls().get(i) ? SqlConstant.UNION_ALL : SqlConstant.UNION);
                 sqlSb.append(SqlHelper.buildSelectSql(unionSelect));
@@ -412,6 +420,8 @@ public class SqlHelper {
     private static String joinSql(Select select, SqlDialect dialect) {
         StringBuilder joinSql = new StringBuilder();
         if (select != null && select.getJoin().size() != 0) {
+            // 动态Schema（多租户）优先级最高，覆盖关联表 schema（与 setSchema 主表逻辑一致）
+            String dynSchema = resolveDynamicSchema();
             for (int i = 0; i < select.getJoin().size(); i++) {
                 Join join = select.getJoin().get(i);
                 switch (join.getJoinType()) {
@@ -428,7 +438,8 @@ public class SqlHelper {
                         joinSql.append(SqlConstant.FULL_JOIN);
                         break;
                 }
-                String schema = join.getSchema();
+                // 关联表 schema：动态 schema 存在时覆盖（注解 join / 流式 join 均覆盖）
+                String schema = dynSchema != null ? dynSchema : join.getSchema();
                 String tableName = join.getTableName();
                 String tableAlias = join.getTableAlias();
                 joinSql.append(SqlBeanUtil.fromFullName(schema, tableName, tableAlias, select));
@@ -452,9 +463,59 @@ public class SqlHelper {
                         joinSql.append(SqlConstant.SPACES);
                     }
                 }
+                // 关联表行级多租户隔离：在 ON 子句追加租户过滤（LEFT JOIN 也不会破坏左表行，比放 WHERE 安全）
+                String joinTenantSql = joinTenantCondition(join, select);
+                if (!joinTenantSql.isEmpty()) {
+                    joinSql.append(SqlConstant.AND);
+                    joinSql.append(joinTenantSql);
+                }
             }
         }
         return joinSql.toString();
+    }
+
+    /**
+     * 解析动态Schema（多租户上下文），并做合法性校验以防 SQL 注入。
+     * 返回 null 表示未设置动态 schema。
+     */
+    private static String resolveDynamicSchema() {
+        String dynSchema = DynSchemaContextHolder.getSchema();
+        if (StringUtil.isEmpty(dynSchema)) {
+            return null;
+        }
+        if (!SqlBeanUtil.isValidSqlIdentifier(dynSchema)) {
+            throw new SqlBeanException("非法的动态Schema名称（可能存在SQL注入风险）：" + dynSchema);
+        }
+        return dynSchema;
+    }
+
+    /**
+     * 关联表租户隔离条件：仅对 @SqlJoin 关联实体（joinClass 可内省 @SqlTenantId）生效，
+     * 在 ON 子句追加 (joinAlias.tenant_id = <上下文租户>)，与主表 tenantCondition 同构。
+     * 流式裸表 join 无实体类（joinClass 为 null），不追加。
+     */
+    private static String joinTenantCondition(Join join, Select select) {
+        Class<?> clazz = join.getJoinClass();
+        if (clazz == null || !SqlBeanUtil.checkTenant(clazz)) {
+            return "";
+        }
+        Object tenantId = TenantContextHolder.getTenantId();
+        if (tenantId == null) {
+            return "";
+        }
+        Field tenantField = SqlBeanUtil.getTenantField(clazz);
+        if (tenantField == null) {
+            return "";
+        }
+        SqlTable sqlTable = SqlBeanUtil.getSqlTable(clazz);
+        String columnName = SqlBeanUtil.getTableFieldName(tenantField, sqlTable);
+        StringBuilder sb = new StringBuilder();
+        sb.append(SqlConstant.BEGIN_BRACKET);
+        sb.append(SqlBeanUtil.getTableFieldFullName(select, join.getTableAlias(), columnName));
+        sb.append(SqlConstant.EQUAL_TO);
+        sb.append(SqlBeanUtil.getSqlValue(select, tenantId));
+        sb.append(SqlConstant.END_BRACKET);
+        return sb.toString();
     }
 
     /**
