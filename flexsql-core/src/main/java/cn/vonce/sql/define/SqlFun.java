@@ -2385,4 +2385,380 @@ public class SqlFun extends Column {
         return f;
     }
 
+    // ============================================================
+    //  P0 函数补强（2026-09-06 第二批）—— 数学 / 标准字符串 / 标准日期 / 类型转换 / MD5
+    //  本批：通用函数不标 dialect()，方言差异函数用 DialectSupport
+    // ============================================================
+
+    // ---------------- B. 数值函数（SQL 标准/全方言支持，无需标注） ----------------
+
+    /**
+     * 绝对值（SQL 标准 ABS，全方言支持）。
+     */
+    public static SqlFun abs(Object value) {
+        return new SqlFun("abs", new Object[]{value});
+    }
+
+    public static <T, R> SqlFun abs(ColumnFun<T, R> value) {
+        return new SqlFun("abs", new Object[]{value});
+    }
+
+    /**
+     * 幂函数 base^exponent（SQL 标准 POWER，全方言支持）。
+     */
+    public static SqlFun power(Object base, Object exponent) {
+        return new SqlFun("power", new Object[]{base, exponent});
+    }
+
+    public static <T, R> SqlFun power(ColumnFun<T, R> base, Object exponent) {
+        return new SqlFun("power", new Object[]{base, exponent});
+    }
+
+    public static <T, R> SqlFun power(ColumnFun<T, R> base, ColumnFun<T, R> exponent) {
+        return new SqlFun("power", new Object[]{base, exponent});
+    }
+
+    /**
+     * 自然对数 ln(value)（SQL 标准 LN，全方言支持）。
+     */
+    public static SqlFun ln(Object value) {
+        return new SqlFun("ln", new Object[]{value});
+    }
+
+    public static <T, R> SqlFun ln(ColumnFun<T, R> value) {
+        return new SqlFun("ln", new Object[]{value});
+    }
+
+    /**
+     * 常用对数 / 自然对数。
+     * <ul>
+     *   <li>{@code log(value)} - 自然对数（不同方言的默认底数略有差异，请优先使用 {@link #ln} 或 {@link #log10} 明确语义）</li>
+     *   <li>{@code log(base, value)} - 指定底数（SQL 标准）</li>
+     * </ul>
+     */
+    public static SqlFun log(Object value) {
+        return new SqlFun("log", new Object[]{value});
+    }
+
+    public static <T, R> SqlFun log(ColumnFun<T, R> value) {
+        return new SqlFun("log", new Object[]{value});
+    }
+
+    public static SqlFun log(Object base, Object value) {
+        return new SqlFun("log", new Object[]{base, value});
+    }
+
+    public static <T, R> SqlFun log(ColumnFun<T, R> base, Object value) {
+        return new SqlFun("log", new Object[]{base, value});
+    }
+
+    public static <T, R> SqlFun log(ColumnFun<T, R> base, ColumnFun<T, R> value) {
+        return new SqlFun("log", new Object[]{base, value});
+    }
+
+    /**
+     * 以 10 为底的对数（SQL 标准 LOG10，全方言支持）。
+     */
+    public static SqlFun log10(Object value) {
+        return new SqlFun("log10", new Object[]{value});
+    }
+
+    public static <T, R> SqlFun log10(ColumnFun<T, R> value) {
+        return new SqlFun("log10", new Object[]{value});
+    }
+
+    /**
+     * 指数函数 e^value（SQL 标准 EXP，全方言支持）。
+     */
+    public static SqlFun exp(Object value) {
+        return new SqlFun("exp", new Object[]{value});
+    }
+
+    public static <T, R> SqlFun exp(ColumnFun<T, R> value) {
+        return new SqlFun("exp", new Object[]{value});
+    }
+
+    /**
+     * 圆周率常量 π（SQL 标准 PI，全方言支持，无参数）。
+     */
+    public static SqlFun pi() {
+        return new SqlFun("pi", null);
+    }
+
+    /**
+     * 角度转弧度（SQL 标准 RADIANS，全方言支持）。
+     */
+    public static SqlFun radians(Object degrees) {
+        return new SqlFun("radians", new Object[]{degrees});
+    }
+
+    public static <T, R> SqlFun radians(ColumnFun<T, R> degrees) {
+        return new SqlFun("radians", new Object[]{degrees});
+    }
+
+    /**
+     * 弧度转角度（SQL 标准 DEGREES，全方言支持）。
+     */
+    public static SqlFun degrees(Object radians) {
+        return new SqlFun("degrees", new Object[]{radians});
+    }
+
+    public static <T, R> SqlFun degrees(ColumnFun<T, R> radians) {
+        return new SqlFun("degrees", new Object[]{radians});
+    }
+
+    // ---------------- C. 字符串函数（SQL 标准/全方言支持，无需标注） ----------------
+
+    /**
+     * 反转字符串（SQL 标准 REVERSE，全方言支持）。
+     */
+    public static SqlFun reverse(Object str) {
+        return new SqlFun("reverse", new Object[]{str});
+    }
+
+    public static <T, R> SqlFun reverse(ColumnFun<T, R> str) {
+        return new SqlFun("reverse", new Object[]{str});
+    }
+
+    /**
+     * 重复字符串 n 次（SQL 标准 REPEAT，全方言支持）。
+     */
+    public static SqlFun repeat(Object str, int count) {
+        return new SqlFun("repeat", new Object[]{str, count});
+    }
+
+    public static <T, R> SqlFun repeat(ColumnFun<T, R> str, int count) {
+        return new SqlFun("repeat", new Object[]{str, count});
+    }
+
+    /**
+     * 生成 n 个空格组成的字符串（SQL 标准 SPACE，全方言支持）。
+     */
+    public static SqlFun space(int count) {
+        return new SqlFun("space", new Object[]{count});
+    }
+
+    /**
+     * 字符长度（SQL 标准 CHAR_LENGTH/CHARACTER_LENGTH，全方言支持）。
+     */
+    public static SqlFun charLength(Object str) {
+        return new SqlFun("char_length", new Object[]{str});
+    }
+
+    public static <T, R> SqlFun charLength(ColumnFun<T, R> str) {
+        return new SqlFun("char_length", new Object[]{str});
+    }
+
+    /**
+     * 字节长度（SQL 标准 OCTET_LENGTH，全方言支持）。
+     */
+    public static SqlFun octetLength(Object str) {
+        return new SqlFun("octet_length", new Object[]{str});
+    }
+
+    public static <T, R> SqlFun octetLength(ColumnFun<T, R> str) {
+        return new SqlFun("octet_length", new Object[]{str});
+    }
+
+    /**
+     * 位长度（SQL 标准 BIT_LENGTH，全方言支持）。
+     */
+    public static SqlFun bitLength(Object str) {
+        return new SqlFun("bit_length", new Object[]{str});
+    }
+
+    public static <T, R> SqlFun bitLength(ColumnFun<T, R> str) {
+        return new SqlFun("bit_length", new Object[]{str});
+    }
+
+    /**
+     * 查找子串位置（SQL 标准 POSITION，全方言支持；PG 同时支持 strpos）。
+     * <p>等价于 MySQL LOCATE/INSTR、SQL Server CHARINDEX、Oracle INSTR。</p>
+     *
+     * @param subStr 待查找子串
+     * @param str    数据源字符串
+     * @return
+     */
+    public static SqlFun position(Object subStr, Object str) {
+        return new SqlFun("position", new Object[]{new RawValue(subStr), "IN", str});
+    }
+
+    public static <T, R> SqlFun position(Object subStr, ColumnFun<T, R> str) {
+        return new SqlFun("position", new Object[]{new RawValue(subStr), "IN", str});
+    }
+
+    public static <T, R> SqlFun position(ColumnFun<T, R> subStr, Object str) {
+        return new SqlFun("position", new Object[]{new RawValue(subStr), "IN", str});
+    }
+
+    public static <T, R> SqlFun position(ColumnFun<T, R> subStr, ColumnFun<T, R> str) {
+        return new SqlFun("position", new Object[]{new RawValue(subStr), "IN", str});
+    }
+
+    // ---------------- D. 日期常量（SQL 标准关键字/全方言支持，无需标注） ----------------
+
+    /**
+     * 当前事务开始时间戳（SQL 标准 CURRENT_TIMESTAMP，全方言支持）。
+     */
+    public static SqlFun currentTimestamp() {
+        return new SqlFun("current_timestamp", null);
+    }
+
+    /**
+     * 当前日期（SQL 标准 CURRENT_DATE，全方言支持）。
+     */
+    public static SqlFun currentDate() {
+        return new SqlFun("current_date", null);
+    }
+
+    /**
+     * 当前时间（SQL 标准 CURRENT_TIME，全方言支持）。
+     */
+    public static SqlFun currentTime() {
+        return new SqlFun("current_time", null);
+    }
+
+    /**
+     * 本地时间（SQL 标准 LOCALTIME，全方言支持）。
+     */
+    public static SqlFun localtime() {
+        return new SqlFun("localtime", null);
+    }
+
+    /**
+     * 本地时间戳（SQL 标准 LOCALTIMESTAMP，全方言支持）。
+     */
+    public static SqlFun localtimestamp() {
+        return new SqlFun("localtimestamp", null);
+    }
+
+    /**
+     * 从日期/时间戳中提取指定部分（SQL 标准 EXTRACT，全方言支持）。
+     * <p>等价于 year()/month()/day() 等，但支持更细粒度字段（{@code epoch/century/decade/dow/doy/...}）。</p>
+     *
+     * @param field 提取字段（如 YEAR/MONTH/DAY/HOUR/MINUTE/SECOND/EPOCH...）
+     * @param date  合法的日期/时间表达式
+     * @return
+     */
+    public static SqlFun extract(Object field, Object date) {
+        return new SqlFun("extract", new Object[]{new RawValue(field), "FROM", date});
+    }
+
+    public static <T, R> SqlFun extract(Object field, ColumnFun<T, R> date) {
+        return new SqlFun("extract", new Object[]{new RawValue(field), "FROM", date});
+    }
+
+    // ---------------- E. 类型转换（SQL 标准 CAST/全方言支持，无需标注） ----------------
+
+    /**
+     * 类型转换（SQL 标准 CAST AS，全方言支持）。
+     * <p>等价于 SQL Server/MySQL 的 CONVERT，但参数顺序/参数风格更标准。</p>
+     *
+     * @param value 待转换的值
+     * @param type  目标类型（如 INTEGER / VARCHAR(50) / DATE...）
+     * @return
+     */
+    public static SqlFun cast(Object value, Object type) {
+        return new SqlFun("cast", new Object[]{value, "AS", type});
+    }
+
+    public static <T, R> SqlFun cast(ColumnFun<T, R> value, Object type) {
+        return new SqlFun("cast", new Object[]{value, "AS", type});
+    }
+
+    // ---------------- F. MD5（方言差异，需标注） ----------------
+
+    /**
+     * MD5 摘要。
+     * <ul>
+     *   <li>MySQL / MariaDB / SQLite / H2 / Hsql / Derby: MD5(str)</li>
+     *   <li>PG: MD5(str)（PG 14 之前用内置函数，14+ 需 pgcrypto extension）</li>
+     *   <li>SQL Server: HASHBYTES('MD5', str)（参数风格不同，请手写或自实现）</li>
+     *   <li>Oracle: STANDARD_HASH(str, 'MD5')（12c+）</li>
+     * </ul>
+     */
+    public static SqlFun md5(Object str) {
+        SqlFun f = new SqlFun("md5", new Object[]{str});
+        f.dialect(DialectSupport.builder()
+                .support(cn.vonce.sql.enumerate.DbType.MySQL)
+                .support(cn.vonce.sql.enumerate.DbType.MariaDB)
+                .support(cn.vonce.sql.enumerate.DbType.SQLite)
+                .support(cn.vonce.sql.enumerate.DbType.Postgresql)
+                .support(cn.vonce.sql.enumerate.DbType.H2)
+                .support(cn.vonce.sql.enumerate.DbType.Hsql)
+                .support(cn.vonce.sql.enumerate.DbType.Derby)
+                .support(cn.vonce.sql.enumerate.DbType.Oracle, DbVersion.from(12, 0))
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLServer)
+                .unsupport(cn.vonce.sql.enumerate.DbType.DB2)
+                .build());
+        return f;
+    }
+
+    public static <T, R> SqlFun md5(ColumnFun<T, R> str) {
+        SqlFun f = new SqlFun("md5", new Object[]{str});
+        f.dialect(DialectSupport.builder()
+                .support(cn.vonce.sql.enumerate.DbType.MySQL)
+                .support(cn.vonce.sql.enumerate.DbType.MariaDB)
+                .support(cn.vonce.sql.enumerate.DbType.SQLite)
+                .support(cn.vonce.sql.enumerate.DbType.Postgresql)
+                .support(cn.vonce.sql.enumerate.DbType.H2)
+                .support(cn.vonce.sql.enumerate.DbType.Hsql)
+                .support(cn.vonce.sql.enumerate.DbType.Derby)
+                .support(cn.vonce.sql.enumerate.DbType.Oracle, DbVersion.from(12, 0))
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLServer)
+                .unsupport(cn.vonce.sql.enumerate.DbType.DB2)
+                .build());
+        return f;
+    }
+
+    // ---------------- G. 日期截断（方言差异，需标注） ----------------
+
+    /**
+     * 日期截断到指定精度（按指定字段向下取整）。
+     * <ul>
+     *   <li>PG: date_trunc('day', ts)</li>
+     *   <li>MySQL 8.0+: DATE_TRUNC(ts, field)</li>
+     *   <li>SQLite: date_trunc 由部分扩展提供</li>
+     *   <li>Oracle: TRUNC(ts, 'DD')（参数风格不同，请用 {@code SqlFun.cast} 或手写）</li>
+     *   <li>SQL Server: 无原语，请用 {@link #format} 或字符串转换</li>
+     * </ul>
+     *
+     * @param field 截断精度（year/month/day/hour/minute/...）
+     * @param date  合法的日期/时间表达式
+     * @return
+     */
+    public static SqlFun dateTrunc(Object field, Object date) {
+        SqlFun f = new SqlFun("date_trunc", new Object[]{new RawValue(field), date});
+        f.dialect(DialectSupport.builder()
+                .support(cn.vonce.sql.enumerate.DbType.Postgresql)
+                .support(cn.vonce.sql.enumerate.DbType.MySQL, DbVersion.from(8, 0))
+                .support(cn.vonce.sql.enumerate.DbType.MariaDB, DbVersion.from(10, 3))
+                .support(cn.vonce.sql.enumerate.DbType.H2)
+                .support(cn.vonce.sql.enumerate.DbType.Hsql)
+                .support(cn.vonce.sql.enumerate.DbType.SQLite)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Oracle)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLServer)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Derby)
+                .unsupport(cn.vonce.sql.enumerate.DbType.DB2)
+                .build());
+        return f;
+    }
+
+    public static <T, R> SqlFun dateTrunc(Object field, ColumnFun<T, R> date) {
+        SqlFun f = new SqlFun("date_trunc", new Object[]{new RawValue(field), date});
+        f.dialect(DialectSupport.builder()
+                .support(cn.vonce.sql.enumerate.DbType.Postgresql)
+                .support(cn.vonce.sql.enumerate.DbType.MySQL, DbVersion.from(8, 0))
+                .support(cn.vonce.sql.enumerate.DbType.MariaDB, DbVersion.from(10, 3))
+                .support(cn.vonce.sql.enumerate.DbType.H2)
+                .support(cn.vonce.sql.enumerate.DbType.Hsql)
+                .support(cn.vonce.sql.enumerate.DbType.SQLite)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Oracle)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLServer)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Derby)
+                .unsupport(cn.vonce.sql.enumerate.DbType.DB2)
+                .build());
+        return f;
+    }
+
 }

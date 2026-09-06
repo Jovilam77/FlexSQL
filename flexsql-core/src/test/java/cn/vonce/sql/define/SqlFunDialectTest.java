@@ -240,6 +240,203 @@ public class SqlFunDialectTest {
         }
     }
 
+    // ======================== 2026-09-06 第二批 P0 函数补强 ========================
+
+    /**
+     * 所有 P0 第二批通用函数无方言标注（dialectSupport == null）。
+     */
+    static boolean p0Batch2UniversalFunctionsAreUntagged() {
+        SqlFun[] fs = new SqlFun[]{
+                SqlFun.abs("c"), SqlFun.ln("c"), SqlFun.log("c"), SqlFun.log("b", "v"),
+                SqlFun.log10("c"), SqlFun.exp("c"), SqlFun.pi(), SqlFun.radians("c"),
+                SqlFun.degrees("c"), SqlFun.power("b", "e"),
+                SqlFun.reverse("c"), SqlFun.repeat("c", 3), SqlFun.space(3),
+                SqlFun.charLength("c"), SqlFun.octetLength("c"), SqlFun.bitLength("c"),
+                SqlFun.position("s", "c"), SqlFun.currentTimestamp(), SqlFun.currentDate(),
+                SqlFun.currentTime(), SqlFun.localtime(), SqlFun.localtimestamp(),
+                SqlFun.extract("YEAR", "d"), SqlFun.cast("c", "INTEGER")
+        };
+        for (SqlFun f : fs) {
+            if (f.getDialectSupport() != null) {
+                System.out.println("    [untagged] 误标: " + f.getFunName());
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * 所有 P0 第二批通用函数在 MySQL 8.0 + STRICT 模式下成功渲染。
+     */
+    static boolean p0Batch2UniversalFunctionsRender() {
+        cn.vonce.sql.bean.Common common = new cn.vonce.sql.bean.Common();
+        SqlBeanMeta meta = metaOf(DbType.MySQL, 8, 0);
+        meta.setDialectMode(DialectMode.STRICT);
+        common.setSqlBeanMeta(meta);
+        try {
+            String s = cn.vonce.sql.uitls.SqlBeanUtil.getSqlFunction(common, SqlFun.abs("col"));
+            String s2 = cn.vonce.sql.uitls.SqlBeanUtil.getSqlFunction(common, SqlFun.power("a", "b"));
+            String s3 = cn.vonce.sql.uitls.SqlBeanUtil.getSqlFunction(common, SqlFun.pi());
+            String s4 = cn.vonce.sql.uitls.SqlBeanUtil.getSqlFunction(common, SqlFun.currentTimestamp());
+            String s5 = cn.vonce.sql.uitls.SqlBeanUtil.getSqlFunction(common, SqlFun.position("sub", "col"));
+            String s6 = cn.vonce.sql.uitls.SqlBeanUtil.getSqlFunction(common, SqlFun.extract("YEAR", "col"));
+            String s7 = cn.vonce.sql.uitls.SqlBeanUtil.getSqlFunction(common, SqlFun.cast("col", "INTEGER"));
+            String s8 = cn.vonce.sql.uitls.SqlBeanUtil.getSqlFunction(common, SqlFun.reverse("col"));
+            String s9 = cn.vonce.sql.uitls.SqlBeanUtil.getSqlFunction(common, SqlFun.repeat("x", 3));
+            String s10 = cn.vonce.sql.uitls.SqlBeanUtil.getSqlFunction(common, SqlFun.charLength("col"));
+            String s11 = cn.vonce.sql.uitls.SqlBeanUtil.getSqlFunction(common, SqlFun.space(5));
+            return s.contains("abs") && s2.contains("power") && s3.contains("pi")
+                    && s4.contains("current_timestamp") && s5.contains("position") && s5.contains("IN")
+                    && s6.contains("extract") && s6.contains("YEAR") && s6.contains("FROM")
+                    && s7.contains("cast") && s7.contains("AS")
+                    && s8.contains("reverse") && s9.contains("repeat") && s10.contains("char_length")
+                    && s11.contains("space");
+        } catch (Exception e) {
+            System.out.println("    [render] 渲染失败: " + e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * md5 方言矩阵：MySQL/MariaDB/SQLite/PG/H2/Hsql/Derby 通过；SQL Server/DB2 抛；Oracle 11 抛，Oracle 12+ 通过。
+     */
+    static boolean md5Dialects() {
+        SqlFun f = SqlFun.md5("col");
+        return f.checkDialect(metaOf(DbType.MySQL, 8, 0)) == null
+                && f.checkDialect(metaOf(DbType.MariaDB, 10, 3)) == null
+                && f.checkDialect(metaOf(DbType.SQLite, 3, 30)) == null
+                && f.checkDialect(metaOf(DbType.Postgresql, 14, 0)) == null
+                && f.checkDialect(metaOf(DbType.H2, 2, 0)) == null
+                && f.checkDialect(metaOf(DbType.Hsql, 2, 0)) == null
+                && f.checkDialect(metaOf(DbType.Derby, 10, 0)) == null
+                && f.checkDialect(metaOf(DbType.Oracle, 12, 0)) == null
+                && f.checkDialect(metaOf(DbType.Oracle, 11, 0)) != null   // < 12 抛
+                && f.checkDialect(metaOf(DbType.SQLServer, 2019, 0)) != null
+                && f.checkDialect(metaOf(DbType.DB2, 11, 0)) != null;
+    }
+
+    static boolean md5RendersOnPostgres() {
+        cn.vonce.sql.bean.Common common = new cn.vonce.sql.bean.Common();
+        SqlBeanMeta meta = metaOf(DbType.Postgresql, 14, 0);
+        meta.setDialectMode(DialectMode.STRICT);
+        common.setSqlBeanMeta(meta);
+        try {
+            String sql = cn.vonce.sql.uitls.SqlBeanUtil.getSqlFunction(common, SqlFun.md5("col"));
+            return sql.contains("md5");
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    static boolean md5ThrowsOnOldOracle() {
+        cn.vonce.sql.bean.Common common = new cn.vonce.sql.bean.Common();
+        SqlBeanMeta meta = metaOf(DbType.Oracle, 11, 0);
+        meta.setDialectMode(DialectMode.STRICT);
+        common.setSqlBeanMeta(meta);
+        try {
+            cn.vonce.sql.uitls.SqlBeanUtil.getSqlFunction(common, SqlFun.md5("col"));
+            return false;
+        } catch (UnsupportedDialectException e) {
+            return e.getFunctionName().equals("md5") && e.getCurrentDbType() == DbType.Oracle;
+        }
+    }
+
+    /**
+     * date_trunc 方言矩阵：PG/MySQL 8.0+/MariaDB 10.3+/H2/Hsql/SQLite 通过；Oracle/SQL Server/Derby/DB2/MySQL 5.x 抛。
+     */
+    static boolean dateTruncDialects() {
+        // 用 (Object, Object) 强转避免与旧的 dateTrunc(Object, String) 重载冲突（参数顺序相反：PG vs Oracle）
+        SqlFun f = SqlFun.dateTrunc((Object) "day", (Object) "col");
+        Object[][] probes = {
+                {"PG14", metaOf(DbType.Postgresql, 14, 0), null},
+                {"MySQL8", metaOf(DbType.MySQL, 8, 0), null},
+                {"MariaDB10.3", metaOf(DbType.MariaDB, 10, 3), null},
+                {"H2", metaOf(DbType.H2, 2, 0), null},
+                {"Hsql", metaOf(DbType.Hsql, 2, 0), null},
+                {"SQLite", metaOf(DbType.SQLite, 3, 30), null},
+                {"MySQL5.7", metaOf(DbType.MySQL, 5, 7), "not null"},
+                {"MariaDB10.2", metaOf(DbType.MariaDB, 10, 2), "not null"},
+                {"Oracle19", metaOf(DbType.Oracle, 19, 0), "not null"},
+                {"SQLServer2019", metaOf(DbType.SQLServer, 2019, 0), "not null"},
+                {"Derby", metaOf(DbType.Derby, 10, 0), "not null"},
+                {"DB2", metaOf(DbType.DB2, 11, 0), "not null"},
+        };
+        for (Object[] p : probes) {
+            String label = (String) p[0];
+            SqlBeanMeta meta = (SqlBeanMeta) p[1];
+            String expect = (String) p[2];
+            String r = f.checkDialect(meta);
+            boolean expectNull = expect == null;
+            boolean ok = (r == null) == expectNull;
+            System.out.println("    [dateTrunc] " + label + " -> " + (r == null ? "PASS" : "FAIL(" + r + ")") + " | expect=" + expect + " | " + (ok ? "✓" : "✗"));
+            if (!ok) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    static boolean dateTruncThrowsOnOldMysql() {
+        cn.vonce.sql.bean.Common common = new cn.vonce.sql.bean.Common();
+        SqlBeanMeta meta = metaOf(DbType.MySQL, 5, 7);
+        meta.setDialectMode(DialectMode.STRICT);
+        common.setSqlBeanMeta(meta);
+        try {
+            cn.vonce.sql.uitls.SqlBeanUtil.getSqlFunction(common, SqlFun.dateTrunc("day", "col"));
+            return false;
+        } catch (UnsupportedDialectException e) {
+            return e.getFunctionName().equals("date_trunc") && e.getCurrentDbType() == DbType.MySQL;
+        }
+    }
+
+    static boolean dateTruncThrowsOnOracle() {
+        cn.vonce.sql.bean.Common common = new cn.vonce.sql.bean.Common();
+        SqlBeanMeta meta = metaOf(DbType.Oracle, 19, 0);
+        meta.setDialectMode(DialectMode.STRICT);
+        common.setSqlBeanMeta(meta);
+        try {
+            cn.vonce.sql.uitls.SqlBeanUtil.getSqlFunction(common, SqlFun.dateTrunc("day", "col"));
+            return false;
+        } catch (UnsupportedDialectException e) {
+            return e.getFunctionName().equals("date_trunc") && e.getCurrentDbType() == DbType.Oracle;
+        }
+    }
+
+    static boolean positionIsUniversal() {
+        SqlFun f = SqlFun.position("sub", "col");
+        return f.getDialectSupport() == null
+                && f.checkDialect(metaOf(DbType.MySQL, 8, 0)) == null
+                && f.checkDialect(metaOf(DbType.Postgresql, 14, 0)) == null
+                && f.checkDialect(metaOf(DbType.Oracle, 19, 0)) == null
+                && f.checkDialect(metaOf(DbType.SQLServer, 2019, 0)) == null
+                && f.checkDialect(metaOf(DbType.SQLite, 3, 30)) == null;
+    }
+
+    static boolean extractIsUniversal() {
+        SqlFun f = SqlFun.extract("YEAR", "col");
+        return f.getDialectSupport() == null
+                && f.checkDialect(metaOf(DbType.MySQL, 8, 0)) == null
+                && f.checkDialect(metaOf(DbType.Oracle, 19, 0)) == null
+                && f.checkDialect(metaOf(DbType.Postgresql, 14, 0)) == null;
+    }
+
+    static boolean castIsUniversal() {
+        SqlFun f = SqlFun.cast("col", "INTEGER");
+        return f.getDialectSupport() == null
+                && f.checkDialect(metaOf(DbType.MySQL, 8, 0)) == null
+                && f.checkDialect(metaOf(DbType.SQLServer, 2019, 0)) == null
+                && f.checkDialect(metaOf(DbType.Oracle, 19, 0)) == null;
+    }
+
+    static boolean currentTimestampIsUniversal() {
+        SqlFun f = SqlFun.currentTimestamp();
+        return f.getDialectSupport() == null
+                && f.checkDialect(metaOf(DbType.MySQL, 8, 0)) == null
+                && f.checkDialect(metaOf(DbType.Oracle, 19, 0)) == null
+                && f.checkDialect(metaOf(DbType.Postgresql, 14, 0)) == null
+                && f.checkDialect(metaOf(DbType.SQLServer, 2019, 0)) == null;
+    }
+
     // ======================== 用户扩展入口 SqlFun.dialect(SqlFun, ...) ========================
 
     static boolean userExtensionRegistersDialects() {
@@ -625,6 +822,20 @@ public class SqlFunDialectTest {
         check("dialect.lag/lead SQLServer 2012+", lagLeadRequiresSqlServer2012());
         check("dialect.nth_value 严格版本", nthValueStrictVersion());
         check("render.现有通用函数不被破坏", existingUniversalFunctionsStillPass());
+
+        // ---------- 2026-09-06 第二批 P0 函数补强 ----------
+        check("p0b2.通用函数无方言标注", p0Batch2UniversalFunctionsAreUntagged());
+        check("p0b2.通用函数 MySQL STRICT 渲染", p0Batch2UniversalFunctionsRender());
+        check("p0b2.md5 方言矩阵", md5Dialects());
+        check("p0b2.md5 PG 渲染", md5RendersOnPostgres());
+        check("p0b2.md5 Oracle<12 STRICT 抛", md5ThrowsOnOldOracle());
+        check("p0b2.dateTrunc 方言矩阵", dateTruncDialects());
+        check("p0b2.dateTrunc MySQL 5.x 抛", dateTruncThrowsOnOldMysql());
+        check("p0b2.dateTrunc Oracle 抛", dateTruncThrowsOnOracle());
+        check("p0b2.position 通用", positionIsUniversal());
+        check("p0b2.extract 通用", extractIsUniversal());
+        check("p0b2.cast 通用", castIsUniversal());
+        check("p0b2.currentTimestamp 通用", currentTimestampIsUniversal());
 
         System.out.println();
         System.out.println("=== SqlFunDialectTest: " + pass + " passed, " + fail + " failed ===");
