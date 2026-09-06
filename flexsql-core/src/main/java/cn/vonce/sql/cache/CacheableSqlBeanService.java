@@ -33,6 +33,8 @@ import java.util.concurrent.ConcurrentHashMap;
  *   <li>其余方法（含分页 {@code paging}、ConditionHandle 等难以稳定构建 key 的入口）直接透传，不参与缓存。</li>
  * </ul>
  * 注意：缓存键强制包含租户、动态 schema 与数据源，避免多租户 / 动态 schema / 多数据源串号。
+ * 运行期指标（命中 / 未命中 / 回源 / 回填 / 失效，含按表维度）由 {@link CacheMetrics} 收集，
+ * 可用 {@link CacheMetrics#snapshot()} 读取，用于判断缓存是否值得开启。
  * <p><b>一致性说明（cache-aside）</b>：写操作默认在事务<b>提交后</b>触发失效（由各框架注册 {@code CacheTransactionSynchronization}，
  * 如 Spring 的 TransactionSynchronizationManager、Solon 的 TranUtils）。这可避免「提交前失效 → 并发读回填旧值 → 提交后缓存仍是旧值」
  * 的脏数据窗口；若未注册事务钩子（或无事务上下文），则退化为写后立即失效。
@@ -145,6 +147,8 @@ public final class CacheableSqlBeanService {
         private final QueryCache cache;
         private final SqlBeanMeta meta;
         private final Class<?> beanClass;
+        /** 主表名（构造时解析一次并缓存，避免每次查询都 new Table 对象）。用于指标按表统计。 */
+        private final String statsTable;
         private final ConcurrentHashMap<QueryCacheKey, Object> loadLocks = new ConcurrentHashMap<>();
 
         Handler(SqlBeanService<?, ?> delegate, QueryCache cache) {
@@ -152,6 +156,8 @@ public final class CacheableSqlBeanService {
             this.cache = cache;
             this.beanClass = delegate.getBeanClass();
             this.meta = CacheableSqlBeanService.resolveMeta(delegate);
+            Table table = SqlBeanUtil.getTable(beanClass);
+            this.statsTable = table == null ? null : table.getName();
         }
 
         @Override
@@ -166,8 +172,11 @@ public final class CacheableSqlBeanService {
             if (key != null) {
                 Object cached = cache.get(key);
                 if (cached != null) {
+                    CacheMetrics.recordHit(statsTable);
                     return unwrap(cached);
                 }
+                // 未命中：此处记为 miss；是否真的回源看下方（并发等待复用时只 miss 不 load）
+                CacheMetrics.recordMiss(statsTable);
                 // 缓存击穿保护：同一 key 同一时刻仅一个线程回源，其余线程复用重建结果（Double-Checked Locking）
                 Object lock = loadLocks.computeIfAbsent(key, k -> new Object());
                 synchronized (lock) {
@@ -176,7 +185,10 @@ public final class CacheableSqlBeanService {
                         return unwrap(re);
                     }
                     Object result = method.invoke(delegate, args);
-                    cache.put(key, toCacheValue(result), tableOf(args), TenantContextHolder.getTenantId());
+                    String table = tableOf(args);
+                    cache.put(key, toCacheValue(result), table, TenantContextHolder.getTenantId());
+                    CacheMetrics.recordLoad(statsTable);
+                    CacheMetrics.recordPut(table);
                     return result;
                 }
             }
@@ -225,7 +237,10 @@ public final class CacheableSqlBeanService {
          * 否则（无事务钩子 / 不在事务中）立即失效。
          */
         private void deferEviction(String table, String schema, Object tenantId, String dataSource) {
-            Runnable evict = () -> cache.evictByTable(table, schema, tenantId, dataSource);
+            Runnable evict = () -> {
+                cache.evictByTable(table, schema, tenantId, dataSource);
+                CacheMetrics.recordEvict(table);
+            };
             CacheTransactionSynchronization tx = CacheableSqlBeanService.transactionSynchronization;
             if (tx != null && tx.isActive()) {
                 tx.executeAfterCommit(evict);

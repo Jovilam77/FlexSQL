@@ -76,13 +76,20 @@ public class CaffeineQueryCacheTest {
         return cache.get(k1) == null && "B".equals(cache.get(k2));
     }
 
-    static boolean maxSizeEviction() {
+    static boolean maxSizeEviction() throws Exception {
         CaffeineQueryCache cache = new CaffeineQueryCache(2, 0);
         for (int i = 0; i < 50; i++) {
             cache.put(key("SELECT * FROM t_user WHERE id=" + i, "tA", null, "ds1"), "V" + i, "t_user", "tA");
         }
-        cache.cleanUp();
-        return cache.estimatedSize() <= 2;
+        // Caffeine 的容量淘汰在维护阶段异步收敛：单次 cleanUp() 后立刻读 estimatedSize()
+        // 可能仍读到未落定的值（实测会偶发 >2），故做有上限的等待（最多约 100ms）再断言。
+        long size = cache.estimatedSize();
+        for (int i = 0; i < 10 && size > 2; i++) {
+            cache.cleanUp();
+            Thread.sleep(10);
+            size = cache.estimatedSize();
+        }
+        return size <= 2;
     }
 
     static boolean ttlExpiry() throws Exception {
