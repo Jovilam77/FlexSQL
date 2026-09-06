@@ -2,8 +2,10 @@ package cn.vonce.sql.cache;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.LongAdder;
 
 /**
@@ -41,6 +43,12 @@ public final class CacheMetrics {
 
     private static final Counters GLOBAL = new Counters();
     private static final ConcurrentHashMap<String, Counters> BY_TABLE = new ConcurrentHashMap<>();
+
+    /**
+     * 已 注册的指标导出器列表。CopyOnWriteArrayList 适合读多写少场景，
+     * 这里的写（addReporter/removeReporter）仅发生在启动期/关闭期，热路径无影响。
+     */
+    private static final List<CacheMetricsReporter> REPORTERS = new CopyOnWriteArrayList<>();
 
     private CacheMetrics() {
     }
@@ -132,6 +140,46 @@ public final class CacheMetrics {
             result.put(e.getKey(), e.getValue().toStats());
         }
         return Collections.unmodifiableMap(result);
+    }
+
+    /** 注册一个指标导出器。重复注册同一实例会被忽略；传入 null 等价于无操作。 */
+    public static void addReporter(CacheMetricsReporter reporter) {
+        if (reporter == null) {
+            return;
+        }
+        if (!REPORTERS.contains(reporter)) {
+            REPORTERS.add(reporter);
+        }
+    }
+
+    /** 移除已注册的导出器；不存在则静默忽略；传入 null 等价于无操作。 */
+    public static void removeReporter(CacheMetricsReporter reporter) {
+        if (reporter == null) {
+            return;
+        }
+        REPORTERS.remove(reporter);
+    }
+
+    /** 当前已注册的导出器数量（用于测试与诊断）。 */
+    public static int reporterCount() {
+        return REPORTERS.size();
+    }
+
+    /**
+     * 立刻取一次快照并分发给所有已注册的导出器。
+     * <p>框架侧的周期任务 / 用户手动触发都可以调用本方法。
+     * 没有注册导出器时本方法等价于一次空转（但仍然构造快照，开销极低）。</p>
+     */
+    public static void reportNow() {
+        QueryCacheStats global = snapshot();
+        Map<String, QueryCacheStats> byTable = snapshotByTable();
+        for (CacheMetricsReporter r : REPORTERS) {
+            try {
+                r.onSnapshot(global, byTable);
+            } catch (Throwable ignored) {
+                // reporter 异常不应影响其他 reporter，更不应影响主流程；调用方可在外层加日志。
+            }
+        }
     }
 
     /**

@@ -152,6 +152,26 @@ public class SqlBeanConfig implements Serializable {
     }
 
     /**
+     * 缓存指标周期日志输出间隔（秒）。默认 60。设为 0 或负数表示关闭。
+     * <p>仅对 spring/solon 模块内置的 slf4j reporter 生效；用户接入 Micrometer/Actuator
+     * 等监控体系时，可以忽略此字段，自己注册 reporter 即可。</p>
+     */
+    private Long cacheMetricsLogIntervalSeconds = 60L;
+
+    public Long getCacheMetricsLogIntervalSeconds() {
+        if (cacheMetricsLogIntervalSeconds == null) {
+            cacheMetricsLogIntervalSeconds = 60L;
+        }
+        return cacheMetricsLogIntervalSeconds;
+    }
+
+    public void setCacheMetricsLogIntervalSeconds(Long cacheMetricsLogIntervalSeconds) {
+        if (this.cacheMetricsLogIntervalSeconds == null) {
+            this.cacheMetricsLogIntervalSeconds = cacheMetricsLogIntervalSeconds;
+        }
+    }
+
+    /**
      * 把 SqlBeanConfig 的 cache 字段翻译为 {@link QueryCacheConfig}。
      * 仅在用户设置了 {@link #cacheMode} 时返回非 null；否则视为「用户未配置 cache」，
      * 调用方不应改动全局 {@link cn.vonce.sql.cache.SqlBeanServices} 默认状态。

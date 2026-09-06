@@ -79,8 +79,42 @@ public class SqlBeanCacheAutoConfig {
                         "已降级为 OFF。请实现 RedisOps 接口并注册为 Bean。");
             }
             SqlBeanServices.applyFromSqlBeanConfig(cfg, redisOps);
+
+            // 周期 slf4j reporter：cacheMetricsLogIntervalSeconds > 0 才启用
+            // 不作为 @Bean 暴露（避免被 spring 立刻实例化），而是注册为静态 reporter，让 SqlBeanCachePostProcessorBean 包装
+            CacheMetricsSlf4jReporter reporter = new CacheMetricsSlf4jReporter(cfg);
+            cn.vonce.sql.cache.CacheMetrics.addReporter(reporter);
+            return new ReportingCachePostProcessor(reporter);
         }
 
         return new CacheableSqlBeanServicePostProcessor();
+    }
+
+    /**
+     * 复合后处理器：既负责触发 reporter 的生命周期（{@code afterPropertiesSet/destroy}），
+     * 又负责 SqlBeanService 缓存包裹。
+     * Spring 4.1 没有 {@code ObjectProvider}（4.3 才有），也没有优雅的"延迟实例化 lifecycle bean"，
+     * 这里把两个职责合并在一个 Bean 里。
+     */
+    public static final class ReportingCachePostProcessor extends CacheableSqlBeanServicePostProcessor
+            implements org.springframework.beans.factory.DisposableBean, org.springframework.beans.factory.InitializingBean {
+
+        private final CacheMetricsSlf4jReporter reporter;
+
+        public ReportingCachePostProcessor(CacheMetricsSlf4jReporter reporter) {
+            this.reporter = reporter;
+        }
+
+        @Override
+        public void afterPropertiesSet() {
+            reporter.afterPropertiesSet();
+        }
+
+        @Override
+        public void destroy() {
+            reporter.destroy();
+            // 清理注册，避免容器重启时重复注册
+            cn.vonce.sql.cache.CacheMetrics.removeReporter(reporter);
+        }
     }
 }

@@ -113,6 +113,83 @@ public class CacheMetricsTest {
         return text.contains("hitRate=50.0%");
     }
 
+    static boolean reporterRegistration() {
+        CacheMetrics.reset();
+        // 清理掉之前测试可能遗留的 reporter
+        while (CacheMetrics.reporterCount() > 0) {
+            // 通过 removeReporter(null) 不行，只能记下原列表再清理
+            // 这里用 unique 计数：先记录 count，再 addReporter/removeReporter 配对验证
+            break;
+        }
+        int before = CacheMetrics.reporterCount();
+        CacheMetricsReporter r1 = (g, t) -> {};
+        CacheMetricsReporter r2 = (g, t) -> {};
+        CacheMetrics.addReporter(r1);
+        CacheMetrics.addReporter(r1); // 重复注册应被忽略
+        CacheMetrics.addReporter(r2);
+        CacheMetrics.addReporter(null); // null 应忽略
+        boolean added = CacheMetrics.reporterCount() == before + 2;
+        CacheMetrics.removeReporter(r1);
+        CacheMetrics.removeReporter(null);
+        boolean removed = CacheMetrics.reporterCount() == before + 1;
+        // 清理
+        CacheMetrics.removeReporter(r2);
+        return added && removed;
+    }
+
+    static boolean reportNowDelivers() {
+        CacheMetrics.reset();
+        CacheMetrics.recordHit("t_user");
+        CacheMetrics.recordMiss("t_user");
+        CacheMetrics.recordLoad("t_user");
+        final QueryCacheStats[] capturedGlobal = new QueryCacheStats[1];
+        final Map<String, QueryCacheStats>[] capturedTable = new Map[1];
+        CacheMetricsReporter r = (g, t) -> {
+            capturedGlobal[0] = g;
+            capturedTable[0] = t;
+        };
+        CacheMetrics.addReporter(r);
+        try {
+            CacheMetrics.reportNow();
+            boolean got = capturedGlobal[0] != null && capturedTable[0] != null;
+            got = got && capturedGlobal[0].getHitCount() == 1
+                    && capturedGlobal[0].getMissCount() == 1
+                    && capturedGlobal[0].getLoadCount() == 1;
+            got = got && capturedTable[0].get("t_user").getHitCount() == 1;
+            return got;
+        } finally {
+            CacheMetrics.removeReporter(r);
+        }
+    }
+
+    static boolean reporterExceptionIsolated() {
+        CacheMetrics.reset();
+        final boolean[] secondCalled = {false};
+        CacheMetricsReporter bad = (g, t) -> { throw new RuntimeException("boom"); };
+        CacheMetricsReporter good = (g, t) -> { secondCalled[0] = true; };
+        CacheMetrics.addReporter(bad);
+        CacheMetrics.addReporter(good);
+        try {
+            CacheMetrics.reportNow(); // bad 抛异常，good 必须仍被调用
+            return secondCalled[0];
+        } finally {
+            CacheMetrics.removeReporter(bad);
+            CacheMetrics.removeReporter(good);
+        }
+    }
+
+    static boolean reportNowNoReporterIsSafe() {
+        CacheMetrics.reset();
+        while (CacheMetrics.reporterCount() > 0) {
+            // 清理：在测试之间保持 reporter 列表为空
+            // 这里通过 reporterCount() 与 addReporter 顺序无关的特性，先 reset
+            break;
+        }
+        // 不抛异常即可
+        CacheMetrics.reportNow();
+        return true;
+    }
+
     public static void main(String[] args) {
         check("resetIsClean", resetIsClean());
         check("hitMissRate", hitMissRate());
@@ -122,6 +199,10 @@ public class CacheMetricsTest {
         check("disabledShortCircuit", disabledShortCircuit());
         check("snapshotIsImmutableView", snapshotIsImmutableView());
         check("toStringContainsRate", toStringContainsRate());
+        check("reporterRegistration", reporterRegistration());
+        check("reportNowDelivers", reportNowDelivers());
+        check("reporterExceptionIsolated", reporterExceptionIsolated());
+        check("reportNowNoReporterIsSafe", reportNowNoReporterIsSafe());
 
         // 复位，避免影响其它测试
         CacheMetrics.setEnabled(true);

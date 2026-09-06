@@ -14,6 +14,7 @@ FlexSQL 是一款革命性的 ORM（对象关系映射）插件，通过 Java �
 - **乐观锁**：内置乐观锁支持，防止并发冲突
 - **分页查询**：灵活的分页功能
 - **逻辑删除**：支持逻辑删除策略配置
+- **查询缓存**：本地/Redis 二选一，默认关闭；命中率指标可接任意监控体系（详见 [doc/CACHE.md](doc/CACHE.md)）
 
 **💻 支持环境：**
 - **Spring**：JDK 8+, Spring MVC 4.1.2+, Spring Boot 1.x/2.x/3.x
@@ -278,3 +279,5 @@ public class UserController {
 | 8️⃣ | [SqlHelper](doc/SqlHelper.md) | SQL 生成工具类使用 |
 | 9️⃣ | [Where 条件](doc/Where.md) | 条件构造器和 SQL 函数 |
 | 🔟 | [多数据源配置](doc/DataSourceConfig.md) | 多数据源、读写分离配置 |
+| 1️⃣1️⃣ | [查询缓存](doc/CACHE.md) | 查询缓存模式选择、配置、命中率指标 |
+| 1️⃣2️⃣ | [指标接入](doc/METRICS.md) | 把缓存命中率指标接到 Micrometer / Actuator 等监控体系 |
