@@ -1492,6 +1492,37 @@ public class SqlHelper {
             return sql;
         }
         String operator = getOperator(conditionInfo);
+        // IN / 比较 子查询：操作数为 Select 子查询（类型安全）。
+        // 与 EXISTS 同源处理：递归 buildSelectSql 并继承 common.getSqlBeanMeta()，
+        // 自动获得租户/动态 schema 等隔离装饰（与 UNION 子查询同源）。
+        // 仅 IN / NOT IN / = / <> / > / >= / < / <= 这些可带子查询的操作符走此分支；
+        // 其余操作符（LIKE / BETWEEN / IS NULL 等）不适用子查询，继续既有逻辑。
+        if (conditionInfo.getValue() instanceof Select) {
+            SqlOperator subOp = conditionInfo.getSqlOperator();
+            boolean subqueryable = subOp == SqlOperator.IN || subOp == SqlOperator.NOT_IN
+                    || subOp == SqlOperator.EQUAL_TO || subOp == SqlOperator.NOT_EQUAL_TO
+                    || subOp == SqlOperator.GREATER_THAN || subOp == SqlOperator.GREAT_THAN_OR_EQUAL_TO
+                    || subOp == SqlOperator.LESS_THAN || subOp == SqlOperator.LESS_THAN_OR_EQUAL_TO;
+            if (subqueryable) {
+                Select sub = (Select) conditionInfo.getValue();
+                if (sub.getSqlBeanMeta() == null) {
+                    sub.setSqlBeanMeta(common.getSqlBeanMeta());
+                }
+                String subSql = SqlHelper.buildSelectSql(sub);
+                StringBuilder sb = new StringBuilder();
+                sb.append(SqlBeanUtil.getActualValue(common, conditionInfo.getColumn()));
+                sb.append(operator);
+                // IN / NOT IN 常量已含 " ("，无需重复左括号；比较操作符需显式包裹括号
+                if (subOp == SqlOperator.IN || subOp == SqlOperator.NOT_IN) {
+                    sb.append(subSql);
+                } else {
+                    sb.append(SqlConstant.BEGIN_BRACKET);
+                    sb.append(subSql);
+                    sb.append(SqlConstant.END_BRACKET);
+                }
+                return sb;
+            }
+        }
         boolean needEndBracket = false;
         Object[] betweenValues = null;
         Object value = conditionInfo.getValue();

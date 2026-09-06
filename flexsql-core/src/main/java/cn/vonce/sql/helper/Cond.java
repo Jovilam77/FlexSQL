@@ -911,6 +911,106 @@ public class Cond extends ConditionInfo {
         return new Cond(LambdaUtil.getColumn(columnFun), SqlOperator.NOT_IN, value);
     }
 
+    // ===================== IN / 比较 子查询（类型安全 Select 操作数）=====================
+    // 操作数为 Select 子查询时，渲染层递归 buildSelectSql 生成 (子查询)，并自动继承租户/动态 schema 装饰。
+    // 覆盖 in / notIn / eq / notEq / lt / gt 的全部列引用形态（String / 表别名+列 / Column / ColumnFun）。
+
+    public static Cond in(String field, Select subQuery) {
+        return new Cond(null, field, SqlOperator.IN, subQuery);
+    }
+
+    public static Cond in(String tableAlias, String field, Select subQuery) {
+        return new Cond(tableAlias, field, SqlOperator.IN, subQuery);
+    }
+
+    public static Cond in(Column column, Select subQuery) {
+        return new Cond(column, SqlOperator.IN, subQuery);
+    }
+
+    public static <T, R> Cond in(ColumnFun<T, R> columnFun, Select subQuery) {
+        return new Cond(LambdaUtil.getColumn(columnFun), SqlOperator.IN, subQuery);
+    }
+
+    public static Cond notIn(String field, Select subQuery) {
+        return new Cond(null, field, SqlOperator.NOT_IN, subQuery);
+    }
+
+    public static Cond notIn(String tableAlias, String field, Select subQuery) {
+        return new Cond(tableAlias, field, SqlOperator.NOT_IN, subQuery);
+    }
+
+    public static Cond notIn(Column column, Select subQuery) {
+        return new Cond(column, SqlOperator.NOT_IN, subQuery);
+    }
+
+    public static <T, R> Cond notIn(ColumnFun<T, R> columnFun, Select subQuery) {
+        return new Cond(LambdaUtil.getColumn(columnFun), SqlOperator.NOT_IN, subQuery);
+    }
+
+    public static Cond eq(String field, Select subQuery) {
+        return new Cond(null, field, SqlOperator.EQUAL_TO, subQuery);
+    }
+
+    public static Cond eq(String tableAlias, String field, Select subQuery) {
+        return new Cond(tableAlias, field, SqlOperator.EQUAL_TO, subQuery);
+    }
+
+    public static Cond eq(Column column, Select subQuery) {
+        return new Cond(column, SqlOperator.EQUAL_TO, subQuery);
+    }
+
+    public static <T, R> Cond eq(ColumnFun<T, R> columnFun, Select subQuery) {
+        return new Cond(LambdaUtil.getColumn(columnFun), SqlOperator.EQUAL_TO, subQuery);
+    }
+
+    public static Cond notEq(String field, Select subQuery) {
+        return new Cond(null, field, SqlOperator.NOT_EQUAL_TO, subQuery);
+    }
+
+    public static Cond notEq(String tableAlias, String field, Select subQuery) {
+        return new Cond(tableAlias, field, SqlOperator.NOT_EQUAL_TO, subQuery);
+    }
+
+    public static Cond notEq(Column column, Select subQuery) {
+        return new Cond(column, SqlOperator.NOT_EQUAL_TO, subQuery);
+    }
+
+    public static <T, R> Cond notEq(ColumnFun<T, R> columnFun, Select subQuery) {
+        return new Cond(LambdaUtil.getColumn(columnFun), SqlOperator.NOT_EQUAL_TO, subQuery);
+    }
+
+    public static Cond lt(String field, Select subQuery) {
+        return new Cond(null, field, SqlOperator.LESS_THAN, subQuery);
+    }
+
+    public static Cond lt(String tableAlias, String field, Select subQuery) {
+        return new Cond(tableAlias, field, SqlOperator.LESS_THAN, subQuery);
+    }
+
+    public static Cond lt(Column column, Select subQuery) {
+        return new Cond(column, SqlOperator.LESS_THAN, subQuery);
+    }
+
+    public static <T, R> Cond lt(ColumnFun<T, R> columnFun, Select subQuery) {
+        return new Cond(LambdaUtil.getColumn(columnFun), SqlOperator.LESS_THAN, subQuery);
+    }
+
+    public static Cond gt(String field, Select subQuery) {
+        return new Cond(null, field, SqlOperator.GREATER_THAN, subQuery);
+    }
+
+    public static Cond gt(String tableAlias, String field, Select subQuery) {
+        return new Cond(tableAlias, field, SqlOperator.GREATER_THAN, subQuery);
+    }
+
+    public static Cond gt(Column column, Select subQuery) {
+        return new Cond(column, SqlOperator.GREATER_THAN, subQuery);
+    }
+
+    public static <T, R> Cond gt(ColumnFun<T, R> columnFun, Select subQuery) {
+        return new Cond(LambdaUtil.getColumn(columnFun), SqlOperator.GREATER_THAN, subQuery);
+    }
+
     /**
      * 存在（EXISTS 子查询）
      *

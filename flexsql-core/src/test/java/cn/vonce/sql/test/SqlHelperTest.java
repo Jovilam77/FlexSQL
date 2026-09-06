@@ -76,6 +76,7 @@ public class SqlHelperTest {
         // joinSchemaTenantTest（JOIN / 子查询 多租户与动态Schema 隔离覆盖）
         joinSchemaTenantTest(sqlBeanMeta);
         existsSubqueryTest(sqlBeanMeta);
+        subqueryInTest(sqlBeanMeta);
 //
 //        // select4
 //        select4(sqlBeanMeta);
@@ -1637,6 +1638,67 @@ public class SqlHelperTest {
         System.out.println("---exists AND combine---");
         System.out.println(sql3);
         System.out.println("[断言] EXISTS 与 AND 组合 => " + (sql3.contains("= 'k'") && sql3.contains("EXISTS (") && sql3.contains("AND")));
+    }
+
+    /**
+     * IN / 比较 子查询（类型安全 in(col, Select)）测试
+     * 覆盖：
+     * 1) in(Select) 类型安全子查询
+     * 2) notIn(Select) 类型安全子查询
+     * 3) eq(Select) 比较子查询
+     * 4) 流式 + 组合（and）
+     */
+    private static void subqueryInTest(SqlBeanMeta sqlBeanMeta) {
+        // 子查询：SELECT ... FROM t_tenant WHERE tenant_id = 't-abc'
+        Select sub = new Select();
+        sub.setSqlBeanMeta(sqlBeanMeta);
+        sub.setBeanClass(TenantBean.class);
+        sub.setTable(TenantBean.class);
+        sub.where().eq(TenantBean::getTenantId, "t-abc");
+
+        // 1) IN（Select 形式）
+        Select select = new Select();
+        select.setSqlBeanMeta(sqlBeanMeta);
+        select.setBeanClass(OrderBean.class);
+        select.setTable(OrderBean.class);
+        select.where().in(OrderBean::getOrderNo, sub);
+        String sql = SqlHelper.buildSelectSql(select);
+        System.out.println("---in(Select)---");
+        System.out.println(sql);
+        System.out.println("[断言] IN 子查询生成 => " + (sql.contains("IN (") && sql.contains("t_tenant") && sql.contains("'t-abc'")));
+
+        // 2) NOT IN（Select 形式）
+        Select select2 = new Select();
+        select2.setSqlBeanMeta(sqlBeanMeta);
+        select2.setBeanClass(OrderBean.class);
+        select2.setTable(OrderBean.class);
+        select2.where().notIn(OrderBean::getOrderNo, sub);
+        String sql2 = SqlHelper.buildSelectSql(select2);
+        System.out.println("---notIn(Select)---");
+        System.out.println(sql2);
+        System.out.println("[断言] NOT IN 子查询生成 => " + (sql2.contains("NOT IN (") && sql2.contains("t_tenant") && sql2.contains("'t-abc'")));
+
+        // 3) 比较子查询：order_no = (SELECT ...)
+        Select select3 = new Select();
+        select3.setSqlBeanMeta(sqlBeanMeta);
+        select3.setBeanClass(OrderBean.class);
+        select3.setTable(OrderBean.class);
+        select3.where().eq(OrderBean::getOrderNo, sub);
+        String sql3b = SqlHelper.buildSelectSql(select3);
+        System.out.println("---eq(Select) 比较子查询---");
+        System.out.println(sql3b);
+        System.out.println("[断言] 比较子查询生成 (列 = (子查询)) => " + (sql3b.contains("= (") && sql3b.contains("t_tenant") && sql3b.contains("'t-abc'")));
+
+        // 4) 流式 + 组合：order_no = (子查询) AND order_no > (子查询)
+        Select select4 = new Select();
+        select4.setSqlBeanMeta(sqlBeanMeta);
+        select4.setBeanClass(OrderBean.class);
+        select4.setTable(OrderBean.class);
+        select4.where().eq(OrderBean::getOrderNo, sub).and().gt(OrderBean::getOrderNo, sub);
+        String sql4 = SqlHelper.buildSelectSql(select4);
+        System.out.println("---in/eq(Select) + 组合---");
+        System.out.println(sql4);
+        System.out.println("[断言] 子查询流式组合 => " + (sql4.contains("= (") && sql4.contains("> (") && sql4.contains("AND")));
     }
 
 

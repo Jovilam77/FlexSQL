@@ -1035,6 +1035,130 @@ public class Condition<Action> implements Serializable {
         return logic;
     }
 
+    // ===================== IN / 比较 子查询（类型安全 Select 操作数）=====================
+    // 操作数为 Select 子查询时，渲染层递归 buildSelectSql 生成 (子查询)，并自动继承租户/动态 schema 装饰。
+    // 覆盖 in / notIn / eq / notEq / lt / gt 的全部列引用形态（String / 表别名+列 / Column / ColumnFun）。
+
+    public Logic<Action> in(String field, Select subQuery) {
+        dataList.add(new ConditionData(sqlLogic, newConditionInfo(null, field, SqlOperator.IN, subQuery)));
+        return logic;
+    }
+
+    public Logic<Action> in(String tableAlias, String field, Select subQuery) {
+        dataList.add(new ConditionData(sqlLogic, newConditionInfo(tableAlias, field, SqlOperator.IN, subQuery)));
+        return logic;
+    }
+
+    public Logic<Action> in(Column column, Select subQuery) {
+        dataList.add(new ConditionData(sqlLogic, newConditionInfo(column, SqlOperator.IN, subQuery)));
+        return logic;
+    }
+
+    public <T, R> Logic<Action> in(ColumnFun<T, R> columnFun, Select subQuery) {
+        dataList.add(new ConditionData(sqlLogic, newConditionInfo(LambdaUtil.getColumn(columnFun), SqlOperator.IN, subQuery)));
+        return logic;
+    }
+
+    public Logic<Action> notIn(String field, Select subQuery) {
+        dataList.add(new ConditionData(sqlLogic, newConditionInfo(null, field, SqlOperator.NOT_IN, subQuery)));
+        return logic;
+    }
+
+    public Logic<Action> notIn(String tableAlias, String field, Select subQuery) {
+        dataList.add(new ConditionData(sqlLogic, newConditionInfo(tableAlias, field, SqlOperator.NOT_IN, subQuery)));
+        return logic;
+    }
+
+    public Logic<Action> notIn(Column column, Select subQuery) {
+        dataList.add(new ConditionData(sqlLogic, newConditionInfo(column, SqlOperator.NOT_IN, subQuery)));
+        return logic;
+    }
+
+    public <T, R> Logic<Action> notIn(ColumnFun<T, R> columnFun, Select subQuery) {
+        dataList.add(new ConditionData(sqlLogic, newConditionInfo(LambdaUtil.getColumn(columnFun), SqlOperator.NOT_IN, subQuery)));
+        return logic;
+    }
+
+    public Logic<Action> eq(String field, Select subQuery) {
+        dataList.add(new ConditionData(sqlLogic, newConditionInfo(null, field, SqlOperator.EQUAL_TO, subQuery)));
+        return logic;
+    }
+
+    public Logic<Action> eq(String tableAlias, String field, Select subQuery) {
+        dataList.add(new ConditionData(sqlLogic, newConditionInfo(tableAlias, field, SqlOperator.EQUAL_TO, subQuery)));
+        return logic;
+    }
+
+    public Logic<Action> eq(Column column, Select subQuery) {
+        dataList.add(new ConditionData(sqlLogic, newConditionInfo(column, SqlOperator.EQUAL_TO, subQuery)));
+        return logic;
+    }
+
+    public <T, R> Logic<Action> eq(ColumnFun<T, R> columnFun, Select subQuery) {
+        dataList.add(new ConditionData(sqlLogic, newConditionInfo(LambdaUtil.getColumn(columnFun), SqlOperator.EQUAL_TO, subQuery)));
+        return logic;
+    }
+
+    public Logic<Action> notEq(String field, Select subQuery) {
+        dataList.add(new ConditionData(sqlLogic, newConditionInfo(null, field, SqlOperator.NOT_EQUAL_TO, subQuery)));
+        return logic;
+    }
+
+    public Logic<Action> notEq(String tableAlias, String field, Select subQuery) {
+        dataList.add(new ConditionData(sqlLogic, newConditionInfo(tableAlias, field, SqlOperator.NOT_EQUAL_TO, subQuery)));
+        return logic;
+    }
+
+    public Logic<Action> notEq(Column column, Select subQuery) {
+        dataList.add(new ConditionData(sqlLogic, newConditionInfo(column, SqlOperator.NOT_EQUAL_TO, subQuery)));
+        return logic;
+    }
+
+    public <T, R> Logic<Action> notEq(ColumnFun<T, R> columnFun, Select subQuery) {
+        dataList.add(new ConditionData(sqlLogic, newConditionInfo(LambdaUtil.getColumn(columnFun), SqlOperator.NOT_EQUAL_TO, subQuery)));
+        return logic;
+    }
+
+    public Logic<Action> lt(String field, Select subQuery) {
+        dataList.add(new ConditionData(sqlLogic, newConditionInfo(null, field, SqlOperator.LESS_THAN, subQuery)));
+        return logic;
+    }
+
+    public Logic<Action> lt(String tableAlias, String field, Select subQuery) {
+        dataList.add(new ConditionData(sqlLogic, newConditionInfo(tableAlias, field, SqlOperator.LESS_THAN, subQuery)));
+        return logic;
+    }
+
+    public Logic<Action> lt(Column column, Select subQuery) {
+        dataList.add(new ConditionData(sqlLogic, newConditionInfo(column, SqlOperator.LESS_THAN, subQuery)));
+        return logic;
+    }
+
+    public <T, R> Logic<Action> lt(ColumnFun<T, R> columnFun, Select subQuery) {
+        dataList.add(new ConditionData(sqlLogic, newConditionInfo(LambdaUtil.getColumn(columnFun), SqlOperator.LESS_THAN, subQuery)));
+        return logic;
+    }
+
+    public Logic<Action> gt(String field, Select subQuery) {
+        dataList.add(new ConditionData(sqlLogic, newConditionInfo(null, field, SqlOperator.GREATER_THAN, subQuery)));
+        return logic;
+    }
+
+    public Logic<Action> gt(String tableAlias, String field, Select subQuery) {
+        dataList.add(new ConditionData(sqlLogic, newConditionInfo(tableAlias, field, SqlOperator.GREATER_THAN, subQuery)));
+        return logic;
+    }
+
+    public Logic<Action> gt(Column column, Select subQuery) {
+        dataList.add(new ConditionData(sqlLogic, newConditionInfo(column, SqlOperator.GREATER_THAN, subQuery)));
+        return logic;
+    }
+
+    public <T, R> Logic<Action> gt(ColumnFun<T, R> columnFun, Select subQuery) {
+        dataList.add(new ConditionData(sqlLogic, newConditionInfo(LambdaUtil.getColumn(columnFun), SqlOperator.GREATER_THAN, subQuery)));
+        return logic;
+    }
+
     /**
      * 存在（EXISTS 子查询）
      *
