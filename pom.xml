@@ -10,6 +10,7 @@
     <modules>
         <module>flexsql-android</module>
         <module>flexsql-core</module>
+        <module>flexsql-caffeine</module>
         <module>flexsql-java</module>
         <module>flexsql-solon</module>
         <module>flexsql-spring</module>

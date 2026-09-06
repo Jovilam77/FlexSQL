@@ -84,6 +84,26 @@ public class QueryCacheConfigTest {
         }
     }
 
+    /** 桩实现：用于验证 custom 模式与可插拔本地缓存工厂。 */
+    static class StubQueryCache implements QueryCache {
+        @Override
+        public Object get(QueryCacheKey key) {
+            return null;
+        }
+
+        @Override
+        public void put(QueryCacheKey key, Object value, String table, Object tenantId) {
+        }
+
+        @Override
+        public void evictByTable(String table, String schema, Object tenantId, String dataSource) {
+        }
+
+        @Override
+        public void clear() {
+        }
+    }
+
     public static void main(String[] args) {
         // ---- QueryCacheConfig 工厂 ----
         QueryCacheConfig off = QueryCacheConfig.off();
@@ -99,6 +119,24 @@ public class QueryCacheConfigTest {
         check("redis.mode", redis.getMode() == CacheMode.REDIS);
         check("redis.isRedis", redis.getCache() instanceof RedisQueryCache);
         check("redis.distributed", redis.getCache().isDistributed());
+
+        // ---- custom：外部实现注入 ----
+        StubQueryCache stub = new StubQueryCache();
+        QueryCacheConfig custom = QueryCacheConfig.custom(stub);
+        check("custom.mode", custom.getMode() == CacheMode.CUSTOM);
+        check("custom.sameInstance", custom.getCache() == stub);
+        check("custom.nullBecomesOff", QueryCacheConfig.custom(null).getMode() == CacheMode.OFF);
+
+        // ---- 可插拔本地缓存工厂（Caffeine 等可选模块通过它替换 LOCAL 实现）----
+        QueryCacheFactory factory = (maxSize, writeTtl, accessTtl) -> stub;
+        QueryCacheConfig.setLocalCacheFactory(factory);
+        check("factory.registered", QueryCacheConfig.getLocalCacheFactory() == factory);
+        QueryCacheConfig localByFactory = QueryCacheConfig.local(100, 600, 0);
+        check("factory.usedByLocal", localByFactory.getCache() == stub);
+        check("factory.keepsLocalMode", localByFactory.getMode() == CacheMode.LOCAL);
+        QueryCacheConfig.setLocalCacheFactory(null);
+        check("factory.unregistered", QueryCacheConfig.getLocalCacheFactory() == null);
+        check("factory.fallbackToSimple", QueryCacheConfig.local(100, 600, 0).getCache() instanceof SimpleQueryCache);
 
         // ---- 全局开关驱动 SqlBeanServices.caching ----
         SqlBeanServices.setCacheConfig(QueryCacheConfig.off());
