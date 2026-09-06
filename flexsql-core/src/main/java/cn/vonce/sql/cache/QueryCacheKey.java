@@ -7,11 +7,12 @@ import java.util.Objects;
 
 /**
  * 查询缓存键
- * <p>键由「实体类 + 返回类型 + 拼装好的 SQL（参数已内联）+ 租户 + 动态schema + 分页」构成。
- * 注意：必须包含 {@code tenantId} 与 {@code schema}，否则多租户/动态 schema 场景下缓存会串号、造成数据越权泄漏。</p>
+ * <p>键由「实体类 + 返回类型 + 拼装好的 SQL（参数已内联）+ 租户 + 动态schema + 数据源 + 分页」构成。
+ * 注意：必须包含 {@code tenantId}、{@code schema} 与 {@code dataSource}，否则多租户/动态 schema/多数据源场景下
+ * 缓存会串号、造成数据越权泄漏或跨数据源读到错误数据。</p>
  *
  * @author Jovi
- * @version 1.0
+ * @version 1.1
  */
 public class QueryCacheKey {
 
@@ -20,15 +21,22 @@ public class QueryCacheKey {
     private final String sql;
     private final String tenantId;
     private final String schema;
+    private final String dataSource;
     private final String paging;
 
     public QueryCacheKey(Class<?> beanClass, Class<?> returnType, String sql,
                          String tenantId, String schema, String paging) {
+        this(beanClass, returnType, sql, tenantId, schema, paging, "");
+    }
+
+    public QueryCacheKey(Class<?> beanClass, Class<?> returnType, String sql,
+                         String tenantId, String schema, String paging, String dataSource) {
         this.beanClassName = beanClass == null ? "" : beanClass.getName();
         this.returnTypeName = returnType == null ? "" : returnType.getName();
         this.sql = sql == null ? "" : sql;
         this.tenantId = tenantId == null ? "" : String.valueOf(tenantId);
         this.schema = schema == null ? "" : schema;
+        this.dataSource = dataSource == null ? "" : dataSource;
         this.paging = paging == null ? "" : paging;
     }
 
@@ -52,6 +60,10 @@ public class QueryCacheKey {
         return schema;
     }
 
+    public String getDataSource() {
+        return dataSource;
+    }
+
     public String getPaging() {
         return paging;
     }
@@ -59,7 +71,7 @@ public class QueryCacheKey {
     /** 生成用于 Redis 等外部存储的短键（避免超长 SQL 直接做 key） */
     public String toStoreKey() {
         String raw = beanClassName + "|" + returnTypeName + "|" + sql + "|"
-                + tenantId + "|" + schema + "|" + paging;
+                + tenantId + "|" + schema + "|" + dataSource + "|" + paging;
         return "flexsql:q:" + md5(raw);
     }
 
@@ -88,12 +100,13 @@ public class QueryCacheKey {
                 && Objects.equals(sql, that.sql)
                 && Objects.equals(tenantId, that.tenantId)
                 && Objects.equals(schema, that.schema)
+                && Objects.equals(dataSource, that.dataSource)
                 && Objects.equals(paging, that.paging);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(beanClassName, returnTypeName, sql, tenantId, schema, paging);
+        return Objects.hash(beanClassName, returnTypeName, sql, tenantId, schema, dataSource, paging);
     }
 
     @Override

@@ -6,7 +6,7 @@ import java.util.Set;
  * 基于 Redis 的分布式查询缓存实现（兼容 Redis）。
  * <p>核心不依赖任何 Redis 客户端，由调用方通过 {@link RedisOps} 注入自己的 Redis 封装，
  * 通过 {@link CacheSerializer} 控制值的序列化方式（默认 JDK，可换 JSON）。
- * 跨节点一致：任意节点的写操作都会 {@link #evictByTable(String, String, Object)}，即时失效其他节点的缓存。</p>
+ * 跨节点一致：任意节点的写操作都会 {@link #evictByTable(String, String, Object, String)}，即时失效其他节点的缓存。</p>
  * <p><b>使用注意</b>：
  * <ul>
  *   <li>默认 {@link JdkCacheSerializer} 要求被缓存的实体（及其所有嵌套对象）实现
@@ -46,20 +46,20 @@ public class RedisQueryCache implements QueryCache {
         String storeKey = key.toStoreKey();
         redisOps.set(storeKey, serializer.serialize(value), ttlMillis);
         if (table != null) {
-            // 失效索引键含 schema，与本地实现保持一致，避免跨 schema 同表名被过度失效
+            // 失效索引键含 schema 与 dataSource，与本地实现保持一致，避免跨 schema / 跨数据源同表名被过度失效
             String indexKey = "flexsql:tbl:" + table + "@" + (key.getSchema() == null ? "" : key.getSchema())
-                    + "@" + (tenantId == null ? "" : tenantId);
+                    + "@" + (tenantId == null ? "" : tenantId) + "@" + (key.getDataSource() == null ? "" : key.getDataSource());
             redisOps.sadd(indexKey, storeKey);
         }
     }
 
     @Override
-    public void evictByTable(String table, String schema, Object tenantId) {
+    public void evictByTable(String table, String schema, Object tenantId, String dataSource) {
         if (table == null) {
             return;
         }
         String indexKey = "flexsql:tbl:" + table + "@" + (schema == null ? "" : schema)
-                + "@" + (tenantId == null ? "" : tenantId);
+                + "@" + (tenantId == null ? "" : tenantId) + "@" + (dataSource == null ? "" : dataSource);
         Set<String> members = redisOps.smembers(indexKey);
         if (members != null) {
             for (String member : members) {

@@ -15,7 +15,8 @@ import java.util.concurrent.TimeUnit;
  * 零依赖的本地查询缓存默认实现（不依赖 Caffeine）。
  * <p>使用带访问顺序的 {@link LinkedHashMap} 实现容量上限（LRU 淘汰）+ TTL 过期定时清理。
  * 当前作为 FlexSQL 查询缓存的内置默认后端；若后续运行时存在 Caffeine，可新增对应实现并在工厂中优先选用。</p>
- * <p>失效索引键形如 {@code table@schema@tenant}，因此不同动态 schema 下同名表互不影响（仅多清、绝不少清）。</p>
+ * <p>失效索引键形如 {@code table@schema@tenant@dataSource}，因此不同动态 schema / 不同数据源下同名表互不影响
+ * （仅多清、绝不少清）。</p>
  *
  * @author Jovi
  * @version 1.1
@@ -111,18 +112,19 @@ public class SimpleQueryCache implements QueryCache {
     @Override
     public void put(QueryCacheKey key, Object value, String table, Object tenantId) {
         String schema = key.getSchema();
-        String composite = compositeKey(table, schema, tenantId);
+        String dataSource = key.getDataSource();
+        String composite = compositeKey(table, schema, tenantId, dataSource);
         compositeOf.put(key, composite);
         index.computeIfAbsent(composite, k -> ConcurrentHashMap.newKeySet()).add(key);
         store.put(key, new Entry(value, ttlWriteMillis, ttlAccessMillis));
     }
 
     @Override
-    public void evictByTable(String table, String schema, Object tenantId) {
+    public void evictByTable(String table, String schema, Object tenantId, String dataSource) {
         if (table == null) {
             return;
         }
-        String composite = compositeKey(table, schema, tenantId);
+        String composite = compositeKey(table, schema, tenantId, dataSource);
         Set<QueryCacheKey> set = index.get(composite);
         if (set != null) {
             for (QueryCacheKey key : new ArrayList<>(set)) {
@@ -131,10 +133,11 @@ public class SimpleQueryCache implements QueryCache {
         }
     }
 
-    private static String compositeKey(String table, String schema, Object tenantId) {
+    private static String compositeKey(String table, String schema, Object tenantId, String dataSource) {
         return (table == null ? "" : table) + "@"
                 + (schema == null ? "" : schema) + "@"
-                + (tenantId == null ? "" : tenantId);
+                + (tenantId == null ? "" : tenantId) + "@"
+                + (dataSource == null ? "" : dataSource);
     }
 
     private void remove(QueryCacheKey key) {

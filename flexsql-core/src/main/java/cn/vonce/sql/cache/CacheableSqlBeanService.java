@@ -26,15 +26,16 @@ import java.util.concurrent.ConcurrentHashMap;
  * 查询缓存装饰器（基于 JDK 动态代理，后端无关）。
  * <p>用一层代理包裹任意 {@link SqlBeanService} 实现，无需为每个后端写重复代码、也不侵入执行层：
  * <ul>
- *   <li>查询方法（select、count 等）：以「SQL + 租户 + 动态 schema + 分页 + 返回类型」为键查缓存；
- *       命中返回深拷贝副本，未命中执行原方法并回填（同样存副本）。</li>
- *   <li>写方法（insert、update、delete、copy、backup）：执行原方法后按「表 + 动态 schema + 租户」失效相关缓存项；
+ *   <li>查询方法（select、count 等）：以「SQL + 租户 + 动态 schema + 数据源 + 分页 + 返回类型」为键查缓存；
+ *       命中（含空结果）返回深拷贝副本，未命中执行原方法并回填（同样存副本，空结果亦缓存以防穿透）。</li>
+ *   <li>写方法（insert、update、delete、copy、backup）：执行原方法后按「表 + 动态 schema + 租户 + 数据源」失效相关缓存项；
  *       copy/backup 的失效目标是其 {@code targetTableName}（而非源表）。</li>
  *   <li>其余方法（含分页 {@code paging}、ConditionHandle 等难以稳定构建 key 的入口）直接透传，不参与缓存。</li>
  * </ul>
- * 注意：缓存键强制包含租户与动态 schema，避免多租户串号。
- * <p><b>一致性说明（cache-aside）</b>：写时在事务提交前即触发失效，因此并发读可能回源到未提交事务可见的数据，
- * 在 RC/RR 隔离级别下读到已提交的旧值，整体可接受（若写事务回滚，仅多几次缓存 miss，无正确性问题）。
+ * 注意：缓存键强制包含租户、动态 schema 与数据源，避免多租户 / 动态 schema / 多数据源串号。
+ * <p><b>一致性说明（cache-aside）</b>：写操作默认在事务<b>提交后</b>触发失效（由各框架注册 {@code CacheTransactionSynchronization}，
+ * 如 Spring 的 TransactionSynchronizationManager、Solon 的 TranUtils）。这可避免「提交前失效 → 并发读回填旧值 → 提交后缓存仍是旧值」
+ * 的脏数据窗口；若未注册事务钩子（或无事务上下文），则退化为写后立即失效。
  * 分布式场景（Redis）存在经典的 cache-aside 竞态（节点 A 回源尚未写回时节点 B 写入并失效，A 可能把旧值写回），
  * 由 TTL + 写时失效兜底，属于最终一致，业务不应依赖毫秒级强一致。</p>
  *
@@ -44,6 +45,37 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class CacheableSqlBeanService {
 
     private CacheableSqlBeanService() {
+    }
+
+    /**
+     * 当前数据源名解析器（可插拔）。core 不依赖任何具体后端，由各框架在启动时注册：
+     * 返回当前线程绑定的数据源名（多数据源 / @DbSwitch 场景），返回 null 表示默认 / 单一数据源。
+     * 缓存键据此区分不同数据源，避免跨数据源串数据。
+     */
+    public interface DataSourceNameResolver {
+        String currentDataSource();
+    }
+
+    /**
+     * 事务同步钩子（可插拔）。core 不依赖 Spring / Solon 事务 API，由各框架注册；未注册时写操作立即失效。
+     */
+    public interface CacheTransactionSynchronization {
+        /** 当前是否处于事务中 */
+        boolean isActive();
+
+        /** 在事务成功提交后执行（用于延迟缓存失效，避免提交前失效导致并发读回填旧值） */
+        void executeAfterCommit(Runnable action);
+    }
+
+    private static volatile DataSourceNameResolver dataSourceResolver = () -> null;
+    private static volatile CacheTransactionSynchronization transactionSynchronization = null;
+
+    public static void setDataSourceResolver(DataSourceNameResolver resolver) {
+        dataSourceResolver = resolver == null ? () -> null : resolver;
+    }
+
+    public static void setTransactionSynchronization(CacheTransactionSynchronization sync) {
+        transactionSynchronization = sync;
     }
 
     @SuppressWarnings("unchecked")
@@ -91,6 +123,23 @@ public final class CacheableSqlBeanService {
         }
     }
 
+    /** 空结果哨兵：缓存 null 结果以防穿透（与「未命中」区分）。需可序列化以兼容 Redis 的 JDK 序列化。 */
+    private static final class NullSentinel implements java.io.Serializable {
+        static final NullSentinel INSTANCE = new NullSentinel();
+        private static final long serialVersionUID = 1L;
+    }
+
+    private static Object toCacheValue(Object value) {
+        return value == null ? NullSentinel.INSTANCE : BeanCopier.copyValue(value);
+    }
+
+    private static Object unwrap(Object cached) {
+        if (cached instanceof NullSentinel) {
+            return null;
+        }
+        return BeanCopier.copyValue(cached);
+    }
+
     private static final class Handler implements InvocationHandler {
         private final SqlBeanService<?, ?> delegate;
         private final QueryCache cache;
@@ -117,17 +166,17 @@ public final class CacheableSqlBeanService {
             if (key != null) {
                 Object cached = cache.get(key);
                 if (cached != null) {
-                    return BeanCopier.copyValue(cached);
+                    return unwrap(cached);
                 }
                 // 缓存击穿保护：同一 key 同一时刻仅一个线程回源，其余线程复用重建结果（Double-Checked Locking）
                 Object lock = loadLocks.computeIfAbsent(key, k -> new Object());
                 synchronized (lock) {
                     Object re = cache.get(key);
                     if (re != null) {
-                        return BeanCopier.copyValue(re);
+                        return unwrap(re);
                     }
                     Object result = method.invoke(delegate, args);
-                    cache.put(key, BeanCopier.copyValue(result), tableOf(args), TenantContextHolder.getTenantId());
+                    cache.put(key, toCacheValue(result), tableOf(args), TenantContextHolder.getTenantId());
                     return result;
                 }
             }
@@ -144,6 +193,7 @@ public final class CacheableSqlBeanService {
 
         private void evictForWrite(Object[] args, String name) {
             Object tenant = TenantContextHolder.getTenantId();
+            String dataSource = dataSourceResolver.currentDataSource();
             if ("copy".equals(name) || "backup".equals(name)) {
                 // 目标表名是最后一个 String 参数；若存在两个 String，则前一个是 targetSchema
                 List<String> strs = new ArrayList<>();
@@ -161,12 +211,26 @@ public final class CacheableSqlBeanService {
                 }
                 String table = strs.get(strs.size() - 1);
                 String schema = strs.size() >= 2 ? strs.get(strs.size() - 2) : DynSchemaContextHolder.getSchema();
-                cache.evictByTable(table, schema, tenant);
+                deferEviction(table, schema, tenant, dataSource);
                 return;
             }
             String table = tableOf(args);
             if (table != null) {
-                cache.evictByTable(table, DynSchemaContextHolder.getSchema(), tenant);
+                deferEviction(table, DynSchemaContextHolder.getSchema(), tenant, dataSource);
+            }
+        }
+
+        /**
+         * 触发按表失效。若当前处于事务中，则将失效延迟到事务成功提交后执行（避免提交前失效导致并发读回填旧值）；
+         * 否则（无事务钩子 / 不在事务中）立即失效。
+         */
+        private void deferEviction(String table, String schema, Object tenantId, String dataSource) {
+            Runnable evict = () -> cache.evictByTable(table, schema, tenantId, dataSource);
+            CacheTransactionSynchronization tx = CacheableSqlBeanService.transactionSynchronization;
+            if (tx != null && tx.isActive()) {
+                tx.executeAfterCommit(evict);
+            } else {
+                evict.run();
             }
         }
 
@@ -190,6 +254,7 @@ public final class CacheableSqlBeanService {
             }
             Object tenant = TenantContextHolder.getTenantId();
             String schema = DynSchemaContextHolder.getSchema();
+            String dataSource = dataSourceResolver.currentDataSource();
             Class<?> returnType = null;
             String where = null;
             Object[] sqlArgs = null;
@@ -348,7 +413,7 @@ public final class CacheableSqlBeanService {
                     // paging(...) 等不参与缓存
                     return null;
             }
-            return new QueryCacheKey(beanClass, returnType, sql, String.valueOf(tenant), schema, "");
+            return new QueryCacheKey(beanClass, returnType, sql, String.valueOf(tenant), schema, "", dataSource);
         }
     }
 }

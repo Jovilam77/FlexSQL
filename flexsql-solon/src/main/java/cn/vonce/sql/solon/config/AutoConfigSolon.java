@@ -5,6 +5,7 @@ import cn.vonce.sql.cache.SqlBeanServices;
 import cn.vonce.sql.config.SqlBeanConfig;
 import cn.vonce.sql.config.SqlBeanMeta;
 import cn.vonce.sql.java.annotation.DbSwitch;
+import cn.vonce.sql.java.datasource.DataSourceContextHolder;
 import cn.vonce.sql.java.mapper.MybatisSqlBeanMapperInterceptor;
 import cn.vonce.sql.service.SqlBeanService;
 import cn.vonce.sql.solon.annotation.EnableAutoConfigMultiDataSource;
@@ -16,6 +17,8 @@ import org.noear.solon.core.BeanWrap;
 import org.noear.solon.core.Plugin;
 import org.noear.solon.core.event.AppBeanLoadEndEvent;
 import org.noear.solon.core.event.EventListener;
+import org.noear.solon.data.tran.TranListener;
+import org.noear.solon.data.tran.TranUtils;
 
 import javax.sql.DataSource;
 import java.lang.reflect.Field;
@@ -54,6 +57,25 @@ public class AutoConfigSolon implements Plugin {
             }
         });
 
+        // 当前数据源名（多数据源 / @DbSwitch 场景），供缓存键区分数据源，避免跨数据源串数据。
+        CacheableSqlBeanService.setDataSourceResolver(DataSourceContextHolder::getDataSource);
+        // 事务同步：在事务提交后才执行缓存失效，避免「提交前失效导致并发读回填旧值」。
+        CacheableSqlBeanService.setTransactionSynchronization(new CacheableSqlBeanService.CacheTransactionSynchronization() {
+            @Override
+            public boolean isActive() {
+                return TranUtils.inTrans();
+            }
+
+            @Override
+            public void executeAfterCommit(Runnable action) {
+                TranUtils.listen(new TranListener() {
+                    @Override
+                    public void afterCommit() {
+                        action.run();
+                    }
+                });
+            }
+        });
     }
 
     /**

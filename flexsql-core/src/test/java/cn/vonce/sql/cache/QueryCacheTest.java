@@ -1,5 +1,6 @@
 package cn.vonce.sql.cache;
 
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -21,9 +22,12 @@ public class QueryCacheTest {
         pass += check("caffeineEvictByTable", caffeineEvictByTable());
         pass += check("caffeineTtl", caffeineTtl());
         pass += check("schemaScopedEvict", schemaScopedEvict());
+        pass += check("dataSourceScopedEvict", dataSourceScopedEvict());
+        pass += check("keyDiffDataSource", keyDiffDataSource());
         pass += check("accessExpire", accessExpire());
         pass += check("beanCopierIndependent", beanCopierIndependent());
         pass += check("nestedBeanCopierIndependent", nestedBeanCopierIndependent());
+        pass += check("nullResultCachedAsSentinel", nullResultCachedAsSentinel());
         System.out.println("\n==== QueryCacheTest: " + pass + " passed, " + fail + " failed ====");
         if (fail > 0) {
             System.exit(1);
@@ -65,7 +69,7 @@ public class QueryCacheTest {
         QueryCache cache = new SimpleQueryCache(100, 600);
         QueryCacheKey k = new QueryCacheKey(String.class, null, "SELECT * FROM t_user WHERE id=1", "tA", null, "");
         cache.put(k, "VALUE", "t_user", "tA");
-        cache.evictByTable("t_user", null, "tA");
+        cache.evictByTable("t_user", null, "tA", null);
         return cache.get(k) == null;
     }
 
@@ -86,7 +90,7 @@ public class QueryCacheTest {
         QueryCacheKey kB = new QueryCacheKey(String.class, null, "SELECT * FROM t_user", "tA", "s2", "");
         cache.put(kA, "A", "t_user", "tA");
         cache.put(kB, "B", "t_user", "tA");
-        cache.evictByTable("t_user", "s1", "tA");
+        cache.evictByTable("t_user", "s1", "tA", null);
         boolean aGone = cache.get(kA) == null;
         boolean bKept = "B".equals(cache.get(kB));
         return aGone && bKept;
@@ -101,6 +105,25 @@ public class QueryCacheTest {
         Thread.sleep(1200);
         boolean after = cache.get(k) == null;
         return first && after;
+    }
+
+    private static boolean keyDiffDataSource() {
+        QueryCacheKey k1 = new QueryCacheKey(String.class, null, "SELECT * FROM t_user WHERE id=1", "tA", null, "", "ds1");
+        QueryCacheKey k2 = new QueryCacheKey(String.class, null, "SELECT * FROM t_user WHERE id=1", "tA", null, "", "ds2");
+        return !k1.equals(k2);
+    }
+
+    /** 数据源维度：按表失效时仅清除匹配数据源的项，跨数据源同表名不受影响（多数据源 / @DbSwitch 场景） */
+    private static boolean dataSourceScopedEvict() {
+        QueryCache cache = new SimpleQueryCache(100, 600);
+        QueryCacheKey kA = new QueryCacheKey(String.class, null, "SELECT * FROM t_user", "tA", null, "", "ds1");
+        QueryCacheKey kB = new QueryCacheKey(String.class, null, "SELECT * FROM t_user", "tA", null, "", "ds2");
+        cache.put(kA, "A", "t_user", "tA");
+        cache.put(kB, "B", "t_user", "tA");
+        cache.evictByTable("t_user", null, "tA", "ds1");
+        boolean aGone = cache.get(kA) == null;
+        boolean bKept = "B".equals(cache.get(kB));
+        return aGone && bKept;
     }
 
     private static boolean beanCopierIndependent() {
@@ -126,6 +149,26 @@ public class QueryCacheTest {
         c.setName("c");
         c.getInner().setCity("SH");
         return a.getName().equals("a") && a.getInner().getCity().equals("BJ");
+    }
+
+    /**
+     * R2（空结果缓存防穿透）：CacheableSqlBeanService 将 null 结果以哨兵对象缓存（非 null），
+     * 回读时再还原为 null，从而与「未命中」区分，避免相同查询反复回源。
+     * 这里直接反射调用生产代码的 toCacheValue / unwrap 验证逻辑正确性。
+     */
+    private static boolean nullResultCachedAsSentinel() throws Exception {
+        Method toCacheValue = CacheableSqlBeanService.class.getDeclaredMethod("toCacheValue", Object.class);
+        toCacheValue.setAccessible(true);
+        Method unwrap = CacheableSqlBeanService.class.getDeclaredMethod("unwrap", Object.class);
+        unwrap.setAccessible(true);
+        // null -> 哨兵（非 null），且回读为 null
+        Object sentinel = toCacheValue.invoke(null, (Object) null);
+        boolean nullStoredAsSentinel = sentinel != null;
+        boolean sentinelReadsNull = unwrap.invoke(null, sentinel) == null;
+        // 非空值正常回读
+        Object stored = toCacheValue.invoke(null, "HELLO");
+        boolean valueRoundTrip = "HELLO".equals(unwrap.invoke(null, stored));
+        return nullStoredAsSentinel && sentinelReadsNull && valueRoundTrip;
     }
 
     public static class MyBean {

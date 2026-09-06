@@ -29,14 +29,16 @@ public interface QueryCache {
     void put(QueryCacheKey key, Object value, String table, Object tenantId);
 
     /**
-     * 按「表 + 动态schema + 租户」失效。任意写操作（insert/update/delete/copy/backup）成功后调用，
-     * 清掉所有 key 含该表（且 schema、租户匹配）的缓存项，保证读不到脏数据，同时避免跨 schema 同表名被过度失效。
+     * 按「表 + 动态schema + 租户 + 数据源」失效。任意写操作（insert/update/delete/copy/backup）成功后调用，
+     * 清掉所有 key 含该表（且 schema、租户、数据源均匹配）的缓存项，保证读不到脏数据，
+     * 同时避免跨 schema / 跨数据源同表名被过度失效。
      *
-     * @param table    表名
-     * @param schema   动态 schema（null 或空表示默认 schema）
-     * @param tenantId 租户 ID（null 表示不区分租户）
+     * @param table       表名
+     * @param schema      动态 schema（null 或空表示默认 schema）
+     * @param tenantId    租户 ID（null 表示不区分租户）
+     * @param dataSource  数据源名（null 或空表示默认/单一数据源）
      */
-    void evictByTable(String table, String schema, Object tenantId);
+    void evictByTable(String table, String schema, Object tenantId, String dataSource);
 
     /** 清空全部缓存 */
     void clear();
