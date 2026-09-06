@@ -33,7 +33,11 @@ public abstract class AbstractDynSchemaAspect {
 
     @After("pointcut()")
     public void after(JoinPoint joinPoint) {
-        DynSchemaContextHolder.clearSchema();
+        // 仅当本方法实际设置了 schema 时才出栈，避免非 @DbDynSchema 方法清掉外层已设置的 schema
+        Class<?> clazz = joinPoint.getTarget().getClass();
+        if (clazz.isAnnotationPresent(DbDynSchema.class)) {
+            DynSchemaContextHolder.clearSchema();
+        }
     }
 }
 

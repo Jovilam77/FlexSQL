@@ -892,7 +892,9 @@ public class SqlHelper {
                     setSql.append(SqlBeanUtil.getSqlValue(update, o));
                 } else if (sqlDefaultValue != null && (sqlDefaultValue.with() == FillWith.UPDATE_EVERYTIME || (objectValue == null && (sqlDefaultValue.with() == FillWith.UPDATE || sqlDefaultValue.with() == FillWith.TOGETHER)))) {
                     Object defaultValue = SqlHelper.setDefaultValue(bean.getClass(), bean, field);
-                    setSql.append(SqlBeanUtil.getSqlValue(update, defaultValue));
+                    // 不支持的类型 setDefaultValue 返回 null，回落到字段原值，避免把有效数据误写为 NULL
+                    Object fillValue = (defaultValue == null) ? objectValue : defaultValue;
+                    setSql.append(SqlBeanUtil.getSqlValue(update, fillValue));
                 } else {
                     setSql.append(SqlBeanUtil.getSqlValue(update, objectValue));
                 }
@@ -949,12 +951,16 @@ public class SqlHelper {
             if (sqlEnum == null) {
                 SqlEnum[] sqlEnums = (SqlEnum[]) field.getType().getEnumConstants();
                 sqlEnum = sqlEnums[0];
-                defaultValue = sqlEnum.getCode();
             }
             ReflectUtil.instance().set(clazz, bean, field.getName(), sqlEnum);
-        } else {
-            ReflectUtil.instance().set(clazz, bean, field.getName(), defaultValue);
+            return sqlEnum.getCode();
         }
+        // 不支持的类型（如 java.time.Instant、Android 下的 LocalDateTime 等）assignInitialValue 返回 null，
+        // 此时不覆盖已有字段值，避免 UPDATE_EVERYTIME 把有效数据误写为 NULL
+        if (defaultValue == null) {
+            return null;
+        }
+        ReflectUtil.instance().set(clazz, bean, field.getName(), defaultValue);
         return defaultValue;
     }
 

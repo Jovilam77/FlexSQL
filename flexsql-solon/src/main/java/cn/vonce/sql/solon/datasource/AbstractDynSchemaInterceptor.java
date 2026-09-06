@@ -20,12 +20,19 @@ public abstract class AbstractDynSchemaInterceptor implements Interceptor {
     @Override
     public Object doIntercept(Invocation inv) throws Throwable {
         Class<?> clazz = inv.target().getClass();
-        if (clazz.isAnnotationPresent(DbDynSchema.class)) {
+        boolean dynamic = clazz.isAnnotationPresent(DbDynSchema.class);
+        if (dynamic) {
             DynSchemaContextHolder.setSchema(getSchema());
         }
-        Object result = inv.invoke();
-        DynSchemaContextHolder.clearSchema();
-        return result;
+        try {
+            return inv.invoke();
+        } finally {
+            // 仅当本方法实际设置了 schema 时才出栈，避免清掉外层已设置的 schema；
+            // 放在 finally 中确保方法抛异常时也不会在线程池里泄漏
+            if (dynamic) {
+                DynSchemaContextHolder.clearSchema();
+            }
+        }
     }
 
 }

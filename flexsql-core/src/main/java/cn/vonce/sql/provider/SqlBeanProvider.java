@@ -918,27 +918,31 @@ public class SqlBeanProvider {
     /**
      * 统一设置Schema
      *
+     * 优先级：动态Schema（多租户上下文）> 程序显式设置 > 实体静态 @Table(schema)
+     * 原实现仅在 common 的 schema 为空时才应用动态 schema，而实体在构建 common 时已注入静态
+     * @Table(schema)，导致带静态 schema 的实体无法被动态 schema 覆盖（多租户失效）。
+     * 现改为：动态上下文存在时优先采用，确保租户隔离；程序显式设置的 schema（与静态注解不同）予以保留。
+     *
      * @param common
      * @param clazz
      */
     private static void setSchema(Common common, Class<?> clazz) {
-        //自主设置优先级高
-        if (StringUtil.isEmpty(common.getTable().getSchema())) {
-            common.getTable().setSchema(getSchema(clazz));
+        // 1. 动态Schema（多租户）优先级最高，确保租户隔离
+        String dynSchema = DynSchemaContextHolder.getSchema();
+        if (!StringUtil.isEmpty(dynSchema)) {
+            common.getTable().setSchema(dynSchema);
+            return;
         }
-    }
-
-    /**
-     * 获取Schema
-     *
-     * @param clazz
-     */
-    private static String getSchema(Class<?> clazz) {
-        String schema = DynSchemaContextHolder.getSchema();
-        if (StringUtil.isEmpty(schema)) {
-            return SqlBeanUtil.getTable(clazz).getSchema();
+        // 2. 未设置动态Schema时，区分「程序显式设置」与「实体静态注解默认值」
+        String current = common.getTable().getSchema();
+        String staticSchema = SqlBeanUtil.getTable(clazz).getSchema();
+        // 当前 schema 为空，或与静态注解一致（即未程序显式指定）时，回落到静态注解 schema
+        if (StringUtil.isEmpty(current) || (staticSchema != null && staticSchema.equals(current))) {
+            if (!StringUtil.isEmpty(staticSchema)) {
+                common.getTable().setSchema(staticSchema);
+            }
         }
-        return schema;
+        // 否则保留程序显式设置的 schema
     }
 
 }
