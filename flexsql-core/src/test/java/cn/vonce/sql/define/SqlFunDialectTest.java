@@ -436,6 +436,245 @@ public class SqlFunDialectTest {
                 && f.checkDialect(metaOf(DbType.SQLServer, 2019, 0)) == null;
     }
 
+    // ======================== 2026-09-06 P1 函数补强 ========================
+
+    static boolean jsonValueDialects() {
+        SqlFun f = SqlFun.jsonValue("col", "$.path");
+        return f.checkDialect(metaOf(DbType.SQLServer, 2016, 0)) == null
+                && f.checkDialect(metaOf(DbType.Oracle, 12, 0)) == null
+                && f.checkDialect(metaOf(DbType.SQLServer, 2014, 0)) != null   // < 2016 抛
+                && f.checkDialect(metaOf(DbType.Oracle, 11, 0)) != null        // < 12 抛
+                && f.checkDialect(metaOf(DbType.Postgresql, 14, 0)) != null   // PG 不支持
+                && f.checkDialect(metaOf(DbType.MySQL, 8, 0)) != null        // MySQL 不支持
+                && f.checkDialect(metaOf(DbType.MariaDB, 10, 3)) != null
+                && f.checkDialect(metaOf(DbType.SQLite, 3, 30)) != null;
+    }
+
+    static boolean regexpLikeDialects() {
+        SqlFun f = SqlFun.regexpLike("text", "'^a'");
+        return f.checkDialect(metaOf(DbType.Postgresql, 14, 0)) == null
+                && f.checkDialect(metaOf(DbType.Oracle, 19, 0)) == null
+                && f.checkDialect(metaOf(DbType.MySQL, 8, 0)) == null
+                && f.checkDialect(metaOf(DbType.MariaDB, 10, 3)) == null
+                && f.checkDialect(metaOf(DbType.SQLite, 3, 30)) == null
+                && f.checkDialect(metaOf(DbType.MySQL, 5, 7)) != null       // < 8 抛
+                && f.checkDialect(metaOf(DbType.SQLServer, 2019, 0)) != null
+                && f.checkDialect(metaOf(DbType.Derby, 10, 0)) != null;
+    }
+
+    static boolean regexpReplaceDialects() {
+        SqlFun f = SqlFun.regexpReplace("text", "'a'", "'b'");
+        return f.checkDialect(metaOf(DbType.Postgresql, 14, 0)) == null
+                && f.checkDialect(metaOf(DbType.Oracle, 19, 0)) == null
+                && f.checkDialect(metaOf(DbType.MySQL, 8, 0)) == null
+                && f.checkDialect(metaOf(DbType.MariaDB, 10, 3)) == null
+                && f.checkDialect(metaOf(DbType.SQLite, 3, 30)) == null
+                && f.checkDialect(metaOf(DbType.SQLServer, 2019, 0)) != null
+                && f.checkDialect(metaOf(DbType.MySQL, 5, 7)) != null;
+    }
+
+    static boolean regexpSubstrDialects() {
+        SqlFun f = SqlFun.regexpSubstr("text", "'a'");
+        return f.checkDialect(metaOf(DbType.Oracle, 19, 0)) == null
+                && f.checkDialect(metaOf(DbType.MySQL, 8, 0)) == null
+                && f.checkDialect(metaOf(DbType.Postgresql, 14, 0)) == null
+                && f.checkDialect(metaOf(DbType.SQLite, 3, 30)) == null
+                && f.checkDialect(metaOf(DbType.SQLServer, 2019, 0)) != null;
+    }
+
+    static boolean regexpCountDialects() {
+        SqlFun f = SqlFun.regexpCount("text", "'a'");
+        return f.checkDialect(metaOf(DbType.Oracle, 19, 0)) == null
+                && f.checkDialect(metaOf(DbType.MySQL, 8, 0)) == null
+                && f.checkDialect(metaOf(DbType.MariaDB, 10, 3)) == null
+                && f.checkDialect(metaOf(DbType.Postgresql, 14, 0)) != null
+                && f.checkDialect(metaOf(DbType.SQLServer, 2019, 0)) != null
+                && f.checkDialect(metaOf(DbType.SQLite, 3, 30)) != null;
+    }
+
+    static boolean regexpInstrDialects() {
+        SqlFun f = SqlFun.regexpInstr("text", "'a'");
+        return f.checkDialect(metaOf(DbType.Oracle, 19, 0)) == null
+                && f.checkDialect(metaOf(DbType.MySQL, 8, 0)) == null
+                && f.checkDialect(metaOf(DbType.MariaDB, 10, 3)) == null
+                && f.checkDialect(metaOf(DbType.Postgresql, 14, 0)) != null
+                && f.checkDialect(metaOf(DbType.SQLServer, 2019, 0)) != null
+                && f.checkDialect(metaOf(DbType.SQLite, 3, 30)) != null;
+    }
+
+    static boolean sha1Dialects() {
+        SqlFun f = SqlFun.sha1("col");
+        return f.checkDialect(metaOf(DbType.MySQL, 8, 0)) == null
+                && f.checkDialect(metaOf(DbType.MariaDB, 10, 3)) == null
+                && f.checkDialect(metaOf(DbType.H2, 2, 0)) == null
+                && f.checkDialect(metaOf(DbType.Hsql, 2, 0)) == null
+                && f.checkDialect(metaOf(DbType.Derby, 10, 0)) == null
+                && f.checkDialect(metaOf(DbType.Postgresql, 14, 0)) != null
+                && f.checkDialect(metaOf(DbType.SQLServer, 2019, 0)) != null
+                && f.checkDialect(metaOf(DbType.Oracle, 19, 0)) != null
+                && f.checkDialect(metaOf(DbType.SQLite, 3, 30)) != null;
+    }
+
+    static boolean sha2Dialects() {
+        SqlFun f = SqlFun.sha2("col", 256);
+        return f.checkDialect(metaOf(DbType.MySQL, 5, 5)) == null
+                && f.checkDialect(metaOf(DbType.MySQL, 5, 4)) != null         // < 5.5 抛
+                && f.checkDialect(metaOf(DbType.MariaDB, 10, 0)) == null
+                && f.checkDialect(metaOf(DbType.H2, 2, 0)) == null
+                && f.checkDialect(metaOf(DbType.Hsql, 2, 0)) == null
+                && f.checkDialect(metaOf(DbType.Postgresql, 14, 0)) != null
+                && f.checkDialect(metaOf(DbType.SQLServer, 2019, 0)) != null
+                && f.checkDialect(metaOf(DbType.Oracle, 19, 0)) != null;
+    }
+
+    static boolean bitAndDialects() {
+        SqlFun f = SqlFun.bitAnd("a", "b");
+        return f.checkDialect(metaOf(DbType.Postgresql, 14, 0)) == null
+                && f.checkDialect(metaOf(DbType.MySQL, 8, 0)) == null
+                && f.checkDialect(metaOf(DbType.MariaDB, 10, 3)) == null
+                && f.checkDialect(metaOf(DbType.Hsql, 2, 0)) == null
+                && f.checkDialect(metaOf(DbType.Oracle, 19, 0)) != null
+                && f.checkDialect(metaOf(DbType.SQLServer, 2019, 0)) != null
+                && f.checkDialect(metaOf(DbType.SQLite, 3, 30)) != null
+                && f.checkDialect(metaOf(DbType.H2, 2, 0)) != null;
+    }
+
+    static boolean bitOrDialects() {
+        SqlFun f = SqlFun.bitOr("a", "b");
+        return f.checkDialect(metaOf(DbType.Postgresql, 14, 0)) == null
+                && f.checkDialect(metaOf(DbType.MySQL, 8, 0)) == null
+                && f.checkDialect(metaOf(DbType.MariaDB, 10, 3)) == null
+                && f.checkDialect(metaOf(DbType.Hsql, 2, 0)) == null
+                && f.checkDialect(metaOf(DbType.Oracle, 19, 0)) != null
+                && f.checkDialect(metaOf(DbType.SQLServer, 2019, 0)) != null;
+    }
+
+    static boolean bitXorDialects() {
+        SqlFun f = SqlFun.bitXor("a", "b");
+        return f.checkDialect(metaOf(DbType.Postgresql, 14, 0)) == null
+                && f.checkDialect(metaOf(DbType.MySQL, 8, 0)) == null
+                && f.checkDialect(metaOf(DbType.MariaDB, 10, 3)) == null
+                && f.checkDialect(metaOf(DbType.Hsql, 2, 0)) == null
+                && f.checkDialect(metaOf(DbType.Oracle, 19, 0)) != null
+                && f.checkDialect(metaOf(DbType.SQLServer, 2019, 0)) != null;
+    }
+
+    static boolean bitCountDialects() {
+        SqlFun f = SqlFun.bitCount("a");
+        return f.checkDialect(metaOf(DbType.Postgresql, 14, 0)) == null
+                && f.checkDialect(metaOf(DbType.MySQL, 8, 0)) == null
+                && f.checkDialect(metaOf(DbType.MariaDB, 10, 3)) == null
+                && f.checkDialect(metaOf(DbType.Oracle, 19, 0)) != null
+                && f.checkDialect(metaOf(DbType.SQLServer, 2019, 0)) != null
+                && f.checkDialect(metaOf(DbType.Hsql, 2, 0)) != null;        // Hsql 也不支持
+    }
+
+    static boolean windowExtraDialects() {
+        SqlFun pr = SqlFun.percentRank();
+        SqlFun cd = SqlFun.cumeDist();
+        return pr.checkDialect(metaOf(DbType.MySQL, 8, 0)) == null
+                && pr.checkDialect(metaOf(DbType.MariaDB, 10, 2)) == null
+                && pr.checkDialect(metaOf(DbType.Postgresql, 9, 4)) == null
+                && pr.checkDialect(metaOf(DbType.Oracle, 19, 0)) == null
+                && pr.checkDialect(metaOf(DbType.SQLite, 3, 25)) == null
+                && pr.checkDialect(metaOf(DbType.SQLServer, 2005, 0)) == null
+                && pr.checkDialect(metaOf(DbType.MySQL, 5, 7)) != null       // < 8 抛
+                && pr.checkDialect(metaOf(DbType.H2, 2, 0)) != null
+                && pr.checkDialect(metaOf(DbType.Hsql, 2, 0)) != null
+                && cd.checkDialect(metaOf(DbType.Postgresql, 9, 4)) == null
+                && cd.checkDialect(metaOf(DbType.Oracle, 19, 0)) == null;
+    }
+
+    static boolean genRandomUuidDialects() {
+        SqlFun f = SqlFun.genRandomUuid();
+        return f.checkDialect(metaOf(DbType.Postgresql, 13, 0)) == null
+                && f.checkDialect(metaOf(DbType.Postgresql, 12, 0)) != null   // < 13 抛
+                && f.checkDialect(metaOf(DbType.MySQL, 8, 0)) != null
+                && f.checkDialect(metaOf(DbType.MariaDB, 10, 3)) != null
+                && f.checkDialect(metaOf(DbType.SQLServer, 2019, 0)) != null
+                && f.checkDialect(metaOf(DbType.Oracle, 19, 0)) != null;
+    }
+
+    static boolean inetAtonDialects() {
+        SqlFun f = SqlFun.inetAton("'1.2.3.4'");
+        return f.checkDialect(metaOf(DbType.MySQL, 8, 0)) == null
+                && f.checkDialect(metaOf(DbType.MariaDB, 10, 3)) == null
+                && f.checkDialect(metaOf(DbType.Postgresql, 14, 0)) != null
+                && f.checkDialect(metaOf(DbType.Oracle, 19, 0)) != null
+                && f.checkDialect(metaOf(DbType.SQLServer, 2019, 0)) != null;
+    }
+
+    static boolean substringIndexDialects() {
+        SqlFun f = SqlFun.substringIndex("'a.b.c'", "'.'", 2);
+        return f.checkDialect(metaOf(DbType.MySQL, 8, 0)) == null
+                && f.checkDialect(metaOf(DbType.MariaDB, 10, 3)) == null
+                && f.checkDialect(metaOf(DbType.Postgresql, 14, 0)) != null
+                && f.checkDialect(metaOf(DbType.Oracle, 19, 0)) != null;
+    }
+
+    static boolean findInSetDialects() {
+        SqlFun f = SqlFun.findInSet("'a'", "'a,b,c'");
+        return f.checkDialect(metaOf(DbType.MySQL, 8, 0)) == null
+                && f.checkDialect(metaOf(DbType.MariaDB, 10, 3)) == null
+                && f.checkDialect(metaOf(DbType.Postgresql, 14, 0)) != null
+                && f.checkDialect(metaOf(DbType.Oracle, 19, 0)) != null;
+    }
+
+    static boolean strcmpDialects() {
+        SqlFun f = SqlFun.strcmp("'a'", "'b'");
+        return f.checkDialect(metaOf(DbType.MySQL, 8, 0)) == null
+                && f.checkDialect(metaOf(DbType.MariaDB, 10, 3)) == null
+                && f.checkDialect(metaOf(DbType.Postgresql, 14, 0)) != null
+                && f.checkDialect(metaOf(DbType.SQLServer, 2019, 0)) != null;
+    }
+
+    static boolean eltDialects() {
+        SqlFun f = SqlFun.elt(2, "'a'", "'b'", "'c'");
+        return f.checkDialect(metaOf(DbType.MySQL, 8, 0)) == null
+                && f.checkDialect(metaOf(DbType.MariaDB, 10, 3)) == null
+                && f.checkDialect(metaOf(DbType.Postgresql, 14, 0)) != null
+                && f.checkDialect(metaOf(DbType.Oracle, 19, 0)) != null;
+    }
+
+    static boolean regexpLikeRendersOnPostgres() {
+        cn.vonce.sql.bean.Common common = new cn.vonce.sql.bean.Common();
+        SqlBeanMeta meta = metaOf(DbType.Postgresql, 14, 0);
+        meta.setDialectMode(DialectMode.STRICT);
+        common.setSqlBeanMeta(meta);
+        try {
+            String sql = cn.vonce.sql.uitls.SqlBeanUtil.getSqlFunction(common, SqlFun.regexpLike("text", "'^a'"));
+            return sql.contains("regexp_like");
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    static boolean regexpLikeThrowsOnSqlServer() {
+        cn.vonce.sql.bean.Common common = new cn.vonce.sql.bean.Common();
+        SqlBeanMeta meta = metaOf(DbType.SQLServer, 2019, 0);
+        meta.setDialectMode(DialectMode.STRICT);
+        common.setSqlBeanMeta(meta);
+        try {
+            cn.vonce.sql.uitls.SqlBeanUtil.getSqlFunction(common, SqlFun.regexpLike("text", "'^a'"));
+            return false;
+        } catch (UnsupportedDialectException e) {
+            return e.getFunctionName().equals("regexp_like") && e.getCurrentDbType() == DbType.SQLServer;
+        }
+    }
+
+    static boolean eltRendersOnMysql() {
+        cn.vonce.sql.bean.Common common = new cn.vonce.sql.bean.Common();
+        SqlBeanMeta meta = metaOf(DbType.MySQL, 8, 0);
+        meta.setDialectMode(DialectMode.STRICT);
+        common.setSqlBeanMeta(meta);
+        try {
+            String sql = cn.vonce.sql.uitls.SqlBeanUtil.getSqlFunction(common, SqlFun.elt(2, "'a'", "'b'", "'c'"));
+            return sql.contains("elt");
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     // ======================== 用户扩展入口 SqlFun.dialect(SqlFun, ...) ========================
 
     static boolean userExtensionRegistersDialects() {
@@ -835,6 +1074,30 @@ public class SqlFunDialectTest {
         check("p0b2.extract 通用", extractIsUniversal());
         check("p0b2.cast 通用", castIsUniversal());
         check("p0b2.currentTimestamp 通用", currentTimestampIsUniversal());
+
+        // ---------- 2026-09-06 P1 函数补强 ----------
+        check("p1.jsonValue 方言矩阵", jsonValueDialects());
+        check("p1.regexpLike 方言矩阵", regexpLikeDialects());
+        check("p1.regexpReplace 方言矩阵", regexpReplaceDialects());
+        check("p1.regexpSubstr 方言矩阵", regexpSubstrDialects());
+        check("p1.regexpCount 方言矩阵", regexpCountDialects());
+        check("p1.regexpInstr 方言矩阵", regexpInstrDialects());
+        check("p1.sha1 方言矩阵", sha1Dialects());
+        check("p1.sha2 方言矩阵", sha2Dialects());
+        check("p1.bitAnd 方言矩阵", bitAndDialects());
+        check("p1.bitOr 方言矩阵", bitOrDialects());
+        check("p1.bitXor 方言矩阵", bitXorDialects());
+        check("p1.bitCount 方言矩阵", bitCountDialects());
+        check("p1.percentRank/cumeDist 方言矩阵", windowExtraDialects());
+        check("p1.genRandomUuid 方言矩阵", genRandomUuidDialects());
+        check("p1.inetAton 方言矩阵", inetAtonDialects());
+        check("p1.substringIndex 方言矩阵", substringIndexDialects());
+        check("p1.findInSet 方言矩阵", findInSetDialects());
+        check("p1.strcmp 方言矩阵", strcmpDialects());
+        check("p1.elt 方言矩阵", eltDialects());
+        check("p1.regexpLike PG 渲染", regexpLikeRendersOnPostgres());
+        check("p1.regexpLike SQLServer STRICT 抛", regexpLikeThrowsOnSqlServer());
+        check("p1.elt MySQL 渲染", eltRendersOnMysql());
 
         System.out.println();
         System.out.println("=== SqlFunDialectTest: " + pass + " passed, " + fail + " failed ===");

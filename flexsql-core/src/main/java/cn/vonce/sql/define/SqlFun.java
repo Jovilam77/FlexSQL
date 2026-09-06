@@ -2738,4 +2738,762 @@ public class SqlFun extends Column {
         return f;
     }
 
+    // ============================================================
+    //  P1 函数补强（2026-09-06）—— JSON / 正则 / 加密 / 位运算 /
+    //                            窗口扩展 / UUID / MySQL 专属
+    //  本批：跨方言差异函数按方言矩阵精确标注
+    // ============================================================
+
+    // ---------------- H. JSON（SQL Server / Oracle 风格） ----------------
+
+    /**
+     * 从 JSON 字段中提取标量值（SQL Server 2016+ JSON_VALUE / Oracle 12c+ JSON_VALUE）。
+     * <p>PG 12- 无 JSON_VALUE（请用 {@code jsonb_extract_path_text} / {@code ->>}）；<br>
+     * MySQL 5.7+ 用 {@code JSON_EXTRACT(col, '$.path')}（返回 JSON 类型，需用 {@code ->>} 提取）；<br>
+     * SQLite 3.38+ 用 {@code json_extract(col, '$.path')}。<br>
+     * —— 框架不翻译函数名，请按方言选 RawValue 写法。</p>
+     */
+    public static SqlFun jsonValue(Object json, Object path) {
+        SqlFun f = new SqlFun("json_value", new Object[]{json, path});
+        f.dialect(DialectSupport.builder()
+                .support(cn.vonce.sql.enumerate.DbType.SQLServer, DbVersion.from(2016, 0))
+                .support(cn.vonce.sql.enumerate.DbType.Oracle, DbVersion.from(12, 0))
+                .unsupport(cn.vonce.sql.enumerate.DbType.Postgresql)
+                .unsupport(cn.vonce.sql.enumerate.DbType.MySQL)
+                .unsupport(cn.vonce.sql.enumerate.DbType.MariaDB)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLite)
+                .unsupport(cn.vonce.sql.enumerate.DbType.DB2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Derby)
+                .unsupport(cn.vonce.sql.enumerate.DbType.H2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Hsql)
+                .build());
+        return f;
+    }
+
+    public static <T, R> SqlFun jsonValue(ColumnFun<T, R> json, Object path) {
+        SqlFun f = new SqlFun("json_value", new Object[]{json, path});
+        f.dialect(DialectSupport.builder()
+                .support(cn.vonce.sql.enumerate.DbType.SQLServer, DbVersion.from(2016, 0))
+                .support(cn.vonce.sql.enumerate.DbType.Oracle, DbVersion.from(12, 0))
+                .unsupport(cn.vonce.sql.enumerate.DbType.Postgresql)
+                .unsupport(cn.vonce.sql.enumerate.DbType.MySQL)
+                .unsupport(cn.vonce.sql.enumerate.DbType.MariaDB)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLite)
+                .unsupport(cn.vonce.sql.enumerate.DbType.DB2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Derby)
+                .unsupport(cn.vonce.sql.enumerate.DbType.H2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Hsql)
+                .build());
+        return f;
+    }
+
+    // ---------------- I. 正则函数 ----------------
+
+    /**
+     * 正则匹配判断（PG 全支持，Oracle 全支持，MySQL 8.0+ REGEXP_LIKE，SQL Server 不支持，SQLite 仅基础 REGEXP）。
+     * <ul>
+     *   <li>MySQL 8.0+: REGEXP_LIKE(text, pattern)</li>
+     *   <li>PG: ~ 操作符包装为函数（PG 用 ~ / ~* / LIKE REGEXP）—— 框架直接生成 REGEXP_LIKE 风格（PG 11+ 支持）</li>
+     *   <li>Oracle: REGEXP_LIKE(text, pattern)</li>
+     *   <li>SQL Server: 不支持（请用 PATINDEX / LIKE）</li>
+     * </ul>
+     */
+    public static SqlFun regexpLike(Object text, Object pattern) {
+        SqlFun f = new SqlFun("regexp_like", new Object[]{text, pattern});
+        f.dialect(DialectSupport.builder()
+                .support(cn.vonce.sql.enumerate.DbType.MySQL, DbVersion.from(8, 0))
+                .support(cn.vonce.sql.enumerate.DbType.MariaDB, DbVersion.from(10, 0))
+                .support(cn.vonce.sql.enumerate.DbType.Postgresql)
+                .support(cn.vonce.sql.enumerate.DbType.Oracle)
+                .support(cn.vonce.sql.enumerate.DbType.SQLite, DbVersion.from(3, 0))
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLServer)
+                .unsupport(cn.vonce.sql.enumerate.DbType.DB2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Derby)
+                .unsupport(cn.vonce.sql.enumerate.DbType.H2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Hsql)
+                .build());
+        return f;
+    }
+
+    public static <T, R> SqlFun regexpLike(ColumnFun<T, R> text, Object pattern) {
+        SqlFun f = new SqlFun("regexp_like", new Object[]{text, pattern});
+        f.dialect(DialectSupport.builder()
+                .support(cn.vonce.sql.enumerate.DbType.MySQL, DbVersion.from(8, 0))
+                .support(cn.vonce.sql.enumerate.DbType.MariaDB, DbVersion.from(10, 0))
+                .support(cn.vonce.sql.enumerate.DbType.Postgresql)
+                .support(cn.vonce.sql.enumerate.DbType.Oracle)
+                .support(cn.vonce.sql.enumerate.DbType.SQLite, DbVersion.from(3, 0))
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLServer)
+                .unsupport(cn.vonce.sql.enumerate.DbType.DB2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Derby)
+                .unsupport(cn.vonce.sql.enumerate.DbType.H2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Hsql)
+                .build());
+        return f;
+    }
+
+    /**
+     * 正则替换。
+     * <ul>
+     *   <li>MySQL 8.0+: REGEXP_REPLACE(text, pattern, repl)</li>
+     *   <li>PG: REGEXP_REPLACE(text, pattern, repl, flags)</li>
+     *   <li>Oracle: REGEXP_REPLACE(text, pattern, repl)</li>
+     *   <li>SQL Server 2017+: REGEXP_REPLACE 是有限的，主流不支持（请用 STUFF/PATINDEX 自实现）</li>
+     * </ul>
+     */
+    public static SqlFun regexpReplace(Object text, Object pattern, Object replacement) {
+        SqlFun f = new SqlFun("regexp_replace", new Object[]{text, pattern, replacement});
+        f.dialect(DialectSupport.builder()
+                .support(cn.vonce.sql.enumerate.DbType.MySQL, DbVersion.from(8, 0))
+                .support(cn.vonce.sql.enumerate.DbType.MariaDB, DbVersion.from(10, 0))
+                .support(cn.vonce.sql.enumerate.DbType.Postgresql)
+                .support(cn.vonce.sql.enumerate.DbType.Oracle)
+                .support(cn.vonce.sql.enumerate.DbType.SQLite, DbVersion.from(3, 0))
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLServer)
+                .unsupport(cn.vonce.sql.enumerate.DbType.DB2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Derby)
+                .unsupport(cn.vonce.sql.enumerate.DbType.H2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Hsql)
+                .build());
+        return f;
+    }
+
+    public static <T, R> SqlFun regexpReplace(ColumnFun<T, R> text, Object pattern, Object replacement) {
+        SqlFun f = new SqlFun("regexp_replace", new Object[]{text, pattern, replacement});
+        f.dialect(DialectSupport.builder()
+                .support(cn.vonce.sql.enumerate.DbType.MySQL, DbVersion.from(8, 0))
+                .support(cn.vonce.sql.enumerate.DbType.MariaDB, DbVersion.from(10, 0))
+                .support(cn.vonce.sql.enumerate.DbType.Postgresql)
+                .support(cn.vonce.sql.enumerate.DbType.Oracle)
+                .support(cn.vonce.sql.enumerate.DbType.SQLite, DbVersion.from(3, 0))
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLServer)
+                .unsupport(cn.vonce.sql.enumerate.DbType.DB2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Derby)
+                .unsupport(cn.vonce.sql.enumerate.DbType.H2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Hsql)
+                .build());
+        return f;
+    }
+
+    /**
+     * 正则提取子串。
+     * <ul>
+     *   <li>Oracle / MySQL 8.0+ / PG / SQLite 3+: REGEXP_SUBSTR(text, pattern)</li>
+     *   <li>SQL Server: 不支持</li>
+     * </ul>
+     */
+    public static SqlFun regexpSubstr(Object text, Object pattern) {
+        SqlFun f = new SqlFun("regexp_substr", new Object[]{text, pattern});
+        f.dialect(DialectSupport.builder()
+                .support(cn.vonce.sql.enumerate.DbType.MySQL, DbVersion.from(8, 0))
+                .support(cn.vonce.sql.enumerate.DbType.MariaDB, DbVersion.from(10, 0))
+                .support(cn.vonce.sql.enumerate.DbType.Postgresql)
+                .support(cn.vonce.sql.enumerate.DbType.Oracle)
+                .support(cn.vonce.sql.enumerate.DbType.SQLite, DbVersion.from(3, 0))
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLServer)
+                .unsupport(cn.vonce.sql.enumerate.DbType.DB2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Derby)
+                .unsupport(cn.vonce.sql.enumerate.DbType.H2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Hsql)
+                .build());
+        return f;
+    }
+
+    public static <T, R> SqlFun regexpSubstr(ColumnFun<T, R> text, Object pattern) {
+        SqlFun f = new SqlFun("regexp_substr", new Object[]{text, pattern});
+        f.dialect(DialectSupport.builder()
+                .support(cn.vonce.sql.enumerate.DbType.MySQL, DbVersion.from(8, 0))
+                .support(cn.vonce.sql.enumerate.DbType.MariaDB, DbVersion.from(10, 0))
+                .support(cn.vonce.sql.enumerate.DbType.Postgresql)
+                .support(cn.vonce.sql.enumerate.DbType.Oracle)
+                .support(cn.vonce.sql.enumerate.DbType.SQLite, DbVersion.from(3, 0))
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLServer)
+                .unsupport(cn.vonce.sql.enumerate.DbType.DB2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Derby)
+                .unsupport(cn.vonce.sql.enumerate.DbType.H2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Hsql)
+                .build());
+        return f;
+    }
+
+    /**
+     * 正则匹配次数。
+     * <ul>
+     *   <li>Oracle 全支持 / MySQL 8.0+ REGEXP_COUNT / SQLite 不支持</li>
+     *   <li>PG: 无 REGEXP_COUNT（请用 {@code (SELECT COUNT(*) FROM regexp_matches(text, pattern))}）</li>
+     * </ul>
+     */
+    public static SqlFun regexpCount(Object text, Object pattern) {
+        SqlFun f = new SqlFun("regexp_count", new Object[]{text, pattern});
+        f.dialect(DialectSupport.builder()
+                .support(cn.vonce.sql.enumerate.DbType.MySQL, DbVersion.from(8, 0))
+                .support(cn.vonce.sql.enumerate.DbType.MariaDB, DbVersion.from(10, 0))
+                .support(cn.vonce.sql.enumerate.DbType.Oracle)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Postgresql)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLServer)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLite)
+                .unsupport(cn.vonce.sql.enumerate.DbType.DB2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Derby)
+                .unsupport(cn.vonce.sql.enumerate.DbType.H2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Hsql)
+                .build());
+        return f;
+    }
+
+    public static <T, R> SqlFun regexpCount(ColumnFun<T, R> text, Object pattern) {
+        SqlFun f = new SqlFun("regexp_count", new Object[]{text, pattern});
+        f.dialect(DialectSupport.builder()
+                .support(cn.vonce.sql.enumerate.DbType.MySQL, DbVersion.from(8, 0))
+                .support(cn.vonce.sql.enumerate.DbType.MariaDB, DbVersion.from(10, 0))
+                .support(cn.vonce.sql.enumerate.DbType.Oracle)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Postgresql)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLServer)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLite)
+                .unsupport(cn.vonce.sql.enumerate.DbType.DB2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Derby)
+                .unsupport(cn.vonce.sql.enumerate.DbType.H2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Hsql)
+                .build());
+        return f;
+    }
+
+    /**
+     * 正则匹配位置。
+     * <ul>
+     *   <li>Oracle 全支持 / MySQL 8.0+ REGEXP_INSTR / SQLite 不支持</li>
+     *   <li>PG: 无 REGEXP_INSTR（请用 strpos + 正则包裹）</li>
+     * </ul>
+     */
+    public static SqlFun regexpInstr(Object text, Object pattern) {
+        SqlFun f = new SqlFun("regexp_instr", new Object[]{text, pattern});
+        f.dialect(DialectSupport.builder()
+                .support(cn.vonce.sql.enumerate.DbType.MySQL, DbVersion.from(8, 0))
+                .support(cn.vonce.sql.enumerate.DbType.MariaDB, DbVersion.from(10, 0))
+                .support(cn.vonce.sql.enumerate.DbType.Oracle)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Postgresql)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLServer)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLite)
+                .unsupport(cn.vonce.sql.enumerate.DbType.DB2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Derby)
+                .unsupport(cn.vonce.sql.enumerate.DbType.H2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Hsql)
+                .build());
+        return f;
+    }
+
+    public static <T, R> SqlFun regexpInstr(ColumnFun<T, R> text, Object pattern) {
+        SqlFun f = new SqlFun("regexp_instr", new Object[]{text, pattern});
+        f.dialect(DialectSupport.builder()
+                .support(cn.vonce.sql.enumerate.DbType.MySQL, DbVersion.from(8, 0))
+                .support(cn.vonce.sql.enumerate.DbType.MariaDB, DbVersion.from(10, 0))
+                .support(cn.vonce.sql.enumerate.DbType.Oracle)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Postgresql)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLServer)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLite)
+                .unsupport(cn.vonce.sql.enumerate.DbType.DB2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Derby)
+                .unsupport(cn.vonce.sql.enumerate.DbType.H2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Hsql)
+                .build());
+        return f;
+    }
+
+    // ---------------- J. 加密 ----------------
+
+    /**
+     * SHA-1 摘要（十六进制字符串）。
+     * <ul>
+     *   <li>MySQL / MariaDB: SHA1(str)</li>
+     *   <li>PG: encode(digest(str, 'sha1'), 'hex')</li>
+     *   <li>SQL Server: HASHBYTES('SHA1', str)（参数风格不同，请手写）</li>
+     * </ul>
+     */
+    public static SqlFun sha1(Object str) {
+        SqlFun f = new SqlFun("sha1", new Object[]{str});
+        f.dialect(DialectSupport.builder()
+                .support(cn.vonce.sql.enumerate.DbType.MySQL)
+                .support(cn.vonce.sql.enumerate.DbType.MariaDB)
+                .support(cn.vonce.sql.enumerate.DbType.H2)
+                .support(cn.vonce.sql.enumerate.DbType.Hsql)
+                .support(cn.vonce.sql.enumerate.DbType.Derby)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Postgresql)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLServer)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Oracle)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLite)
+                .unsupport(cn.vonce.sql.enumerate.DbType.DB2)
+                .build());
+        return f;
+    }
+
+    public static <T, R> SqlFun sha1(ColumnFun<T, R> str) {
+        SqlFun f = new SqlFun("sha1", new Object[]{str});
+        f.dialect(DialectSupport.builder()
+                .support(cn.vonce.sql.enumerate.DbType.MySQL)
+                .support(cn.vonce.sql.enumerate.DbType.MariaDB)
+                .support(cn.vonce.sql.enumerate.DbType.H2)
+                .support(cn.vonce.sql.enumerate.DbType.Hsql)
+                .support(cn.vonce.sql.enumerate.DbType.Derby)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Postgresql)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLServer)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Oracle)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLite)
+                .unsupport(cn.vonce.sql.enumerate.DbType.DB2)
+                .build());
+        return f;
+    }
+
+    /**
+     * SHA-2 摘要（bits 可选 224 / 256 / 384 / 512，MySQL 5.5+ 支持；MariaDB 全版本支持）。
+     * <ul>
+     *   <li>MySQL / MariaDB: SHA2(str, bits)</li>
+     *   <li>PG: encode(digest(str, 'sha256'), 'hex')</li>
+     *   <li>SQL Server: HASHBYTES('SHA2_256', str)（参数风格不同，请手写）</li>
+     * </ul>
+     */
+    public static SqlFun sha2(Object str, int bits) {
+        SqlFun f = new SqlFun("sha2", new Object[]{str, bits});
+        f.dialect(DialectSupport.builder()
+                .support(cn.vonce.sql.enumerate.DbType.MySQL, DbVersion.from(5, 5))
+                .support(cn.vonce.sql.enumerate.DbType.MariaDB)
+                .support(cn.vonce.sql.enumerate.DbType.H2)
+                .support(cn.vonce.sql.enumerate.DbType.Hsql)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Postgresql)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLServer)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Oracle)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLite)
+                .unsupport(cn.vonce.sql.enumerate.DbType.DB2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Derby)
+                .build());
+        return f;
+    }
+
+    public static <T, R> SqlFun sha2(ColumnFun<T, R> str, int bits) {
+        SqlFun f = new SqlFun("sha2", new Object[]{str, bits});
+        f.dialect(DialectSupport.builder()
+                .support(cn.vonce.sql.enumerate.DbType.MySQL, DbVersion.from(5, 5))
+                .support(cn.vonce.sql.enumerate.DbType.MariaDB)
+                .support(cn.vonce.sql.enumerate.DbType.H2)
+                .support(cn.vonce.sql.enumerate.DbType.Hsql)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Postgresql)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLServer)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Oracle)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLite)
+                .unsupport(cn.vonce.sql.enumerate.DbType.DB2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Derby)
+                .build());
+        return f;
+    }
+
+    // ---------------- K. 位运算 ----------------
+
+    /**
+     * 位与（PG/MySQL/MariaDB/Hsql 全支持；SQL Server 用 {@code &} 运算符）。
+     */
+    public static SqlFun bitAnd(Object a, Object b) {
+        SqlFun f = new SqlFun("bit_and", new Object[]{a, b});
+        f.dialect(DialectSupport.builder()
+                .support(cn.vonce.sql.enumerate.DbType.Postgresql)
+                .support(cn.vonce.sql.enumerate.DbType.MySQL)
+                .support(cn.vonce.sql.enumerate.DbType.MariaDB)
+                .support(cn.vonce.sql.enumerate.DbType.Hsql)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Oracle)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLServer)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLite)
+                .unsupport(cn.vonce.sql.enumerate.DbType.DB2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Derby)
+                .unsupport(cn.vonce.sql.enumerate.DbType.H2)
+                .build());
+        return f;
+    }
+
+    public static <T, R> SqlFun bitAnd(ColumnFun<T, R> a, Object b) {
+        SqlFun f = new SqlFun("bit_and", new Object[]{a, b});
+        f.dialect(DialectSupport.builder()
+                .support(cn.vonce.sql.enumerate.DbType.Postgresql)
+                .support(cn.vonce.sql.enumerate.DbType.MySQL)
+                .support(cn.vonce.sql.enumerate.DbType.MariaDB)
+                .support(cn.vonce.sql.enumerate.DbType.Hsql)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Oracle)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLServer)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLite)
+                .unsupport(cn.vonce.sql.enumerate.DbType.DB2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Derby)
+                .unsupport(cn.vonce.sql.enumerate.DbType.H2)
+                .build());
+        return f;
+    }
+
+    /**
+     * 位或（PG/MySQL/MariaDB/Hsql 全支持；SQL Server 用 {@code |} 运算符）。
+     */
+    public static SqlFun bitOr(Object a, Object b) {
+        SqlFun f = new SqlFun("bit_or", new Object[]{a, b});
+        f.dialect(DialectSupport.builder()
+                .support(cn.vonce.sql.enumerate.DbType.Postgresql)
+                .support(cn.vonce.sql.enumerate.DbType.MySQL)
+                .support(cn.vonce.sql.enumerate.DbType.MariaDB)
+                .support(cn.vonce.sql.enumerate.DbType.Hsql)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Oracle)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLServer)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLite)
+                .unsupport(cn.vonce.sql.enumerate.DbType.DB2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Derby)
+                .unsupport(cn.vonce.sql.enumerate.DbType.H2)
+                .build());
+        return f;
+    }
+
+    public static <T, R> SqlFun bitOr(ColumnFun<T, R> a, Object b) {
+        SqlFun f = new SqlFun("bit_or", new Object[]{a, b});
+        f.dialect(DialectSupport.builder()
+                .support(cn.vonce.sql.enumerate.DbType.Postgresql)
+                .support(cn.vonce.sql.enumerate.DbType.MySQL)
+                .support(cn.vonce.sql.enumerate.DbType.MariaDB)
+                .support(cn.vonce.sql.enumerate.DbType.Hsql)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Oracle)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLServer)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLite)
+                .unsupport(cn.vonce.sql.enumerate.DbType.DB2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Derby)
+                .unsupport(cn.vonce.sql.enumerate.DbType.H2)
+                .build());
+        return f;
+    }
+
+    /**
+     * 位异或（PG/MySQL/MariaDB/Hsql 全支持；SQL Server 用 {@code ^} 运算符）。
+     */
+    public static SqlFun bitXor(Object a, Object b) {
+        SqlFun f = new SqlFun("bit_xor", new Object[]{a, b});
+        f.dialect(DialectSupport.builder()
+                .support(cn.vonce.sql.enumerate.DbType.Postgresql)
+                .support(cn.vonce.sql.enumerate.DbType.MySQL)
+                .support(cn.vonce.sql.enumerate.DbType.MariaDB)
+                .support(cn.vonce.sql.enumerate.DbType.Hsql)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Oracle)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLServer)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLite)
+                .unsupport(cn.vonce.sql.enumerate.DbType.DB2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Derby)
+                .unsupport(cn.vonce.sql.enumerate.DbType.H2)
+                .build());
+        return f;
+    }
+
+    public static <T, R> SqlFun bitXor(ColumnFun<T, R> a, Object b) {
+        SqlFun f = new SqlFun("bit_xor", new Object[]{a, b});
+        f.dialect(DialectSupport.builder()
+                .support(cn.vonce.sql.enumerate.DbType.Postgresql)
+                .support(cn.vonce.sql.enumerate.DbType.MySQL)
+                .support(cn.vonce.sql.enumerate.DbType.MariaDB)
+                .support(cn.vonce.sql.enumerate.DbType.Hsql)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Oracle)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLServer)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLite)
+                .unsupport(cn.vonce.sql.enumerate.DbType.DB2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Derby)
+                .unsupport(cn.vonce.sql.enumerate.DbType.H2)
+                .build());
+        return f;
+    }
+
+    /**
+     * 位数统计（统计二进制中 1 的个数）。
+     * <ul>
+     *   <li>MySQL: BIT_COUNT(n)（也作为聚合函数）</li>
+     *   <li>PG: bit_count(int)</li>
+     *   <li>SQL Server / Oracle / SQLite: 不支持</li>
+     * </ul>
+     */
+    public static SqlFun bitCount(Object n) {
+        SqlFun f = new SqlFun("bit_count", new Object[]{n});
+        f.dialect(DialectSupport.builder()
+                .support(cn.vonce.sql.enumerate.DbType.MySQL)
+                .support(cn.vonce.sql.enumerate.DbType.MariaDB)
+                .support(cn.vonce.sql.enumerate.DbType.Postgresql)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Oracle)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLServer)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLite)
+                .unsupport(cn.vonce.sql.enumerate.DbType.DB2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Derby)
+                .unsupport(cn.vonce.sql.enumerate.DbType.H2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Hsql)
+                .build());
+        return f;
+    }
+
+    public static <T, R> SqlFun bitCount(ColumnFun<T, R> n) {
+        SqlFun f = new SqlFun("bit_count", new Object[]{n});
+        f.dialect(DialectSupport.builder()
+                .support(cn.vonce.sql.enumerate.DbType.MySQL)
+                .support(cn.vonce.sql.enumerate.DbType.MariaDB)
+                .support(cn.vonce.sql.enumerate.DbType.Postgresql)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Oracle)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLServer)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLite)
+                .unsupport(cn.vonce.sql.enumerate.DbType.DB2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Derby)
+                .unsupport(cn.vonce.sql.enumerate.DbType.H2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Hsql)
+                .build());
+        return f;
+    }
+
+    // ---------------- L. 窗口函数扩展（percent_rank / cume_dist） ----------------
+
+    /**
+     * 累计分布百分位排名（窗口函数）—— MySQL 8.0+/MariaDB 10.2+/PG/Oracle/SQLite 3.25+/SQL Server 2005+；
+     * H2/Hsql/Derby/DB2 不支持。
+     */
+    public static SqlFun percentRank() {
+        return windowFunction("percent_rank", null);
+    }
+
+    /**
+     * 累计分布值（窗口函数）—— MySQL 8.0+/MariaDB 10.2+/PG/Oracle/SQLite 3.25+/SQL Server 2005+；
+     * H2/Hsql/Derby/DB2 不支持。
+     */
+    public static SqlFun cumeDist() {
+        return windowFunction("cume_dist", null);
+    }
+
+    // ---------------- M. UUID / MySQL 专属 ----------------
+
+    /**
+     * 随机 UUID（v4）。
+     * <ul>
+     *   <li>PG 13+: gen_random_uuid()（需启用 pgcrypto 或 PG 13+ 内置）</li>
+     *   <li>MySQL / MariaDB: UUID()</li>
+     *   <li>SQL Server: NEWID()</li>
+     *   <li>Oracle: sys_guid()</li>
+     *   <li>SQLite: randomblob(16)</li>
+     *   <li>框架默认输出 {@code gen_random_uuid()}（PG 风格），其它方言用户请改用 RawValue 写对应函数名</li>
+     * </ul>
+     */
+    public static SqlFun genRandomUuid() {
+        SqlFun f = new SqlFun("gen_random_uuid", null);
+        f.dialect(DialectSupport.builder()
+                .support(cn.vonce.sql.enumerate.DbType.Postgresql, DbVersion.from(13, 0))
+                .unsupport(cn.vonce.sql.enumerate.DbType.MySQL)
+                .unsupport(cn.vonce.sql.enumerate.DbType.MariaDB)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Oracle)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLServer)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLite)
+                .unsupport(cn.vonce.sql.enumerate.DbType.DB2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Derby)
+                .unsupport(cn.vonce.sql.enumerate.DbType.H2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Hsql)
+                .build());
+        return f;
+    }
+
+    /**
+     * IP 地址字符串转整数（MySQL/MariaDB 专属）。
+     * <p>PG 用 {@code (family = 4)} 的 inet 函数 + {@code host()}；SQL Server 用 PARSENAME；请改用 RawValue。</p>
+     */
+    public static SqlFun inetAton(Object ip) {
+        SqlFun f = new SqlFun("inet_aton", new Object[]{ip});
+        f.dialect(DialectSupport.builder()
+                .support(cn.vonce.sql.enumerate.DbType.MySQL)
+                .support(cn.vonce.sql.enumerate.DbType.MariaDB)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Postgresql)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Oracle)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLServer)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLite)
+                .unsupport(cn.vonce.sql.enumerate.DbType.DB2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Derby)
+                .unsupport(cn.vonce.sql.enumerate.DbType.H2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Hsql)
+                .build());
+        return f;
+    }
+
+    public static <T, R> SqlFun inetAton(ColumnFun<T, R> ip) {
+        SqlFun f = new SqlFun("inet_aton", new Object[]{ip});
+        f.dialect(DialectSupport.builder()
+                .support(cn.vonce.sql.enumerate.DbType.MySQL)
+                .support(cn.vonce.sql.enumerate.DbType.MariaDB)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Postgresql)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Oracle)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLServer)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLite)
+                .unsupport(cn.vonce.sql.enumerate.DbType.DB2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Derby)
+                .unsupport(cn.vonce.sql.enumerate.DbType.H2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Hsql)
+                .build());
+        return f;
+    }
+
+    /**
+     * 整数转 IP 地址字符串（MySQL/MariaDB 专属）。
+     */
+    public static SqlFun inetNtoa(Object bigint) {
+        SqlFun f = new SqlFun("inet_ntoa", new Object[]{bigint});
+        f.dialect(DialectSupport.builder()
+                .support(cn.vonce.sql.enumerate.DbType.MySQL)
+                .support(cn.vonce.sql.enumerate.DbType.MariaDB)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Postgresql)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Oracle)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLServer)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLite)
+                .unsupport(cn.vonce.sql.enumerate.DbType.DB2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Derby)
+                .unsupport(cn.vonce.sql.enumerate.DbType.H2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Hsql)
+                .build());
+        return f;
+    }
+
+    public static <T, R> SqlFun inetNtoa(ColumnFun<T, R> bigint) {
+        SqlFun f = new SqlFun("inet_ntoa", new Object[]{bigint});
+        f.dialect(DialectSupport.builder()
+                .support(cn.vonce.sql.enumerate.DbType.MySQL)
+                .support(cn.vonce.sql.enumerate.DbType.MariaDB)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Postgresql)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Oracle)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLServer)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLite)
+                .unsupport(cn.vonce.sql.enumerate.DbType.DB2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Derby)
+                .unsupport(cn.vonce.sql.enumerate.DbType.H2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Hsql)
+                .build());
+        return f;
+    }
+
+    /**
+     * 按分隔符截取子串（MySQL/MariaDB 专属）。count &gt; 0 从左数，&lt; 0 从右数。
+     */
+    public static SqlFun substringIndex(Object str, Object delimiter, int count) {
+        SqlFun f = new SqlFun("substring_index", new Object[]{str, delimiter, count});
+        f.dialect(DialectSupport.builder()
+                .support(cn.vonce.sql.enumerate.DbType.MySQL)
+                .support(cn.vonce.sql.enumerate.DbType.MariaDB)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Postgresql)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Oracle)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLServer)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLite)
+                .unsupport(cn.vonce.sql.enumerate.DbType.DB2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Derby)
+                .unsupport(cn.vonce.sql.enumerate.DbType.H2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Hsql)
+                .build());
+        return f;
+    }
+
+    public static <T, R> SqlFun substringIndex(ColumnFun<T, R> str, Object delimiter, int count) {
+        SqlFun f = new SqlFun("substring_index", new Object[]{str, delimiter, count});
+        f.dialect(DialectSupport.builder()
+                .support(cn.vonce.sql.enumerate.DbType.MySQL)
+                .support(cn.vonce.sql.enumerate.DbType.MariaDB)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Postgresql)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Oracle)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLServer)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLite)
+                .unsupport(cn.vonce.sql.enumerate.DbType.DB2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Derby)
+                .unsupport(cn.vonce.sql.enumerate.DbType.H2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Hsql)
+                .build());
+        return f;
+    }
+
+    /**
+     * 查找字符串在逗号分隔列表中的位置（MySQL/MariaDB 专属）。
+     */
+    public static SqlFun findInSet(Object str, Object strList) {
+        SqlFun f = new SqlFun("find_in_set", new Object[]{str, strList});
+        f.dialect(DialectSupport.builder()
+                .support(cn.vonce.sql.enumerate.DbType.MySQL)
+                .support(cn.vonce.sql.enumerate.DbType.MariaDB)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Postgresql)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Oracle)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLServer)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLite)
+                .unsupport(cn.vonce.sql.enumerate.DbType.DB2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Derby)
+                .unsupport(cn.vonce.sql.enumerate.DbType.H2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Hsql)
+                .build());
+        return f;
+    }
+
+    public static <T, R> SqlFun findInSet(ColumnFun<T, R> str, Object strList) {
+        SqlFun f = new SqlFun("find_in_set", new Object[]{str, strList});
+        f.dialect(DialectSupport.builder()
+                .support(cn.vonce.sql.enumerate.DbType.MySQL)
+                .support(cn.vonce.sql.enumerate.DbType.MariaDB)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Postgresql)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Oracle)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLServer)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLite)
+                .unsupport(cn.vonce.sql.enumerate.DbType.DB2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Derby)
+                .unsupport(cn.vonce.sql.enumerate.DbType.H2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Hsql)
+                .build());
+        return f;
+    }
+
+    /**
+     * 字符串比较（MySQL/MariaDB 专属）。
+     */
+    public static SqlFun strcmp(Object str1, Object str2) {
+        SqlFun f = new SqlFun("strcmp", new Object[]{str1, str2});
+        f.dialect(DialectSupport.builder()
+                .support(cn.vonce.sql.enumerate.DbType.MySQL)
+                .support(cn.vonce.sql.enumerate.DbType.MariaDB)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Postgresql)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Oracle)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLServer)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLite)
+                .unsupport(cn.vonce.sql.enumerate.DbType.DB2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Derby)
+                .unsupport(cn.vonce.sql.enumerate.DbType.H2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Hsql)
+                .build());
+        return f;
+    }
+
+    public static <T, R> SqlFun strcmp(ColumnFun<T, R> str1, Object str2) {
+        SqlFun f = new SqlFun("strcmp", new Object[]{str1, str2});
+        f.dialect(DialectSupport.builder()
+                .support(cn.vonce.sql.enumerate.DbType.MySQL)
+                .support(cn.vonce.sql.enumerate.DbType.MariaDB)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Postgresql)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Oracle)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLServer)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLite)
+                .unsupport(cn.vonce.sql.enumerate.DbType.DB2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Derby)
+                .unsupport(cn.vonce.sql.enumerate.DbType.H2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Hsql)
+                .build());
+        return f;
+    }
+
+    /**
+     * 返回第 n 个参数（MySQL/MariaDB 专属，n 从 1 起）。
+     */
+    public static SqlFun elt(Object n, Object... strs) {
+        List<Object> list = new ArrayList<>();
+        list.add(n);
+        list.addAll(Arrays.asList(strs));
+        SqlFun f = new SqlFun("elt", list.toArray());
+        f.dialect(DialectSupport.builder()
+                .support(cn.vonce.sql.enumerate.DbType.MySQL)
+                .support(cn.vonce.sql.enumerate.DbType.MariaDB)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Postgresql)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Oracle)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLServer)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLite)
+                .unsupport(cn.vonce.sql.enumerate.DbType.DB2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Derby)
+                .unsupport(cn.vonce.sql.enumerate.DbType.H2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Hsql)
+                .build());
+        return f;
+    }
+
 }
