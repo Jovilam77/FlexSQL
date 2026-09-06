@@ -1,6 +1,6 @@
 package cn.vonce.sql.cache.caffeine;
 
-import cn.vonce.sql.cache.CacheMode;
+import cn.vonce.sql.config.CacheMode;
 import cn.vonce.sql.cache.QueryCache;
 import cn.vonce.sql.cache.QueryCacheConfig;
 import cn.vonce.sql.cache.QueryCacheKey;

@@ -11,7 +11,7 @@ import org.springframework.core.PriorityOrdered;
 /**
  * 查询缓存自动包裹后置处理器。
  * <p>在 {@link SqlBeanService} bean 初始化后，用 {@link SqlBeanServices#caching(SqlBeanService)} 包裹；
- * 若全局 {@link cn.vonce.sql.cache.QueryCacheConfig} 为 {@link cn.vonce.sql.cache.CacheMode#OFF}（默认），caching 返回原对象，零影响。</p>
+ * 若全局 {@link cn.vonce.sql.cache.QueryCacheConfig} 为 {@link cn.vonce.sql.config.CacheMode#OFF}（默认），caching 返回原对象，零影响。</p>
  * <p>实现 {@link PriorityOrdered} 并以最高优先级运行，确保在 AOP 代理（如 @Transactional / @Aspect）之前包裹原始 bean，
  * 从而避免对 AOP 生成的 JDK 代理调用 getSqlBeanMeta() 时方法不在接口上而不可达的问题。</p>
  *

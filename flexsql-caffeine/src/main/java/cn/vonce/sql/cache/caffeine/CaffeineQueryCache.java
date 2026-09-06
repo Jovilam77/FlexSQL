@@ -84,7 +84,7 @@ public class CaffeineQueryCache implements QueryCache {
     }
 
     /**
-     * 注册为 {@link cn.vonce.sql.cache.CacheMode#LOCAL} 模式的实现。
+     * 注册为 {@link cn.vonce.sql.config.CacheMode#LOCAL} 模式的实现。
      * 调用后 {@link QueryCacheConfig#local(long, long, long)} 将产出本实现。
      */
     public static void install() {

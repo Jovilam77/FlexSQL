@@ -1,7 +1,9 @@
 package cn.vonce.sql.solon.config;
 
 import cn.vonce.sql.cache.CacheableSqlBeanService;
+import cn.vonce.sql.cache.RedisOps;
 import cn.vonce.sql.cache.SqlBeanServices;
+import cn.vonce.sql.config.CacheMode;
 import cn.vonce.sql.config.SqlBeanConfig;
 import cn.vonce.sql.config.SqlBeanMeta;
 import cn.vonce.sql.java.annotation.DbSwitch;
@@ -25,6 +27,7 @@ import java.lang.reflect.Field;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 
 /**
@@ -54,6 +57,26 @@ public class AutoConfigSolon implements Plugin {
         context.onEvent(AppBeanLoadEndEvent.class, (EventListener<AppBeanLoadEndEvent>) (e) -> {
             for (BeanWrap bw : sqlBeanServiceWraps) {
                 wrapSqlBeanServiceIfEnabled(bw);
+            }
+            // ===== SqlBeanConfig Bean 拾取：把 cache 字段应用到全局 QueryCacheConfig =====
+            Collection<SqlBeanConfig> cfgBeans = e.context().getBeansOfType(SqlBeanConfig.class);
+            if (cfgBeans.size() > 1) {
+                throw new IllegalStateException(
+                        "FlexSQL 检测到 " + cfgBeans.size() + " 个 SqlBeanConfig Bean，请只保留一个。" +
+                                "多个 SqlBeanConfig 会造成 cache 配置歧义。");
+            }
+            SqlBeanConfig cfg = cfgBeans.isEmpty() ? null : cfgBeans.iterator().next();
+            RedisOps redisOps = null;
+            Collection<RedisOps> redisOpsBeans = e.context().getBeansOfType(RedisOps.class);
+            if (!redisOpsBeans.isEmpty()) {
+                redisOps = redisOpsBeans.iterator().next();
+            }
+            if (cfg != null) {
+                if (cfg.getCacheMode() == CacheMode.REDIS && redisOps == null) {
+                    System.err.println("[FlexSQL WARN] SqlBeanConfig.cacheMode=REDIS 但容器内未找到 RedisOps Bean，" +
+                            "已降级为 OFF。请实现 RedisOps 接口并注册为 Bean。");
+                }
+                SqlBeanServices.applyFromSqlBeanConfig(cfg, redisOps);
             }
         });
 

@@ -1,5 +1,7 @@
 package cn.vonce.sql.cache;
 
+import cn.vonce.sql.config.CacheMode;
+
 /**
  * 查询缓存全局激活配置（取代原先 per-service 的 SqlBeanConfig 缓存开关）。
  * <p>模式互斥、默认 {@link CacheMode#OFF}（不开启）：

@@ -1,5 +1,7 @@
 package cn.vonce.sql.cache;
 
+import cn.vonce.sql.config.CacheMode;
+import cn.vonce.sql.config.SqlBeanConfig;
 import cn.vonce.sql.service.SqlBeanService;
 
 import java.lang.reflect.InvocationHandler;
@@ -150,6 +152,50 @@ public class QueryCacheConfigTest {
         // 注：local/redis 模式的端到端包裹（需真实 SqlBeanMeta）留待带 DB 的集成测试。
 
         SqlBeanServices.setCacheConfig(QueryCacheConfig.off()); // 复位，确保不影响其它测试
+
+        // ===== applyFromSqlBeanConfig：SqlBeanConfig → 全局 QueryCacheConfig =====
+        SqlBeanConfig cfgLocal = new SqlBeanConfig();
+        cfgLocal.setCacheMode(CacheMode.LOCAL);
+        cfgLocal.setLocalMaximumSize(500L);
+        cfgLocal.setLocalExpireAfterWrite(300L);
+        // 没调编程式 setCacheConfig，先复位 OFF
+        SqlBeanServices.setCacheConfig(QueryCacheConfig.off());
+        boolean applied1 = SqlBeanServices.applyFromSqlBeanConfig(cfgLocal, null);
+        check("apply.localApplied", applied1);
+        check("apply.localMode", SqlBeanServices.getCacheConfig().getMode() == CacheMode.LOCAL);
+        check("apply.localMaxSize", ((SimpleQueryCache) SqlBeanServices.getCacheConfig().getCache()).getClass() == SimpleQueryCache.class);
+
+        // 用户没设 cacheMode → 视为未配置，不写 OFF 也不动其他
+        SqlBeanServices.setCacheConfig(QueryCacheConfig.off());
+        SqlBeanConfig cfgEmpty = new SqlBeanConfig();
+        cfgEmpty.setToUpperCase(true); // 任意非 cache 字段
+        boolean applied2 = SqlBeanServices.applyFromSqlBeanConfig(cfgEmpty, null);
+        check("apply.emptyNotApplied", !applied2);
+        check("apply.emptyKeepsOff", SqlBeanServices.getCacheConfig().getMode() == CacheMode.OFF);
+
+        // 编程式优先：已 setCacheConfig(LOCAL) 时 Bean 即使是 REDIS 也不覆盖
+        SqlBeanServices.setCacheConfig(QueryCacheConfig.local(100, 60, 0));
+        SqlBeanConfig cfgRedis = new SqlBeanConfig();
+        cfgRedis.setCacheMode(CacheMode.REDIS);
+        boolean applied3 = SqlBeanServices.applyFromSqlBeanConfig(cfgRedis, new MemRedisOps());
+        check("apply.programmaticWinsNoCover", !applied3);
+        check("apply.programmaticKeepsLocal", SqlBeanServices.getCacheConfig().getMode() == CacheMode.LOCAL);
+
+        // REDIS 模式缺 RedisOps → 应用但降级 OFF
+        SqlBeanServices.setCacheConfig(QueryCacheConfig.off());
+        SqlBeanConfig cfgRedisNoImpl = new SqlBeanConfig();
+        cfgRedisNoImpl.setCacheMode(CacheMode.REDIS);
+        boolean applied4 = SqlBeanServices.applyFromSqlBeanConfig(cfgRedisNoImpl, null);
+        check("apply.redisWithoutImplStillApplied", applied4);
+        check("apply.redisDowngradeOff", SqlBeanServices.getCacheConfig().getMode() == CacheMode.OFF);
+
+        // null config 直接 no-op
+        SqlBeanServices.setCacheConfig(QueryCacheConfig.off());
+        boolean applied5 = SqlBeanServices.applyFromSqlBeanConfig(null, null);
+        check("apply.nullConfigNoOp", !applied5);
+
+        // 复位为 OFF
+        SqlBeanServices.setCacheConfig(QueryCacheConfig.off());
 
         System.out.println("\nQueryCacheConfigTest: " + pass + " passed, " + fail + " failed");
         if (fail > 0) {
