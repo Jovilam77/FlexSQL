@@ -345,7 +345,6 @@ public class SqlFunDialectTest {
      * date_trunc 方言矩阵：PG/MySQL 8.0+/MariaDB 10.3+/H2/Hsql/SQLite 通过；Oracle/SQL Server/Derby/DB2/MySQL 5.x 抛。
      */
     static boolean dateTruncDialects() {
-        // 用 (Object, Object) 强转避免与旧的 dateTrunc(Object, String) 重载冲突（参数顺序相反：PG vs Oracle）
         SqlFun f = SqlFun.dateTrunc((Object) "day", (Object) "col");
         Object[][] probes = {
                 {"PG14", metaOf(DbType.Postgresql, 14, 0), null},
@@ -382,7 +381,7 @@ public class SqlFunDialectTest {
         meta.setDialectMode(DialectMode.STRICT);
         common.setSqlBeanMeta(meta);
         try {
-            cn.vonce.sql.uitls.SqlBeanUtil.getSqlFunction(common, SqlFun.dateTrunc("day", "col"));
+            cn.vonce.sql.uitls.SqlBeanUtil.getSqlFunction(common, SqlFun.dateTrunc((Object) "day", (Object) "col"));
             return false;
         } catch (UnsupportedDialectException e) {
             return e.getFunctionName().equals("date_trunc") && e.getCurrentDbType() == DbType.MySQL;
@@ -395,7 +394,7 @@ public class SqlFunDialectTest {
         meta.setDialectMode(DialectMode.STRICT);
         common.setSqlBeanMeta(meta);
         try {
-            cn.vonce.sql.uitls.SqlBeanUtil.getSqlFunction(common, SqlFun.dateTrunc("day", "col"));
+            cn.vonce.sql.uitls.SqlBeanUtil.getSqlFunction(common, SqlFun.dateTrunc((Object) "day", (Object) "col"));
             return false;
         } catch (UnsupportedDialectException e) {
             return e.getFunctionName().equals("date_trunc") && e.getCurrentDbType() == DbType.Oracle;

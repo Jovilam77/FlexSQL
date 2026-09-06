@@ -2294,29 +2294,6 @@ public class SqlFun extends Column {
     }
 
     /**
-     * 日期截断到指定精度（方言差异）。
-     * <p>参数语义：{@code unit} 表示精度（如 {@code 'day'} / {@code 'month'} / {@code 'year'}）；
-     * MySQL 5.6 之前的版本不支持 DATE_TRUNC。
-     * PG/Oracle/SQL Server 用户请改用 {@link cn.vonce.sql.bean.RawValue}。</p>
-     */
-    public static SqlFun dateTrunc(Object col, String unit) {
-        SqlFun f = new SqlFun("date_trunc", new Object[]{col, unit});
-        f.dialect(DialectSupport.builder()
-                .support(cn.vonce.sql.enumerate.DbType.Postgresql, DbVersion.from(9, 0))
-                .support(cn.vonce.sql.enumerate.DbType.MySQL, DbVersion.from(8, 0))
-                .support(cn.vonce.sql.enumerate.DbType.MariaDB, DbVersion.from(10, 0))
-                .unsupport(cn.vonce.sql.enumerate.DbType.Oracle)
-                .unsupport(cn.vonce.sql.enumerate.DbType.SQLServer)
-                .unsupport(cn.vonce.sql.enumerate.DbType.DB2)
-                .unsupport(cn.vonce.sql.enumerate.DbType.Derby)
-                .unsupport(cn.vonce.sql.enumerate.DbType.H2)
-                .unsupport(cn.vonce.sql.enumerate.DbType.Hsql)
-                .unsupport(cn.vonce.sql.enumerate.DbType.SQLite)
-                .build());
-        return f;
-    }
-
-    /**
      * 行内字符串聚合（方言差异）。
      * <p>MySQL 用 {@code GROUP_CONCAT} / PG 与 SQL Server 用 {@code STRING_AGG} / Oracle 用 {@code LISTAGG}。
      * 函数名与分隔符调用形式各异；本 API 仅登记为 MySQL 支持，跨方言用户改用 RawValue。</p>
