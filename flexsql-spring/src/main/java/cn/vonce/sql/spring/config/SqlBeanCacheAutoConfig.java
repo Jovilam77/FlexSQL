@@ -4,7 +4,7 @@ import cn.vonce.sql.cache.CacheableSqlBeanService;
 import cn.vonce.sql.java.datasource.DataSourceContextHolder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationAdapter;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /**
@@ -33,7 +33,7 @@ public class SqlBeanCacheAutoConfig {
 
             @Override
             public void executeAfterCommit(Runnable action) {
-                TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronizationAdapter() {
                     @Override
                     public void afterCommit() {
                         action.run();
