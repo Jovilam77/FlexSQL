@@ -1,6 +1,8 @@
 package cn.vonce.sql.cache.it;
 
 import cn.vonce.sql.cache.CacheableSqlBeanService;
+import cn.vonce.sql.cache.QueryCacheConfig;
+import cn.vonce.sql.cache.SqlBeanServices;
 import cn.vonce.sql.service.SqlBeanService;
 import cn.vonce.sql.spring.config.CacheableSqlBeanServicePostProcessor;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
@@ -10,9 +12,11 @@ import org.springframework.stereotype.Component;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Spring 集成测试：验证 CacheableSqlBeanServicePostProcessor（BeanPostProcessor）能自动把
- * queryCacheEnabled=true 的 SqlBeanService bean 包裹为缓存代理；而关闭时保持原样。
- * <p>使用 @Component（lite 模式）+ @Bean 注册，避免 @Configuration 触发的 CGLIB 在 JDK16+ 下的模块访问限制。</p>
+ * Spring 集成测试：验证 CacheableSqlBeanServicePostProcessor 能根据全局 {@link QueryCacheConfig}
+ * 把 SqlBeanService bean 包裹为缓存代理（OFF 原样返回，LOCAL 包裹 + 命中缓存）。
+ * <p>新机制下缓存开关已从 per-service {@code SqlBeanConfig.queryCacheEnabled} 迁移到全局
+ * {@link QueryCacheConfig}（默认 OFF，二选一 LOCAL/REDIS），因此测试拆为两段（off / local），
+ * 各自使用独立 {@link AnnotationConfigApplicationContext}。</p>
  * <p>直接以 main 方式运行（与项目内 QueryCacheTest 风格一致）。</p>
  */
 public class CacheAutoWireSpringTest {
@@ -32,8 +36,7 @@ public class CacheAutoWireSpringTest {
 
     @Component
     static class TestConfig {
-        final AtomicInteger enabledCounter = new AtomicInteger();
-        final AtomicInteger disabledCounter = new AtomicInteger();
+        final AtomicInteger counter = new AtomicInteger();
 
         @Bean
         CacheableSqlBeanServicePostProcessor cacheBpp() {
@@ -41,48 +44,52 @@ public class CacheAutoWireSpringTest {
         }
 
         @Bean
-        SqlBeanService enabledSvc() {
-            return CacheStubUtil.makeStub(true, enabledCounter);
-        }
-
-        @Bean
-        SqlBeanService disabledSvc() {
-            return CacheStubUtil.makeStub(false, disabledCounter);
+        SqlBeanService testSvc() {
+            return CacheStubUtil.makeStub(counter);
         }
     }
 
     public static void main(String[] args) {
-        AnnotationConfigApplicationContext ctx = new AnnotationConfigApplicationContext();
-        ctx.register(TestConfig.class);
-        ctx.refresh();
+        // 段1：全局 OFF，BPP 应原样返回 bean
+        SqlBeanServices.setCacheConfig(QueryCacheConfig.off());
+        AnnotationConfigApplicationContext ctxOff = new AnnotationConfigApplicationContext();
+        ctxOff.register(TestConfig.class);
+        ctxOff.refresh();
 
         @SuppressWarnings("unchecked")
-        SqlBeanService<TestUser, Integer> enabled = (SqlBeanService<TestUser, Integer>) (SqlBeanService<?, ?>) ctx.getBean("enabledSvc");
+        SqlBeanService<TestUser, Integer> offBean = (SqlBeanService<TestUser, Integer>) (SqlBeanService<?, ?>) ctxOff.getBean("testSvc");
+        check(!CacheableSqlBeanService.isCacheProxy(offBean),
+                "OFF：bean 不应被包裹（全局配置关闭）");
+        AtomicInteger offCounter = ctxOff.getBean(TestConfig.class).counter;
+        offBean.selectById(1);
+        offBean.selectById(1);
+        check(offCounter.get() == 2,
+                "OFF：每次回源 delegate（无缓存），累计调用=" + offCounter.get());
+        ctxOff.close();
+
+        // 段2：全局 LOCAL，BPP 应包裹为缓存代理 + 命中缓存
+        SqlBeanServices.setCacheConfig(QueryCacheConfig.local(1000L, 600L, 0L));
+        AnnotationConfigApplicationContext ctxLocal = new AnnotationConfigApplicationContext();
+        ctxLocal.register(TestConfig.class);
+        ctxLocal.refresh();
+
         @SuppressWarnings("unchecked")
-        SqlBeanService<TestUser, Integer> disabled = (SqlBeanService<TestUser, Integer>) (SqlBeanService<?, ?>) ctx.getBean("disabledSvc");
+        SqlBeanService<TestUser, Integer> localBean = (SqlBeanService<TestUser, Integer>) (SqlBeanService<?, ?>) ctxLocal.getBean("testSvc");
+        check(CacheableSqlBeanService.isCacheProxy(localBean),
+                "LOCAL：bean 应被 BPP 包裹为缓存代理");
+        AtomicInteger localCounter = ctxLocal.getBean(TestConfig.class).counter;
+        localBean.selectById(1);
+        localBean.selectById(1);
+        check(localCounter.get() == 1,
+                "LOCAL：第二次相同 selectById 命中缓存，delegate 仅调用 1 次，实际=" + localCounter.get());
+        localBean.selectById(2);
+        check(localCounter.get() == 2,
+                "LOCAL：不同 id 重新回源，累计调用=" + localCounter.get());
+        ctxLocal.close();
 
-        check(CacheableSqlBeanService.isCacheProxy(enabled),
-                "enabled bean 应被 BPP 包裹为缓存代理");
-        check(!CacheableSqlBeanService.isCacheProxy(disabled),
-                "disabled bean 不应被包裹（配置关闭）");
+        // 复位全局配置
+        SqlBeanServices.setCacheConfig(QueryCacheConfig.off());
 
-        TestConfig tc = ctx.getBean(TestConfig.class);
-
-        enabled.selectById(1);
-        enabled.selectById(1);
-        check(tc.enabledCounter.get() == 1,
-                "enabled：第二次相同 selectById 命中缓存，delegate 仅调用 1 次，实际=" + tc.enabledCounter.get());
-
-        enabled.selectById(2);
-        check(tc.enabledCounter.get() == 2,
-                "enabled：不同 id 重新回源，累计调用=" + tc.enabledCounter.get());
-
-        disabled.selectById(1);
-        disabled.selectById(1);
-        check(tc.disabledCounter.get() == 2,
-                "disabled：每次都回源 delegate（无缓存），累计调用=" + tc.disabledCounter.get());
-
-        ctx.close();
         System.out.println("Spring 集成测试：" + passed + " passed, " + failed + " failed");
         if (failed > 0) {
             System.exit(1);

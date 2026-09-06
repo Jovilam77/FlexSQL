@@ -79,8 +79,8 @@ public class AutoConfigSolon implements Plugin {
     }
 
     /**
-     * 若 SqlBeanConfig.queryCacheEnabled=true，把真实的 SqlBeanService 包裹为带查询缓存的代理。
-     * 默认关闭时 caching 返回原对象，零侵入；isCacheProxy 保证重复调用幂等。
+     * 若全局 cn.vonce.sql.cache.QueryCacheConfig 为 LOCAL/REDIS，把真实的 SqlBeanService 包裹为带查询缓存的代理。
+     * 默认 OFF 时 caching 返回原对象，零侵入；isCacheProxy 保证重复调用幂等。
      */
     private static void wrapSqlBeanServiceIfEnabled(BeanWrap bw) {
         Object raw = bw.raw();

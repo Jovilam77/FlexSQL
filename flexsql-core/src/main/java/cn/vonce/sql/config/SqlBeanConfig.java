@@ -1,6 +1,5 @@
 package cn.vonce.sql.config;
 
-import cn.vonce.sql.cache.QueryCache;
 import cn.vonce.sql.enumerate.JsonType;
 import cn.vonce.sql.processor.DefaultUniqueIdProcessor;
 import cn.vonce.sql.processor.UniqueIdProcessor;
@@ -72,61 +71,8 @@ public class SqlBeanConfig implements Serializable {
         }
     }
 
-    // ===== 查询缓存配置（默认关闭，开启后使用内置 SimpleQueryCache 本地缓存，可注入自定义 QueryCache / RedisQueryCache）=====
-
-    private Boolean queryCacheEnabled;
-    private QueryCache queryCache;
-    private Long queryCacheMaxSize = 1000L;
-    private Long queryCacheExpireAfterWriteSeconds = 600L;
-    private Long queryCacheExpireAfterAccessSeconds = 0L;
-
-    public boolean getQueryCacheEnabled() {
-        return queryCacheEnabled != null && queryCacheEnabled;
-    }
-
-    public void setQueryCacheEnabled(boolean queryCacheEnabled) {
-        this.queryCacheEnabled = queryCacheEnabled;
-    }
-
-    public QueryCache getQueryCache() {
-        return queryCache;
-    }
-
-    public void setQueryCache(QueryCache queryCache) {
-        this.queryCache = queryCache;
-    }
-
-    public long getQueryCacheMaxSize() {
-        if (queryCacheMaxSize == null) {
-            queryCacheMaxSize = 1000L;
-        }
-        return queryCacheMaxSize;
-    }
-
-    public void setQueryCacheMaxSize(long queryCacheMaxSize) {
-        this.queryCacheMaxSize = queryCacheMaxSize;
-    }
-
-    public long getQueryCacheExpireAfterWriteSeconds() {
-        if (queryCacheExpireAfterWriteSeconds == null) {
-            queryCacheExpireAfterWriteSeconds = 600L;
-        }
-        return queryCacheExpireAfterWriteSeconds;
-    }
-
-    public void setQueryCacheExpireAfterWriteSeconds(long queryCacheExpireAfterWriteSeconds) {
-        this.queryCacheExpireAfterWriteSeconds = queryCacheExpireAfterWriteSeconds;
-    }
-
-    public long getQueryCacheExpireAfterAccessSeconds() {
-        if (queryCacheExpireAfterAccessSeconds == null) {
-            queryCacheExpireAfterAccessSeconds = 0L;
-        }
-        return queryCacheExpireAfterAccessSeconds;
-    }
-
-    public void setQueryCacheExpireAfterAccessSeconds(long queryCacheExpireAfterAccessSeconds) {
-        this.queryCacheExpireAfterAccessSeconds = queryCacheExpireAfterAccessSeconds;
-    }
+    // ===== 查询缓存开关已迁移为全局配置（见 cn.vonce.sql.cache.QueryCacheConfig）=====
+    // 通过 SqlBeanServices.setCacheConfig(QueryCacheConfig.local(...)/redis(...)/off()) 启用，默认 OFF。
+    // 本类不再持有 per-service 缓存开关，避免与全局配置冲突。
 
 }
