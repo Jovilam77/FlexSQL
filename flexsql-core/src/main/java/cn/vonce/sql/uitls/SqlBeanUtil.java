@@ -1055,6 +1055,22 @@ public class SqlBeanUtil {
      * @return
      */
     public static String getSqlFunction(Common common, SqlFun sqlFun) {
+        // 渲染期方言校验（每次校验；DialectSupport.supports 是 O(1) HashMap 查询，可忽略）
+        if (sqlFun.getDialectSupport() != null && common != null && common.getSqlBeanMeta() != null) {
+            String checkResult = sqlFun.checkDialect(common.getSqlBeanMeta());
+            if (checkResult != null) {
+                cn.vonce.sql.enumerate.DialectMode mode = common.getSqlBeanMeta().getDialectMode();
+                if (mode == cn.vonce.sql.enumerate.DialectMode.STRICT) {
+                    throw sqlFun.buildException(common.getSqlBeanMeta());
+                } else if (mode == cn.vonce.sql.enumerate.DialectMode.WARN) {
+                    // WARN 模式：输出到 stderr（注：生产环境应通过 SLF4J 输出，但 core 零依赖）
+                    System.err.println("[FlexSQL WARN] SqlFun." + checkResult
+                            + " 在当前方言 " + common.getSqlBeanMeta().getDbType()
+                            + " 不被支持，仍按主方言 SQL 生成（数据库层面可能炸语法错误）。");
+                }
+                // OFF：放行
+            }
+        }
         StringBuilder fun = new StringBuilder();
         fun.append(sqlFun.getFunName());
         fun.append(SqlConstant.BEGIN_BRACKET);

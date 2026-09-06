@@ -10,7 +10,6 @@ import cn.vonce.sql.uitls.LambdaUtil;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-
 /**
  * Sql函数
  *
@@ -22,6 +21,12 @@ public class SqlFun extends Column {
 
     private String funName;
     private Object[] values;
+
+    /**
+     * 方言支持元数据（{@code null} = 通用 SQL，所有方言通过校验）。
+     * <p>工厂方法内部用 {@link #dialect(DialectSupport)} 标注；用户自定义函数也可用此字段。</p>
+     */
+    private DialectSupport dialectSupport;
 
     private SqlFun(String funName, Object[] values) {
         this.funName = funName;
@@ -1671,6 +1676,288 @@ public class SqlFun extends Column {
      */
     public static SqlFun rand() {
         return new SqlFun("rand", null);
+    }
+
+    // ============================================================
+    //  方言支持元数据（DialectSupport）
+    // ============================================================
+
+    /**
+     * 当前函数的方言支持元数据。{@code null} = 通用 SQL（所有方言通过校验）。
+     */
+    public DialectSupport getDialectSupport() {
+        return dialectSupport;
+    }
+
+    /**
+     * 标注方言支持（工厂方法内部使用 / 用户自定义函数）。返回 this 便于链式。
+     *
+     * <pre>
+     *   SqlFun.userDefined = new SqlFun("MY_FUNC", args);
+     *   userDefined.dialect(DialectSupport.builder()
+     *           .support(DbType.MySQL, DbVersion.from(5, 0))
+     *           .build());
+     * </pre>
+     */
+    public SqlFun dialect(DialectSupport support) {
+        this.dialectSupport = support;
+        return this;
+    }
+
+    /**
+     * 用户扩展入口：给自定义函数标注方言支持。
+     *
+     * @param f       函数实例
+     * @param support 方言支持元数据
+     * @return 同 {@code f}（便于链式）
+     */
+    public static SqlFun dialect(SqlFun f, DialectSupport support) {
+        return f.dialect(support);
+    }
+
+    /**
+     * 校验当前函数对给定方言与版本是否兼容。
+     * <p><b>不缓存结果</b> —— 同一个 SqlFun 实例可能在不同 SQL 上下文对应不同方言
+     * （多数据源场景）。校验本身是常数级查表（{@code DialectSupport.supports} 为 O(1)
+     * HashMap 查询），可忽略。</p>
+     *
+     * <p>返回值：
+     * <ul>
+     *   <li>{@code null}：方言兼容通过</li>
+     *   <li>非空字符串：不兼容的清晰错误说明（可直接抛 {@link cn.vonce.sql.exception.UnsupportedDialectException}）</li>
+     * </ul>
+     *
+     * @param sqlBeanMeta 当前数据库方言/版本元数据。{@code null} 表示未连接任何方言（放行）
+     */
+    public String checkDialect(cn.vonce.sql.config.SqlBeanMeta sqlBeanMeta) {
+        if (dialectSupport == null || dialectSupport.isUniversal()) {
+            return null;   // 通用 SQL，永远通过
+        }
+        if (sqlBeanMeta == null) {
+            return null;   // 没有元数据，放行
+        }
+        cn.vonce.sql.enumerate.DbType dbType = sqlBeanMeta.getDbType();
+        DbVersion version = (sqlBeanMeta.getDatabaseMajorVersion() == 0 && sqlBeanMeta.getDatabaseMinorVersion() == 0)
+                ? null
+                : DbVersion.from(sqlBeanMeta.getDatabaseMajorVersion(), sqlBeanMeta.getDatabaseMinorVersion());
+        if (dialectSupport.supports(dbType, version)) {
+            return null;
+        }
+        // 返回非 null 标识失败。renderer 端 STRICT 模式抛异常；WARN 模式输出日志。
+        return this.funName;
+    }
+
+    /**
+     * 内部使用：构造 {@link cn.vonce.sql.exception.UnsupportedDialectException} 用于异常抛出。
+     */
+    public cn.vonce.sql.exception.UnsupportedDialectException buildException(cn.vonce.sql.config.SqlBeanMeta sqlBeanMeta) {
+        cn.vonce.sql.enumerate.DbType dbType = sqlBeanMeta.getDbType();
+        DbVersion version = (sqlBeanMeta.getDatabaseMajorVersion() == 0 && sqlBeanMeta.getDatabaseMinorVersion() == 0)
+                ? null
+                : DbVersion.from(sqlBeanMeta.getDatabaseMajorVersion(), sqlBeanMeta.getDatabaseMinorVersion());
+        return new cn.vonce.sql.exception.UnsupportedDialectException(
+                this.funName,
+                dbType,
+                version,
+                dialectSupport.getSupported(),
+                dialectSupport.getUnsupported());
+    }
+
+    // ============================================================
+    //  P0 函数补强（2026-09-06）—— trim / coalesce / ifNull / nvl / nullIf /
+    //                            countDistinct / dateFormat / dateTrunc /
+    //                            groupConcat / greatest / least
+    //  详见 doc/CACHE.md 与 SqlFunDialectTest
+    // ============================================================
+
+    // ---------------- A. SQL 标准函数（无需标注 = 通用） ----------------
+
+    /**
+     * 去前后空格（标准 SQL TRIM，全方言支持）。
+     * <p>MySQL: TRIM('  x  ')='x' / PG / Oracle / SQL Server 同；SQLite 用 RTRIM(LTRIM())。</p>
+     */
+    public static SqlFun trim(Object str) {
+        return new SqlFun("trim", new Object[]{str});
+    }
+
+    public static <T, R> SqlFun trim(ColumnFun<T, R> str) {
+        return new SqlFun("trim", new Object[]{str});
+    }
+
+    /**
+     * 返回第一个非空值（SQL 标准 COALESCE，全方言支持）。
+     * <p>MySQL: COALESCE(a, b, c) / PG / Oracle / SQL Server 同 / SQLite 同。</p>
+     */
+    public static SqlFun coalesce(Object... values) {
+        if (values == null || values.length == 0) {
+            throw new IllegalArgumentException("coalesce 至少需要一个参数");
+        }
+        return new SqlFun("coalesce", values);
+    }
+
+    /**
+     * 空值替换（SQL 标准 IFNULL；Oracle 旧版叫 NVL）。
+     * <p>MySQL / SQLite / H2 / HSQL / Derby / DB2: IFNULL(c, v)。Oracle 9i+: NVL；PG: COALESCE 兜底。
+     * 推荐 PG/Oracle 用户用 {@link #nvl} 别名。</p>
+     */
+    public static SqlFun ifNull(Object value, Object defaultValue) {
+        return new SqlFun("ifnull", new Object[]{value, defaultValue});
+    }
+
+    public static <T, R> SqlFun ifNull(ColumnFun<T, R> value, Object defaultValue) {
+        return new SqlFun("ifnull", new Object[]{value, defaultValue});
+    }
+
+    /**
+     * 空值替换（Oracle NVL 别名；其它方言内部等价于 IFNULL）。
+     */
+    public static SqlFun nvl(Object value, Object defaultValue) {
+        return new SqlFun("nvl", new Object[]{value, defaultValue});
+    }
+
+    public static <T, R> SqlFun nvl(ColumnFun<T, R> value, Object defaultValue) {
+        return new SqlFun("nvl", new Object[]{value, defaultValue});
+    }
+
+    /**
+     * 两值相等返回 NULL（标准 SQL，全方言支持）。
+     */
+    public static SqlFun nullIf(Object expr1, Object expr2) {
+        return new SqlFun("nullif", new Object[]{expr1, expr2});
+    }
+
+    public static <T, R> SqlFun nullIf(ColumnFun<T, R> expr1, Object expr2) {
+        return new SqlFun("nullif", new Object[]{expr1, expr2});
+    }
+
+    /**
+     * 去重计数（SQL 标准 COUNT(DISTINCT c)，全方言支持）。
+     */
+    public static SqlFun countDistinct(Object value) {
+        return new SqlFun("count_distinct", new Object[]{value});
+    }
+
+    public static <T, R> SqlFun countDistinct(ColumnFun<T, R> value) {
+        return new SqlFun("count_distinct", new Object[]{value});
+    }
+
+    // ---------------- B. 跨方言函数（带 dialectSupport 标注） ----------------
+
+    /**
+     * 日期格式化（方言差异：MySQL {@code DATE_FORMAT} / SQLite {@code STRFTIME（参数顺序反向）}）。
+     * <p><b>注意</b>：{@code fmt} 格式串方言特有 —— MySQL 用 {@code '%Y-%m-%d'}，PG/Oracle 用 {@code 'YYYY-MM-DD'}，
+     * SQL Server 用 {@code 'yyyy-MM-dd'}。Oracle / SQL Server / PostgreSQL 用户请改用
+     * {@link cn.vonce.sql.bean.RawValue} 自写方言 SQL。</p>
+     *
+     * <p>框架标注：本 API 仅对 MySQL / SQLite 显式登记为支持（其它方言抛清晰异常）。
+     * 若需要 PG/Oracle 等价，请直接拷工厂方法照搬 TO_CHAR 模板。</p>
+     */
+    public static SqlFun dateFormat(Object col, String format) {
+        SqlFun f = new SqlFun("date_format", new Object[]{col, format});
+        f.dialect(DialectSupport.builder()
+                .support(cn.vonce.sql.enumerate.DbType.MySQL, DbVersion.from(5, 0))
+                .support(cn.vonce.sql.enumerate.DbType.MariaDB, DbVersion.from(5, 0))
+                .unsupport(cn.vonce.sql.enumerate.DbType.Oracle)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLServer)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Postgresql)
+                .unsupport(cn.vonce.sql.enumerate.DbType.DB2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Derby)
+                .unsupport(cn.vonce.sql.enumerate.DbType.H2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Hsql)
+                .build());
+        return f;
+    }
+
+    /**
+     * 日期截断到指定精度（方言差异）。
+     * <p>参数语义：{@code unit} 表示精度（如 {@code 'day'} / {@code 'month'} / {@code 'year'}）；
+     * MySQL 5.6 之前的版本不支持 DATE_TRUNC。
+     * PG/Oracle/SQL Server 用户请改用 {@link cn.vonce.sql.bean.RawValue}。</p>
+     */
+    public static SqlFun dateTrunc(Object col, String unit) {
+        SqlFun f = new SqlFun("date_trunc", new Object[]{col, unit});
+        f.dialect(DialectSupport.builder()
+                .support(cn.vonce.sql.enumerate.DbType.Postgresql, DbVersion.from(9, 0))
+                .support(cn.vonce.sql.enumerate.DbType.MySQL, DbVersion.from(8, 0))
+                .support(cn.vonce.sql.enumerate.DbType.MariaDB, DbVersion.from(10, 0))
+                .unsupport(cn.vonce.sql.enumerate.DbType.Oracle)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLServer)
+                .unsupport(cn.vonce.sql.enumerate.DbType.DB2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Derby)
+                .unsupport(cn.vonce.sql.enumerate.DbType.H2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Hsql)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLite)
+                .build());
+        return f;
+    }
+
+    /**
+     * 行内字符串聚合（方言差异）。
+     * <p>MySQL 用 {@code GROUP_CONCAT} / PG 与 SQL Server 用 {@code STRING_AGG} / Oracle 用 {@code LISTAGG}。
+     * 函数名与分隔符调用形式各异；本 API 仅登记为 MySQL 支持，跨方言用户改用 RawValue。</p>
+     */
+    public static SqlFun groupConcat(Object col) {
+        SqlFun f = new SqlFun("group_concat", new Object[]{col});
+        f.dialect(DialectSupport.builder()
+                .support(cn.vonce.sql.enumerate.DbType.MySQL, DbVersion.from(5, 0))
+                .support(cn.vonce.sql.enumerate.DbType.MariaDB, DbVersion.from(5, 0))
+                .support(cn.vonce.sql.enumerate.DbType.SQLite, DbVersion.from(3, 0))
+                .unsupport(cn.vonce.sql.enumerate.DbType.Oracle)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLServer)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Postgresql)
+                .unsupport(cn.vonce.sql.enumerate.DbType.DB2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Derby)
+                .unsupport(cn.vonce.sql.enumerate.DbType.H2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Hsql)
+                .build());
+        return f;
+    }
+
+    /**
+     * 多值取最大（标准 SQL GREATEST，MySQL 8.0+ 起支持）。
+     * <p>Oracle / PG / SQL Server / SQLite / DB2 / Derby 长期支持。MySQL 8.0 之前需用 {@code IF(...)} 链模拟。</p>
+     */
+    public static SqlFun greatest(Object... values) {
+        if (values == null || values.length == 0) {
+            throw new IllegalArgumentException("greatest 至少需要一个参数");
+        }
+        SqlFun f = new SqlFun("greatest", values);
+        f.dialect(DialectSupport.builder()
+                .support(cn.vonce.sql.enumerate.DbType.Oracle)
+                .support(cn.vonce.sql.enumerate.DbType.Postgresql)
+                .support(cn.vonce.sql.enumerate.DbType.SQLServer, DbVersion.from(2008, 0))
+                .support(cn.vonce.sql.enumerate.DbType.DB2)
+                .support(cn.vonce.sql.enumerate.DbType.Derby)
+                .support(cn.vonce.sql.enumerate.DbType.H2)
+                .support(cn.vonce.sql.enumerate.DbType.Hsql)
+                .support(cn.vonce.sql.enumerate.DbType.SQLite, DbVersion.from(3, 0))
+                .support(cn.vonce.sql.enumerate.DbType.MySQL, DbVersion.from(8, 0))
+                .support(cn.vonce.sql.enumerate.DbType.MariaDB, DbVersion.from(10, 3))
+                .build());
+        return f;
+    }
+
+    /**
+     * 多值取最小（同 {@link #greatest} 兼容性）。
+     */
+    public static SqlFun least(Object... values) {
+        if (values == null || values.length == 0) {
+            throw new IllegalArgumentException("least 至少需要一个参数");
+        }
+        SqlFun f = new SqlFun("least", values);
+        f.dialect(DialectSupport.builder()
+                .support(cn.vonce.sql.enumerate.DbType.Oracle)
+                .support(cn.vonce.sql.enumerate.DbType.Postgresql)
+                .support(cn.vonce.sql.enumerate.DbType.SQLServer, DbVersion.from(2008, 0))
+                .support(cn.vonce.sql.enumerate.DbType.DB2)
+                .support(cn.vonce.sql.enumerate.DbType.Derby)
+                .support(cn.vonce.sql.enumerate.DbType.H2)
+                .support(cn.vonce.sql.enumerate.DbType.Hsql)
+                .support(cn.vonce.sql.enumerate.DbType.SQLite, DbVersion.from(3, 0))
+                .support(cn.vonce.sql.enumerate.DbType.MySQL, DbVersion.from(8, 0))
+                .support(cn.vonce.sql.enumerate.DbType.MariaDB, DbVersion.from(10, 3))
+                .build());
+        return f;
     }
 
 }

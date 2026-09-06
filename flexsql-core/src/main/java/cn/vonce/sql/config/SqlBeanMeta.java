@@ -1,6 +1,7 @@
 package cn.vonce.sql.config;
 
 import cn.vonce.sql.enumerate.DbType;
+import cn.vonce.sql.enumerate.DialectMode;
 
 import java.io.Serializable;
 import java.sql.DatabaseMetaData;
@@ -64,6 +65,11 @@ public class SqlBeanMeta implements Serializable {
      * 数据库配置
      */
     private SqlBeanConfig sqlBeanConfig;
+
+    /**
+     * 方言不兼容处理模式（默认 {@link DialectMode#STRICT}）。
+     */
+    private DialectMode dialectMode = DialectMode.STRICT;
 
     public DbType getDbType() {
         return dbType;
@@ -163,6 +169,14 @@ public class SqlBeanMeta implements Serializable {
         if (this.sqlBeanConfig == null) {
             this.sqlBeanConfig = sqlBeanConfig;
         }
+    }
+
+    public DialectMode getDialectMode() {
+        return dialectMode;
+    }
+
+    public void setDialectMode(DialectMode dialectMode) {
+        this.dialectMode = (dialectMode == null ? DialectMode.STRICT : dialectMode);
     }
 
     public static SqlBeanMeta build(SqlBeanConfig sqlBeanConfig, DatabaseMetaData metaData) throws SQLException {
