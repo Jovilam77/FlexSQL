@@ -866,6 +866,10 @@ public class SqlHelper {
                 SqlDefaultValue sqlDefaultValue = field.getAnnotation(SqlDefaultValue.class);
                 SqlVersion sqlVersion = field.getAnnotation(SqlVersion.class);
                 SqlJSON sqlJSON = field.getAnnotation(SqlJSON.class);
+                // 只读审计字段（如 createTime / createBy）：UPDATE 的 SET 子句中跳过，防止业务层误改创建信息
+                if (sqlDefaultValue != null && sqlDefaultValue.readonly()) {
+                    continue;
+                }
                 if (sqlJSON != null && objectValue != null) {
                     objectValue = SqlBeanUtil.getJSONValue(sqlJSON, objectValue);
                 }
@@ -944,12 +948,33 @@ public class SqlHelper {
      * @return
      */
     private static Object setDefaultValue(Class<?> clazz, Object bean, Field field) {
+        SqlDefaultValue sqlDefaultValue = field.getAnnotation(SqlDefaultValue.class);
+        Class<?> fieldType = field.getType();
+        // 注入当前操作人（createBy / updateBy 等）
+        if (sqlDefaultValue != null && sqlDefaultValue.user()) {
+            Object userValue = SqlBeanUtil.getCurrentUser(fieldType);
+            // 未注册解析器 / 解析失败时不填充，由调用方回落（UPDATE 用原值，INSERT 写 NULL，与字段本身为 null 等价）
+            if (userValue == null) {
+                return null;
+            }
+            if (SqlEnum.class.isAssignableFrom(fieldType)) {
+                SqlEnum sqlEnum = (userValue instanceof SqlEnum) ? (SqlEnum) userValue : SqlBeanUtil.matchEnum(field, userValue);
+                if (sqlEnum == null) {
+                    sqlEnum = ((SqlEnum[]) fieldType.getEnumConstants())[0];
+                }
+                ReflectUtil.instance().set(clazz, bean, field.getName(), sqlEnum);
+                return sqlEnum.getCode();
+            }
+            ReflectUtil.instance().set(clazz, bean, field.getName(), userValue);
+            return userValue;
+        }
+        // 原有逻辑：按字段类型赋予默认值
         Object defaultValue = SqlBeanUtil.assignInitialValue(SqlBeanUtil.getEntityClassFieldType(field));
-        if (SqlEnum.class.isAssignableFrom(field.getType())) {
+        if (SqlEnum.class.isAssignableFrom(fieldType)) {
             //优先根据泛型类型的默认值来匹配，匹配不到则获取第一个枚举
             SqlEnum sqlEnum = SqlBeanUtil.matchEnum(field, defaultValue);
             if (sqlEnum == null) {
-                SqlEnum[] sqlEnums = (SqlEnum[]) field.getType().getEnumConstants();
+                SqlEnum[] sqlEnums = (SqlEnum[]) fieldType.getEnumConstants();
                 sqlEnum = sqlEnums[0];
             }
             ReflectUtil.instance().set(clazz, bean, field.getName(), sqlEnum);

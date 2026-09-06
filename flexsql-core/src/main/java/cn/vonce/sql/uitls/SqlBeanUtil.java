@@ -20,7 +20,9 @@ import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
 import java.util.logging.Logger;
+import java.util.regex.Pattern;
 
 /**
  * SqlBean 工具类 Created by Jovi on 2018/6/17.
@@ -44,6 +46,55 @@ public class SqlBeanUtil {
 
     public static boolean isAndroidEnv() {
         return isAndroidEnv;
+    }
+
+    /**
+     * 当前操作人解析器（可插拔）：用于 @SqlDefaultValue(user = true) 自动注入 createBy / updateBy 等。
+     * 由业务层在应用启动时注册一次，例如从登录上下文 / ThreadLocal 取当前 userId。
+     */
+    private static Function<Class<?>, Object> currentUserSupplier;
+
+    /**
+     * 注册当前操作人解析器
+     *
+     * @param supplier 入参为字段类型，返回当前操作人（如 userId / userName）；返回 null 表示该字段本次不填充
+     */
+    public static void setCurrentUserSupplier(Function<Class<?>, Object> supplier) {
+        currentUserSupplier = supplier;
+    }
+
+    /**
+     * 获取当前操作人（供 @SqlDefaultValue(user = true) 调用）
+     *
+     * @param fieldType 字段类型
+     * @return 操作人值；未注册解析器时返回 null
+     */
+    public static Object getCurrentUser(Class<?> fieldType) {
+        if (currentUserSupplier == null) {
+            logger.warning("未注册当前操作人解析器（SqlBeanUtil.setCurrentUserSupplier），@SqlDefaultValue(user=true) 将不会填充");
+            return null;
+        }
+        try {
+            return currentUserSupplier.apply(fieldType);
+        } catch (Exception e) {
+            logger.warning("获取当前操作人失败：" + e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * 安全 SQL 标识符正则：只允许字母、数字、下划线、$ 和 #，且以非数字开头。
+     */
+    private static final Pattern SQL_IDENTIFIER = Pattern.compile("[a-zA-Z_$#][a-zA-Z0-9_$#]*");
+
+    /**
+     * 校验是否为安全的 SQL 标识符（表名 / schema 名），防止 SQL 注入。
+     *
+     * @param name 待校验名称
+     * @return 合法返回 true
+     */
+    public static boolean isValidSqlIdentifier(String name) {
+        return name != null && SQL_IDENTIFIER.matcher(name).matches();
     }
 
     /**

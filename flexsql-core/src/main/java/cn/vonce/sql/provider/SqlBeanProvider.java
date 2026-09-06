@@ -930,6 +930,10 @@ public class SqlBeanProvider {
         // 1. 动态Schema（多租户）优先级最高，确保租户隔离
         String dynSchema = DynSchemaContextHolder.getSchema();
         if (!StringUtil.isEmpty(dynSchema)) {
+            // 动态 schema 直接拼入 SQL，需校验为合法标识符以防 SQL 注入（来源可能是外部租户标识）
+            if (!SqlBeanUtil.isValidSqlIdentifier(dynSchema)) {
+                throw new SqlBeanException("非法的动态Schema名称（可能存在SQL注入风险）：" + dynSchema);
+            }
             common.getTable().setSchema(dynSchema);
             return;
         }

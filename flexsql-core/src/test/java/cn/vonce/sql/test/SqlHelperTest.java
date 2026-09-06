@@ -8,13 +8,17 @@ import cn.vonce.sql.enumerate.*;
 import cn.vonce.sql.helper.Cond;
 import cn.vonce.sql.helper.SqlHelper;
 import cn.vonce.sql.helper.Wrapper;
+import cn.vonce.sql.model.AuditBean;
 import cn.vonce.sql.model.Essay;
 import cn.vonce.sql.model.User;
 import cn.vonce.sql.model.union.EssayUnion;
+import cn.vonce.sql.provider.DynSchemaContextHolder;
+import cn.vonce.sql.provider.SqlBeanProvider;
 import cn.vonce.sql.uitls.SqlBeanUtil;
 
 import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 
 /**
@@ -56,6 +60,12 @@ public class SqlHelperTest {
 
         // windowFunTest（窗口函数 OVER (PARTITION BY .. ORDER BY ..)）
         windowFunTest();
+
+        // auditTest（审计自动注入：操作人注入 + 只读字段保护）
+        auditInjectionTest(sqlBeanMeta);
+
+        // dynSchemaTest（动态Schema 注入安全校验）
+        dynSchemaTest();
 //
 //        // select4
 //        select4(sqlBeanMeta);
@@ -1357,6 +1367,99 @@ public class SqlHelperTest {
         user.setGender(id.hashCode() % 2 == 0 ? 0 : 1);
         user.setIntegral(100);
         return user;
+    }
+
+    /**
+     * 审计自动注入测试：当前操作人注入 + 只读字段保护
+     */
+    private static void auditInjectionTest(SqlBeanMeta sqlBeanMeta) {
+        // 注册当前操作人解析器（模拟从登录上下文取 userId）
+        SqlBeanUtil.setCurrentUserSupplier(type -> "operator_001");
+
+        // ---- INSERT：createBy/createTime 应被自动填充；updateBy/updateTime 不填（with=UPDATE_EVERYTIME 仅更新时生效）----
+        AuditBean insertBean = new AuditBean();
+        insertBean.setName("测试审计");
+        Insert<AuditBean> insert = new Insert<>();
+        insert.setSqlBeanMeta(sqlBeanMeta);
+        insert.table(AuditBean.class);
+        insert.setBean(insertBean);
+        String insertSql = SqlHelper.buildInsertSql(insert);
+        System.out.println("---audit INSERT---");
+        System.out.println(insertSql);
+        System.out.println("[断言] create_by 含 operator_001 => " + insertSql.contains("'operator_001'"));
+        System.out.println("[断言] create_time 被填充（非 NULL）=> " + !insertSql.contains("create_time = NULL"));
+        System.out.println("[断言] bean.createBy 已回填 => " + "operator_001".equals(insertBean.getCreateBy()));
+
+        // ---- UPDATE：readonly 的 createBy/createTime 不应出现在 SET 中；updateBy/updateTime 应刷新 ----
+        AuditBean updateBean = new AuditBean();
+        updateBean.setId(1L);
+        updateBean.setName("更新审计");
+        updateBean.setCreateBy("hacker");      // 业务层误设，应被 readonly 忽略
+        updateBean.setCreateTime(new Date(0)); // 业务层误设，应被 readonly 忽略
+        Update<AuditBean> update = new Update<>();
+        update.setSqlBeanMeta(sqlBeanMeta);
+        update.table(AuditBean.class);
+        update.bean(updateBean);
+        update.where().eq(AuditBean::getId, 1L);
+        String updateSql = SqlHelper.buildUpdateSql(update);
+        System.out.println("---audit UPDATE---");
+        System.out.println(updateSql);
+        System.out.println("[断言] readonly 的 create_by 不在 SET => " + !containsSetColumn(updateSql, "create_by"));
+        System.out.println("[断言] readonly 的 create_time 不在 SET => " + !containsSetColumn(updateSql, "create_time"));
+        System.out.println("[断言] update_by 被刷新为 operator_001 => " + updateSql.contains("'operator_001'"));
+    }
+
+    /**
+     * 判断 UPDATE 的 SET 子句中是否包含指定列（只检查 SET 区，避免误判 WHERE 条件中的同名列）
+     */
+    private static boolean containsSetColumn(String updateSql, String column) {
+        int setIdx = updateSql.indexOf("SET");
+        int whereIdx = updateSql.indexOf("WHERE");
+        int end = (whereIdx > setIdx && whereIdx >= 0) ? whereIdx : updateSql.length();
+        String setPart = setIdx >= 0 ? updateSql.substring(setIdx, end) : updateSql;
+        return setPart.contains(column + " =") || setPart.contains(column + " = ");
+    }
+
+    /**
+     * 动态 Schema 注入安全校验测试
+     */
+    private static void dynSchemaTest() {
+        SqlBeanMeta sqlBeanMeta = new SqlBeanMeta();
+        SqlBeanConfig sqlBeanConfig = new SqlBeanConfig();
+        sqlBeanConfig.setToUpperCase(false);
+        sqlBeanMeta.setDbType(DbType.MySQL);
+        sqlBeanMeta.setSqlBeanConfig(sqlBeanConfig);
+
+        // 1) 合法 schema：应正常拼入 SQL（走 SqlBeanProvider 高层 API 才会触发 setSchema 注入）
+        DynSchemaContextHolder.setSchema("tenant_a");
+        Select select = new Select();
+        select.setSqlBeanMeta(sqlBeanMeta);
+        select.setBeanClass(AuditBean.class);
+        select.setTable(AuditBean.class);
+        select.where().eq(AuditBean::getId, 1L);
+        String safeSql = SqlBeanProvider.selectSql(sqlBeanMeta, AuditBean.class, AuditBean.class, select);
+        DynSchemaContextHolder.clearSchema();
+        System.out.println("---dynSchema 合法---");
+        System.out.println(safeSql);
+        System.out.println("[断言] 合法 schema 拼入 => " + safeSql.contains("tenant_a"));
+
+        // 2) 非法 schema（含注入字符）：应抛 SqlBeanException 而非拼入
+        DynSchemaContextHolder.setSchema("a'; DROP TABLE t_audit; --");
+        Select evil = new Select();
+        evil.setSqlBeanMeta(sqlBeanMeta);
+        evil.setBeanClass(AuditBean.class);
+        evil.setTable(AuditBean.class);
+        evil.where().eq(AuditBean::getId, 1L);
+        boolean threw = false;
+        try {
+            SqlBeanProvider.selectSql(sqlBeanMeta, AuditBean.class, AuditBean.class, evil);
+        } catch (cn.vonce.sql.exception.SqlBeanException e) {
+            threw = true;
+            System.out.println("[断言] 非法 schema 被拦截 => " + e.getMessage());
+        } finally {
+            DynSchemaContextHolder.clearSchema();
+        }
+        System.out.println("[断言] 非法 schema 抛异常 => " + threw);
     }
 
 }
