@@ -184,6 +184,74 @@ CacheMetrics.register((global, byTable) -> myRegistry.gauge("cache.hit", global.
 | `QueryCacheConfig.off()` / `.local(...)` / `.redis(...)` / `.custom(...)` | 4 种工厂 |
 | `CacheMetrics.snapshot()` / `.snapshotByTable()` / `.reset()` / `.setEnabled(false)` | 指标查询与控制 |
 | `CacheMetrics.addReporter(...)` / `.removeReporter(...)` / `.reportNow()` | 自定义导出器 |
+| `SqlBeanServices.installIndexedCache(IndexedQueryCache)` | 启用按主键失效装饰器（spring/solon 启动期根据 `SqlBeanConfig.keyEvictionById` 自动调用） |
+| `SqlBeanServices.getIndexedCache()` | 读取当前激活的装饰器（null 表示未启用） |
+
+## 九、按主键精确失效（可选，1.7.2+）
+
+> **默认关闭**。`LOCAL` / `REDIS` 模式下都可启用，但**仅对 selectById 类缓存项**生效——
+> 其他类型查询的缓存项失效仍走 `evictByTable` 全表清理。
+
+### 适用与不适用场景
+
+| 场景 | 是否推荐启用 |
+|---|---|
+| `selectById(7)` 类高频单查，写时缓存命中率瓶颈 | ✅ 推荐——失效路径从"全表清"缩到"id=7 单 key" |
+| list 查询 / 分页 / 复杂 condition 查询 | ❌ 无效——list 失效仍由 `evictByTable` 兜底 |
+| 多数据源 / 多 schema / 多租户环境 | ✅ 安全——索引 key 含 table + id，反向失效仍走原 delegate 隔离 |
+
+### 启用方式
+
+**Bean**：
+```java
+@Bean
+public SqlBeanConfig sqlBeanConfig() {
+    SqlBeanConfig cfg = new SqlBeanConfig();
+    cfg.setCacheMode(CacheMode.LOCAL);
+    cfg.setLocalMaximumSize(1000L);
+    cfg.setLocalExpireAfterWrite(600L);
+    cfg.setKeyEvictionById(true);   // ★ 启用按主键失效
+    return cfg;
+}
+```
+
+**yml**：
+```yaml
+flexsql:
+  cache:
+    mode: local
+    key-eviction-by-id: true   # ★ 启用按主键失效
+    local:
+      maximum-size: 1000
+      expire-after-write: 600
+```
+
+### 用户手动调用（写操作之后）
+
+```java
+@Transactional
+public void update(User user) {
+    userMapper.updateById(user);
+    // 写完之后一行：精确失效 selectById(user.id) 缓存项
+    SqlBeanServices.evictById("user", user.getId());
+    // 仍推荐同时调 evictByTable 兜底 list 类查询
+    // SqlBeanServices.getCacheConfig().getCache().evictByTable("user", null, null, null);
+    // —— 但框架默认在 MyBatis update/delete 拦截器里就会调 evictByTable，所以用户不写也安全
+}
+```
+
+### 安全子集语义（重要）
+
+- 只对**单 Bean**（含 `@SqlId` 主键字段）put 时建索引；
+- **List / Map / String / Number / Boolean** 等类型 put **不**建索引（list 查询缓存项失效仍走 `evictByTable`）；
+- 反向索引过期清理：装饰器在 `evictByTable` / `evict` / `clear` 时同步清理；
+- 委托 cache 内部 LRU/TTL 淘汰某 key 时**不会**自动通知索引（少量悬空指针，下次 `evictById` 调 `delegate.evict(...)` 是空操作，不会报错）；
+- **漏失效风险 0**：list 查询失效仍由 `evictByTable` 兜底；
+- **误失效风险 0**：反向索引只覆盖 selectById 类 key，**不会**误命中 list 查询（"按 id=5 失效把 id=3 list 也清了"不发生）。
+
+### 不启用时调用 API 不会报错
+
+`SqlBeanServices.evictById(table, id)` 在未启用装饰器时直接返回 0，**零报错、零影响**——用户可以放心在 service 里无条件调，无需判断开关状态。
 
 ## 八、常见问题
 

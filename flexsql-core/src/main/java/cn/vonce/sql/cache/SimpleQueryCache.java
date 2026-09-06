@@ -133,6 +133,18 @@ public class SimpleQueryCache implements QueryCache {
         }
     }
 
+    /**
+     * 单 key 失效。复用 {@link #remove(QueryCacheKey)}：从 store、composite 索引
+     * 两个数据结构同时清理，确保 {@link IndexedQueryCache} 按主键反向失效后无悬空引用。
+     */
+    @Override
+    public void evict(QueryCacheKey key) {
+        if (key == null) {
+            return;
+        }
+        remove(key);
+    }
+
     private static String compositeKey(String table, String schema, Object tenantId, String dataSource) {
         return (table == null ? "" : table) + "@"
                 + (schema == null ? "" : schema) + "@"

@@ -70,6 +70,19 @@ public class RedisQueryCache implements QueryCache {
         redisOps.delete(indexKey);
     }
 
+    /**
+     * 单 key 失效。仅删除 Redis 中的 store key；表反向索引里的成员残留一个失效引用，
+     * 下次 evictByTable 会尝试 DEL 一个不存在的 key（Redis DEL 0 条不报错，作为可接受代价，
+     * 保证单 key 失效路径保持单次 RTT）。
+     */
+    @Override
+    public void evict(QueryCacheKey key) {
+        if (key == null) {
+            return;
+        }
+        redisOps.delete(key.toStoreKey());
+    }
+
     @Override
     public void clear() {
         // Redis 全局清空风险高，交由调用方按业务前缀处理；此处不实现。

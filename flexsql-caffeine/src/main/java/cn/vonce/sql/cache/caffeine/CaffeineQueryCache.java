@@ -130,6 +130,20 @@ public class CaffeineQueryCache implements QueryCache {
         }
     }
 
+    /**
+     * 单 key 失效。从 Caffeine 内部 cache 移除，并复用 {@link #unindex(QueryCacheKey)}
+     * 清理按表反向索引，确保 {@link cn.vonce.sql.cache.IndexedQueryCache} 按主键
+     * 反向失效后无悬空引用。
+     */
+    @Override
+    public void evict(QueryCacheKey key) {
+        if (key == null) {
+            return;
+        }
+        cache.invalidate(key);
+        unindex(key);
+    }
+
     @Override
     public void clear() {
         cache.invalidateAll();

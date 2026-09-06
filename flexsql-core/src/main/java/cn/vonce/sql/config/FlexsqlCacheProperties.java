@@ -25,6 +25,7 @@ import java.io.Serializable;
  *     redis:
  *       expire-after-write: 600
  *     metrics-log-interval-seconds: 60   # 0 = 关闭
+ *     key-eviction-by-id: true          # 按主键精确失效（默认 false；只对 selectById 类缓存项生效）
  * }</pre>
  *
  * <p><b>注意</b>：不写任何 {@code flexsql.cache.*} → {@link #isEmpty()} 返回 true →
@@ -48,6 +49,9 @@ public class FlexsqlCacheProperties implements Serializable {
 
     /** 顶层 key：{@code flexsql.cache.metrics-log-interval-seconds} */
     private Long metricsLogIntervalSeconds;
+
+    /** 顶层 key：{@code flexsql.cache.key-eviction-by-id}；null 表示用户未设置，{@link #isEmpty()} 视为 true。 */
+    private Boolean keyEvictionById;
 
     public CacheMode getMode() {
         return mode;
@@ -73,6 +77,14 @@ public class FlexsqlCacheProperties implements Serializable {
         this.metricsLogIntervalSeconds = metricsLogIntervalSeconds;
     }
 
+    public Boolean getKeyEvictionById() {
+        return keyEvictionById;
+    }
+
+    public void setKeyEvictionById(Boolean keyEvictionById) {
+        this.keyEvictionById = keyEvictionById;
+    }
+
     /**
      * 是否"完全没配"（{@code null} + 所有子对象为空）。框架 binder 用此判断"零干扰"。
      */
@@ -80,7 +92,8 @@ public class FlexsqlCacheProperties implements Serializable {
         return mode == null
                 && local.isEmpty()
                 && redis.isEmpty()
-                && metricsLogIntervalSeconds == null;
+                && metricsLogIntervalSeconds == null
+                && keyEvictionById == null;
     }
 
     /**
@@ -106,6 +119,9 @@ public class FlexsqlCacheProperties implements Serializable {
         }
         if (metricsLogIntervalSeconds != null) {
             cfg.setCacheMetricsLogIntervalSeconds(metricsLogIntervalSeconds);
+        }
+        if (keyEvictionById != null) {
+            cfg.setKeyEvictionById(keyEvictionById);
         }
         return cfg;
     }

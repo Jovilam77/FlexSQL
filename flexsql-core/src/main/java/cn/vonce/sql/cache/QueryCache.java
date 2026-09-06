@@ -40,6 +40,18 @@ public interface QueryCache {
      */
     void evictByTable(String table, String schema, Object tenantId, String dataSource);
 
+    /**
+     * 按单 key 失效。默认空实现（仅向后兼容旧实现）；内置 3 个实现（SimpleQueryCache /
+     * RedisQueryCache / CaffeineQueryCache）都已经实现此方法，用于支撑
+     * {@link IndexedQueryCache#evictById(String, Object)} 按主键反向索引精确失效。
+     *
+     * <p>实现要点：彻底删除该 key 在 store 和「按表」「按 id」两类反向索引中的所有痕迹。
+     * 第三方 QueryCache 实现可不实现，但此时按主键失效会退化为 cache miss（仍由
+     * {@link #evictByTable(String, String, Object, String)} 全表失效兜底，零漏失效风险）。</p>
+     */
+    default void evict(QueryCacheKey key) {
+    }
+
     /** 清空全部缓存 */
     void clear();
 

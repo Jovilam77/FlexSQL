@@ -158,6 +158,19 @@ public class SqlBeanConfig implements Serializable {
      */
     private Long cacheMetricsLogIntervalSeconds = 60L;
 
+    /**
+     * 是否启用按主键精确失效（{@link cn.vonce.sql.cache.IndexedQueryCache} 装饰器）。
+     * <p>默认 {@code false}——绝大部分场景下"按表全清 + 事务提交后失效"已经足够。
+     * 启用后 spring/solon 启动器会用一个 {@code IndexedQueryCache} 装饰器包裹原 QueryCache，
+     * 提供 {@link cn.vonce.sql.cache.SqlBeanServices#evictById(String, Object)} /
+     * {@link cn.vonce.sql.cache.SqlBeanServices#evictByIds(String, java.util.Collection)} 公开 API，
+     * 配合用户在 update/delete 之后调用，精确失效"selectById 类缓存项"。</p>
+     *
+     * <p>用户没设（非 false / 非 true，仅有"是 / 否"两种语义）→ 视为 false。
+     * List 类查询缓存项<b>不</b>走精确失效路径，仍由 {@code evictByTable} 全表失效兜底。</p>
+     */
+    private Boolean keyEvictionById = false;
+
     public Long getCacheMetricsLogIntervalSeconds() {
         if (cacheMetricsLogIntervalSeconds == null) {
             cacheMetricsLogIntervalSeconds = 60L;
@@ -168,6 +181,19 @@ public class SqlBeanConfig implements Serializable {
     public void setCacheMetricsLogIntervalSeconds(Long cacheMetricsLogIntervalSeconds) {
         if (this.cacheMetricsLogIntervalSeconds == null) {
             this.cacheMetricsLogIntervalSeconds = cacheMetricsLogIntervalSeconds;
+        }
+    }
+
+    public Boolean getKeyEvictionById() {
+        if (keyEvictionById == null) {
+            return false;
+        }
+        return keyEvictionById;
+    }
+
+    public void setKeyEvictionById(Boolean keyEvictionById) {
+        if (this.keyEvictionById == null) {
+            this.keyEvictionById = keyEvictionById;
         }
     }
 

@@ -1,6 +1,7 @@
 package cn.vonce.sql.spring.config;
 
 import cn.vonce.sql.cache.CacheableSqlBeanService;
+import cn.vonce.sql.cache.IndexedQueryCache;
 import cn.vonce.sql.cache.RedisOps;
 import cn.vonce.sql.cache.SqlBeanServices;
 import cn.vonce.sql.config.CacheMode;
@@ -88,12 +89,22 @@ public class SqlBeanCacheAutoConfig implements EnvironmentAware {
         // ===== 应用 cache 配置：Bean 优先；否则尝试 yml/properties =====
         SqlBeanConfig effective = resolveEffectiveConfig(sqlBeanConfigs, redisOpsList);
         if (effective != null) {
+            // 装/拆按主键失效装饰器（SqlBeanConfig.keyEvictionById = true 时启用）
+            cn.vonce.sql.cache.QueryCache baseCache = SqlBeanServices.getCacheConfig().getCache();
+            if (effective.getKeyEvictionById() && baseCache != null) {
+                SqlBeanServices.installIndexedCache(new IndexedQueryCache(baseCache));
+            } else {
+                SqlBeanServices.installIndexedCache(null);
+            }
+
             // 注册 slf4j 周期日志 reporter
             CacheMetricsSlf4jReporter reporter = new CacheMetricsSlf4jReporter(effective);
             cn.vonce.sql.cache.CacheMetrics.addReporter(reporter);
             return new ReportingCachePostProcessor(reporter);
         }
 
+        // effective == null 表示用户没开 cache：清掉装饰器与 reporter 默认（兜底）
+        SqlBeanServices.installIndexedCache(null);
         return new CacheableSqlBeanServicePostProcessor();
     }
 
@@ -162,7 +173,21 @@ public class SqlBeanCacheAutoConfig implements EnvironmentAware {
 
         setIfPresent(props::setMetricsLogIntervalSeconds, readLong(env, CACHE_PROPERTY_PREFIX + "metrics-log-interval-seconds"), "metrics-log-interval-seconds");
 
+        // Boolean 字段：key-eviction-by-id；key 不存在返回 null（"未设置"），存在则 parse
+        Boolean keyEvict = readBoolean(env, CACHE_PROPERTY_PREFIX + "key-eviction-by-id");
+        if (keyEvict != null) {
+            props.setKeyEvictionById(keyEvict);
+        }
+
         return props;
+    }
+
+    private static Boolean readBoolean(Environment env, String key) {
+        String raw = env.getProperty(key);
+        if (raw == null || raw.isEmpty()) {
+            return null;
+        }
+        return Boolean.parseBoolean(raw.trim());
     }
 
     private static Long readLong(Environment env, String key) {

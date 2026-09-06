@@ -1,6 +1,7 @@
 package cn.vonce.sql.solon.config;
 
 import cn.vonce.sql.cache.CacheableSqlBeanService;
+import cn.vonce.sql.cache.IndexedQueryCache;
 import cn.vonce.sql.cache.RedisOps;
 import cn.vonce.sql.cache.SqlBeanServices;
 import cn.vonce.sql.config.CacheMode;
@@ -135,7 +136,17 @@ public class AutoConfigSolon implements Plugin {
         // 6. 应用到全局 QueryCacheConfig（编程式优先语义在 SqlBeanServices.applyFromSqlBeanConfig 内部处理）
         SqlBeanServices.applyFromSqlBeanConfig(effective, redisOps);
 
-        // 7. 启动 slf4j 周期日志 reporter（cfg.cacheMetricsLogIntervalSeconds > 0）
+        // 7. 按主键失效装饰器（SqlBeanConfig.keyEvictionById=true 时启用）。
+        // 必须在 CacheableSqlBeanServicePostProcessor 包 service 之前 install，
+        // 让 SqlBeanServices.caching(...) 在 wrap 时能感知到装饰器。
+        cn.vonce.sql.cache.QueryCache baseCache = SqlBeanServices.getCacheConfig().getCache();
+        if (effective.getKeyEvictionById() && baseCache != null) {
+            SqlBeanServices.installIndexedCache(new IndexedQueryCache(baseCache));
+        } else {
+            SqlBeanServices.installIndexedCache(null);
+        }
+
+        // 8. 启动 slf4j 周期日志 reporter（cfg.cacheMetricsLogIntervalSeconds > 0）
         CacheMetricsSlf4jReporter reporter = new CacheMetricsSlf4jReporter(effective);
         reporter.start();
     }
@@ -161,7 +172,22 @@ public class AutoConfigSolon implements Plugin {
         setIfPresent(props.getLocal()::setExpireAfterAccess, readLong(context, "flexsql.cache.local.expire-after-access"), "local.expire-after-access");
         setIfPresent(props.getRedis()::setExpireAfterWrite, readLong(context, "flexsql.cache.redis.expire-after-write"), "redis.expire-after-write");
         setIfPresent(props::setMetricsLogIntervalSeconds, readLong(context, "flexsql.cache.metrics-log-interval-seconds"), "metrics-log-interval-seconds");
+
+        // Boolean 字段：key-eviction-by-id
+        Boolean keyEvict = readBoolean(context, "flexsql.cache.key-eviction-by-id");
+        if (keyEvict != null) {
+            props.setKeyEvictionById(keyEvict);
+        }
+
         return props;
+    }
+
+    private static Boolean readBoolean(AppContext context, String key) {
+        String raw = context.cfg().getProperty(key);
+        if (raw == null || raw.isEmpty()) {
+            return null;
+        }
+        return Boolean.parseBoolean(raw.trim());
     }
 
     private static Long readLong(AppContext context, String key) {
