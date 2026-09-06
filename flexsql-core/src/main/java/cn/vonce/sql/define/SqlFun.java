@@ -3,6 +3,7 @@ package cn.vonce.sql.define;
 import cn.vonce.sql.bean.Column;
 import cn.vonce.sql.bean.Order;
 import cn.vonce.sql.bean.RawValue;
+import cn.vonce.sql.enumerate.DbType;
 import cn.vonce.sql.enumerate.SqlSort;
 import cn.vonce.sql.enumerate.TimeUnit;
 import cn.vonce.sql.uitls.LambdaUtil;
@@ -248,7 +249,7 @@ public class SqlFun extends Column {
      * @return SqlFun
      */
     public static SqlFun rowNumber() {
-        return new SqlFun("row_number", null);
+        return windowFunction("row_number", null);
     }
 
     /**
@@ -257,7 +258,7 @@ public class SqlFun extends Column {
      * @return SqlFun
      */
     public static SqlFun rank() {
-        return new SqlFun("rank", null);
+        return windowFunction("rank", null);
     }
 
     /**
@@ -266,7 +267,7 @@ public class SqlFun extends Column {
      * @return SqlFun
      */
     public static SqlFun denseRank() {
-        return new SqlFun("dense_rank", null);
+        return windowFunction("dense_rank", null);
     }
 
     /**
@@ -276,7 +277,7 @@ public class SqlFun extends Column {
      * @return SqlFun
      */
     public static SqlFun ntile(int n) {
-        return new SqlFun("ntile", new Object[]{n});
+        return windowFunction("ntile", new Object[]{n});
     }
 
     /**
@@ -286,27 +287,27 @@ public class SqlFun extends Column {
      * @return SqlFun
      */
     public static SqlFun lag(Object expr) {
-        return new SqlFun("lag", new Object[]{expr});
+        return lagLeadFunction("lag", new Object[]{expr});
     }
 
     public static SqlFun lag(Object expr, int offset) {
-        return new SqlFun("lag", new Object[]{expr, offset});
+        return lagLeadFunction("lag", new Object[]{expr, offset});
     }
 
     public static SqlFun lag(Object expr, int offset, Object defaultValue) {
-        return new SqlFun("lag", new Object[]{expr, offset, defaultValue});
+        return lagLeadFunction("lag", new Object[]{expr, offset, defaultValue});
     }
 
     public static <T, R> SqlFun lag(ColumnFun<T, R> expr) {
-        return new SqlFun("lag", new Object[]{expr});
+        return lagLeadFunction("lag", new Object[]{expr});
     }
 
     public static <T, R> SqlFun lag(ColumnFun<T, R> expr, int offset) {
-        return new SqlFun("lag", new Object[]{expr, offset});
+        return lagLeadFunction("lag", new Object[]{expr, offset});
     }
 
     public static <T, R> SqlFun lag(ColumnFun<T, R> expr, int offset, Object defaultValue) {
-        return new SqlFun("lag", new Object[]{expr, offset, defaultValue});
+        return lagLeadFunction("lag", new Object[]{expr, offset, defaultValue});
     }
 
     /**
@@ -316,27 +317,27 @@ public class SqlFun extends Column {
      * @return SqlFun
      */
     public static SqlFun lead(Object expr) {
-        return new SqlFun("lead", new Object[]{expr});
+        return lagLeadFunction("lead", new Object[]{expr});
     }
 
     public static SqlFun lead(Object expr, int offset) {
-        return new SqlFun("lead", new Object[]{expr, offset});
+        return lagLeadFunction("lead", new Object[]{expr, offset});
     }
 
     public static SqlFun lead(Object expr, int offset, Object defaultValue) {
-        return new SqlFun("lead", new Object[]{expr, offset, defaultValue});
+        return lagLeadFunction("lead", new Object[]{expr, offset, defaultValue});
     }
 
     public static <T, R> SqlFun lead(ColumnFun<T, R> expr) {
-        return new SqlFun("lead", new Object[]{expr});
+        return lagLeadFunction("lead", new Object[]{expr});
     }
 
     public static <T, R> SqlFun lead(ColumnFun<T, R> expr, int offset) {
-        return new SqlFun("lead", new Object[]{expr, offset});
+        return lagLeadFunction("lead", new Object[]{expr, offset});
     }
 
     public static <T, R> SqlFun lead(ColumnFun<T, R> expr, int offset, Object defaultValue) {
-        return new SqlFun("lead", new Object[]{expr, offset, defaultValue});
+        return lagLeadFunction("lead", new Object[]{expr, offset, defaultValue});
     }
 
     /**
@@ -346,11 +347,11 @@ public class SqlFun extends Column {
      * @return SqlFun
      */
     public static SqlFun firstValue(Object expr) {
-        return new SqlFun("first_value", new Object[]{expr});
+        return windowFunction("first_value", new Object[]{expr});
     }
 
     public static <T, R> SqlFun firstValue(ColumnFun<T, R> expr) {
-        return new SqlFun("first_value", new Object[]{expr});
+        return windowFunction("first_value", new Object[]{expr});
     }
 
     /**
@@ -360,11 +361,11 @@ public class SqlFun extends Column {
      * @return SqlFun
      */
     public static SqlFun lastValue(Object expr) {
-        return new SqlFun("last_value", new Object[]{expr});
+        return windowFunction("last_value", new Object[]{expr});
     }
 
     public static <T, R> SqlFun lastValue(ColumnFun<T, R> expr) {
-        return new SqlFun("last_value", new Object[]{expr});
+        return windowFunction("last_value", new Object[]{expr});
     }
 
     /**
@@ -375,11 +376,11 @@ public class SqlFun extends Column {
      * @return SqlFun
      */
     public static SqlFun nthValue(Object expr, int n) {
-        return new SqlFun("nth_value", new Object[]{expr, n});
+        return nthValueFunction("nth_value", new Object[]{expr, n});
     }
 
     public static <T, R> SqlFun nthValue(ColumnFun<T, R> expr, int n) {
-        return new SqlFun("nth_value", new Object[]{expr, n});
+        return nthValueFunction("nth_value", new Object[]{expr, n});
     }
 
     /**
@@ -388,25 +389,39 @@ public class SqlFun extends Column {
      * @return
      */
     public static SqlFun version() {
-        return new SqlFun("version", null);
+        SqlFun f = new SqlFun("version", null);
+        f.dialect(DialectSupport.builder()
+                .support(DbType.MySQL).support(DbType.MariaDB).support(DbType.Postgresql)
+                .unsupport(DbType.Oracle, DbType.SQLServer, DbType.DB2, DbType.H2, DbType.Hsql, DbType.Derby, DbType.SQLite)
+                .build());
+        return f;
     }
 
     /**
-     * 当前数据库（mysql）
-     *
-     * @return
+     * 当前数据库（MySQL DATABASE() / PostgreSQL CURRENT_DATABASE()）。
+     * <p>Oracle 用 ORA_DATABASE_NAME；SQL Server 用 DB_NAME()；DB2 用 CURRENT_SERVER；SQLite 不适用。跨方言用户请写 RawValue。</p>
      */
     public static SqlFun database() {
-        return new SqlFun("database", null);
+        SqlFun f = new SqlFun("database", null);
+        f.dialect(DialectSupport.builder()
+                .support(DbType.MySQL).support(DbType.MariaDB).support(DbType.Postgresql)
+                .unsupport(DbType.Oracle, DbType.SQLServer, DbType.DB2, DbType.H2, DbType.Hsql, DbType.Derby, DbType.SQLite)
+                .build());
+        return f;
     }
 
     /**
-     * 当前用户（mysql）
-     *
-     * @return
+     * 当前用户（MySQL USER() / PostgreSQL CURRENT_USER / Oracle USER / DB2 USER）。
+     * <p>SQL Server 用 SUSER_NAME()；SQLite 不适用；Derby 不适用。跨方言用户请写 RawValue。</p>
      */
     public static SqlFun user() {
-        return new SqlFun("user", null);
+        SqlFun f = new SqlFun("user", null);
+        f.dialect(DialectSupport.builder()
+                .support(DbType.MySQL).support(DbType.MariaDB).support(DbType.Postgresql)
+                .support(DbType.Oracle).support(DbType.DB2)
+                .unsupport(DbType.SQLServer, DbType.H2, DbType.Hsql, DbType.Derby, DbType.SQLite)
+                .build());
+        return f;
     }
 
     /**
@@ -515,7 +530,13 @@ public class SqlFun extends Column {
      * @return
      */
     public static SqlFun date(Object date) {
-        return new SqlFun("date", new Object[]{date});
+        SqlFun f = new SqlFun("date", new Object[]{date});
+        f.dialect(DialectSupport.builder()
+                .support(DbType.MySQL).support(DbType.MariaDB).support(DbType.SQLite)
+                .unsupport(DbType.Oracle, DbType.SQLServer, DbType.Postgresql,
+                        DbType.DB2, DbType.H2, DbType.Hsql, DbType.Derby)
+                .build());
+        return f;
     }
 
     /**
@@ -524,35 +545,56 @@ public class SqlFun extends Column {
      * @return
      */
     public static <T, R> SqlFun date(ColumnFun<T, R> date) {
-        return new SqlFun("date", new Object[]{date});
+        SqlFun f = new SqlFun("date", new Object[]{date});
+        f.dialect(DialectSupport.builder()
+                .support(DbType.MySQL).support(DbType.MariaDB).support(DbType.SQLite)
+                .unsupport(DbType.Oracle, DbType.SQLServer, DbType.Postgresql,
+                        DbType.DB2, DbType.H2, DbType.Hsql, DbType.Derby)
+                .build());
+        return f;
     }
 
 
     /**
-     * 返回以"YYYY-MM-DD HH:MM:DD"或"YYYYMMDDHHMMSS.uuuuuuu"格式的字符串或数字返回配置的时区中的当前日期和时间。
-     *
-     * @return
+     * 返回当前日期时间（MySQL NOW() / SQLite 支持）。
+     * <p>PG 用 CURRENT_TIMESTAMP；Oracle 用 SYSDATE/SYSTIMESTAMP；SQL Server 用 GETDATE()。
+     * 跨方言用户请改用 {@link #getDate} 或写 RawValue。</p>
      */
     public static SqlFun now() {
-        return new SqlFun("now", null);
+        SqlFun f = new SqlFun("now", null);
+        f.dialect(DialectSupport.builder()
+                .support(DbType.MySQL).support(DbType.MariaDB).support(DbType.SQLite)
+                .unsupport(DbType.Oracle, DbType.SQLServer, DbType.Postgresql,
+                        DbType.DB2, DbType.H2, DbType.Hsql, DbType.Derby)
+                .build());
+        return f;
     }
 
     /**
-     * 返回当前日期为'YYYY-MM-DD“或YYYYMMDD格式的值。
-     *
-     * @return
+     * 返回当前日期（MySQL/SQLite CURDATE）。
+     * <p>PG 用 CURRENT_DATE；SQL Server 用 CAST(GETDATE() AS DATE)；Oracle 用 TRUNC(SYSDATE)。</p>
      */
     public static SqlFun curDate() {
-        return new SqlFun("curDate", null);
+        SqlFun f = new SqlFun("curDate", null);
+        f.dialect(DialectSupport.builder()
+                .support(DbType.MySQL).support(DbType.MariaDB).support(DbType.SQLite)
+                .unsupport(DbType.Oracle, DbType.SQLServer, DbType.Postgresql,
+                        DbType.DB2, DbType.H2, DbType.Hsql, DbType.Derby)
+                .build());
+        return f;
     }
 
     /**
-     * 返回当前时间以“HH:MM:SS'或'HHMMSS' 格式的值。
-     *
-     * @return
+     * 返回当前时间（MySQL CURTIME）。
      */
     public static SqlFun curTime() {
-        return new SqlFun("curTime", null);
+        SqlFun f = new SqlFun("curTime", null);
+        f.dialect(DialectSupport.builder()
+                .support(DbType.MySQL).support(DbType.MariaDB)
+                .unsupport(DbType.Oracle, DbType.SQLServer, DbType.Postgresql,
+                        DbType.DB2, DbType.H2, DbType.Hsql, DbType.Derby, DbType.SQLite)
+                .build());
+        return f;
     }
 
     /**
@@ -602,7 +644,13 @@ public class SqlFun extends Column {
      * @return
      */
     public static SqlFun monthName(Object date) {
-        return new SqlFun("monthName", new Object[]{date});
+        SqlFun f = new SqlFun("monthName", new Object[]{date});
+        f.dialect(DialectSupport.builder()
+                .support(DbType.MySQL).support(DbType.MariaDB)
+                .unsupport(DbType.Oracle, DbType.SQLServer, DbType.Postgresql,
+                        DbType.DB2, DbType.H2, DbType.Hsql, DbType.Derby, DbType.SQLite)
+                .build());
+        return f;
     }
 
     /**
@@ -612,7 +660,13 @@ public class SqlFun extends Column {
      * @return
      */
     public static <T, R> SqlFun monthName(ColumnFun<T, R> date) {
-        return new SqlFun("monthName", new Object[]{date});
+        SqlFun f = new SqlFun("monthName", new Object[]{date});
+        f.dialect(DialectSupport.builder()
+                .support(DbType.MySQL).support(DbType.MariaDB)
+                .unsupport(DbType.Oracle, DbType.SQLServer, DbType.Postgresql,
+                        DbType.DB2, DbType.H2, DbType.Hsql, DbType.Derby, DbType.SQLite)
+                .build());
+        return f;
     }
 
     /**
@@ -705,7 +759,13 @@ public class SqlFun extends Column {
      * @return
      */
     public static SqlFun timestampDiff(TimeUnit unit, Object startDate, Object endDate) {
-        return new SqlFun("timestampDiff", new Object[]{unit.name(), startDate, endDate});
+        SqlFun f = new SqlFun("timestampDiff", new Object[]{unit.name(), startDate, endDate});
+        f.dialect(DialectSupport.builder()
+                .support(DbType.MySQL).support(DbType.MariaDB)
+                .unsupport(DbType.Oracle, DbType.SQLServer, DbType.Postgresql,
+                        DbType.DB2, DbType.H2, DbType.Hsql, DbType.Derby, DbType.SQLite)
+                .build());
+        return f;
     }
 
     /**
@@ -717,7 +777,13 @@ public class SqlFun extends Column {
      * @return
      */
     public static <T, R> SqlFun timestampDiff(TimeUnit unit, ColumnFun<T, R> startDate, Object endDate) {
-        return new SqlFun("timestampDiff", new Object[]{unit.name(), startDate, endDate});
+        SqlFun f = new SqlFun("timestampDiff", new Object[]{unit.name(), startDate, endDate});
+        f.dialect(DialectSupport.builder()
+                .support(DbType.MySQL).support(DbType.MariaDB)
+                .unsupport(DbType.Oracle, DbType.SQLServer, DbType.Postgresql,
+                        DbType.DB2, DbType.H2, DbType.Hsql, DbType.Derby, DbType.SQLite)
+                .build());
+        return f;
     }
 
     /**
@@ -729,18 +795,26 @@ public class SqlFun extends Column {
      * @return
      */
     public static <T, R> SqlFun timestampDiff(TimeUnit unit, ColumnFun<T, R> startDate, ColumnFun<T, R> endDate) {
-        return new SqlFun("timestampDiff", new Object[]{unit.name(), startDate, endDate});
+        SqlFun f = new SqlFun("timestampDiff", new Object[]{unit.name(), startDate, endDate});
+        f.dialect(DialectSupport.builder()
+                .support(DbType.MySQL).support(DbType.MariaDB)
+                .unsupport(DbType.Oracle, DbType.SQLServer, DbType.Postgresql,
+                        DbType.DB2, DbType.H2, DbType.Hsql, DbType.Derby, DbType.SQLite)
+                .build());
+        return f;
     }
 
     /**
-     * 计算两个DATE，DATETIME或TIMESTAMP值之间的天数。
-     *
-     * @param startDate 表示时间段的起始时间
-     * @param endDate   表示时间段的结束时间
-     * @return
+     * 计算两个DATE，DATETIME或TIMESTAMP值之间的天数（MySQL DATEDIFF，主流方言亦支持但参数语义不同）。
      */
     public static SqlFun dateDiff(Object startDate, Object endDate) {
-        return new SqlFun("dateDiff", new Object[]{startDate, endDate});
+        SqlFun f = new SqlFun("dateDiff", new Object[]{startDate, endDate});
+        f.dialect(DialectSupport.builder()
+                .support(DbType.MySQL).support(DbType.MariaDB).support(DbType.SQLServer)
+                .unsupport(DbType.Oracle, DbType.Postgresql,
+                        DbType.DB2, DbType.H2, DbType.Hsql, DbType.Derby, DbType.SQLite)
+                .build());
+        return f;
     }
 
     /**
@@ -751,7 +825,13 @@ public class SqlFun extends Column {
      * @return
      */
     public static <T, R> SqlFun dateDiff(ColumnFun<T, R> startDate, Object endDate) {
-        return new SqlFun("dateDiff", new Object[]{startDate, endDate});
+        SqlFun f = new SqlFun("dateDiff", new Object[]{startDate, endDate});
+        f.dialect(DialectSupport.builder()
+                .support(DbType.MySQL).support(DbType.MariaDB).support(DbType.SQLServer)
+                .unsupport(DbType.Oracle, DbType.Postgresql,
+                        DbType.DB2, DbType.H2, DbType.Hsql, DbType.Derby, DbType.SQLite)
+                .build());
+        return f;
     }
 
     /**
@@ -762,7 +842,13 @@ public class SqlFun extends Column {
      * @return
      */
     public static <T, R> SqlFun dateDiff(ColumnFun<T, R> startDate, ColumnFun<T, R> endDate) {
-        return new SqlFun("dateDiff", new Object[]{startDate, endDate});
+        SqlFun f = new SqlFun("dateDiff", new Object[]{startDate, endDate});
+        f.dialect(DialectSupport.builder()
+                .support(DbType.MySQL).support(DbType.MariaDB).support(DbType.SQLServer)
+                .unsupport(DbType.Oracle, DbType.Postgresql,
+                        DbType.DB2, DbType.H2, DbType.Hsql, DbType.Derby, DbType.SQLite)
+                .build());
+        return f;
     }
 
     /**
@@ -774,7 +860,13 @@ public class SqlFun extends Column {
      * @return
      */
     public static SqlFun dateAdd(Object date, int num, TimeUnit unit) {
-        return new SqlFun("date_add", new Object[]{date, new RawValue("interval " + num + " " + unit.name())});
+        SqlFun f = new SqlFun("date_add", new Object[]{date, new RawValue("interval " + num + " " + unit.name())});
+        f.dialect(DialectSupport.builder()
+                .support(DbType.MySQL).support(DbType.MariaDB)
+                .unsupport(DbType.Oracle, DbType.SQLServer, DbType.Postgresql,
+                        DbType.DB2, DbType.H2, DbType.Hsql, DbType.Derby, DbType.SQLite)
+                .build());
+        return f;
     }
 
     /**
@@ -786,7 +878,13 @@ public class SqlFun extends Column {
      * @return
      */
     public static <T, R> SqlFun dateAdd(ColumnFun<T, R> date, int num, TimeUnit unit) {
-        return new SqlFun("date_add", new Object[]{date, new RawValue("interval " + num + " " + unit.name())});
+        SqlFun f = new SqlFun("date_add", new Object[]{date, new RawValue("interval " + num + " " + unit.name())});
+        f.dialect(DialectSupport.builder()
+                .support(DbType.MySQL).support(DbType.MariaDB)
+                .unsupport(DbType.Oracle, DbType.SQLServer, DbType.Postgresql,
+                        DbType.DB2, DbType.H2, DbType.Hsql, DbType.Derby, DbType.SQLite)
+                .build());
+        return f;
     }
 
     /**
@@ -798,7 +896,13 @@ public class SqlFun extends Column {
      * @return
      */
     public static SqlFun dateSub(Object date, int num, TimeUnit unit) {
-        return new SqlFun("date_sub", new Object[]{date, new RawValue("interval " + num + " " + unit.name())});
+        SqlFun f = new SqlFun("date_sub", new Object[]{date, new RawValue("interval " + num + " " + unit.name())});
+        f.dialect(DialectSupport.builder()
+                .support(DbType.MySQL).support(DbType.MariaDB)
+                .unsupport(DbType.Oracle, DbType.SQLServer, DbType.Postgresql,
+                        DbType.DB2, DbType.H2, DbType.Hsql, DbType.Derby, DbType.SQLite)
+                .build());
+        return f;
     }
 
     /**
@@ -810,7 +914,13 @@ public class SqlFun extends Column {
      * @return
      */
     public static <T, R> SqlFun dateSub(ColumnFun<T, R> date, int num, TimeUnit unit) {
-        return new SqlFun("date_sub", new Object[]{date, new RawValue("interval " + num + " " + unit.name())});
+        SqlFun f = new SqlFun("date_sub", new Object[]{date, new RawValue("interval " + num + " " + unit.name())});
+        f.dialect(DialectSupport.builder()
+                .support(DbType.MySQL).support(DbType.MariaDB)
+                .unsupport(DbType.Oracle, DbType.SQLServer, DbType.Postgresql,
+                        DbType.DB2, DbType.H2, DbType.Hsql, DbType.Derby, DbType.SQLite)
+                .build());
+        return f;
     }
 
     /**
@@ -821,7 +931,13 @@ public class SqlFun extends Column {
      * @return
      */
     public static SqlFun date_format(Object date, String format) {
-        return new SqlFun("date_format", new Object[]{date, format});
+        SqlFun f = new SqlFun("date_format", new Object[]{date, format});
+        f.dialect(DialectSupport.builder()
+                .support(DbType.MySQL).support(DbType.MariaDB)
+                .unsupport(DbType.Oracle, DbType.SQLServer, DbType.Postgresql,
+                        DbType.DB2, DbType.H2, DbType.Hsql, DbType.Derby, DbType.SQLite)
+                .build());
+        return f;
     }
 
     /**
@@ -832,7 +948,13 @@ public class SqlFun extends Column {
      * @return
      */
     public static <T, R> SqlFun date_format(ColumnFun<T, R> date, String format) {
-        return new SqlFun("date_format", new Object[]{date, format});
+        SqlFun f = new SqlFun("date_format", new Object[]{date, format});
+        f.dialect(DialectSupport.builder()
+                .support(DbType.MySQL).support(DbType.MariaDB)
+                .unsupport(DbType.Oracle, DbType.SQLServer, DbType.Postgresql,
+                        DbType.DB2, DbType.H2, DbType.Hsql, DbType.Derby, DbType.SQLite)
+                .build());
+        return f;
     }
 
     /**
@@ -843,7 +965,13 @@ public class SqlFun extends Column {
      * @return
      */
     public static SqlFun str_to_date(Object str, String format) {
-        return new SqlFun("str_to_date", new Object[]{str, format});
+        SqlFun f = new SqlFun("str_to_date", new Object[]{str, format});
+        f.dialect(DialectSupport.builder()
+                .support(DbType.MySQL).support(DbType.MariaDB)
+                .unsupport(DbType.Oracle, DbType.SQLServer, DbType.Postgresql,
+                        DbType.DB2, DbType.H2, DbType.Hsql, DbType.Derby, DbType.SQLite)
+                .build());
+        return f;
     }
 
     /**
@@ -854,7 +982,13 @@ public class SqlFun extends Column {
      * @return
      */
     public static <T, R> SqlFun str_to_date(ColumnFun<T, R> str, String format) {
-        return new SqlFun("str_to_date", new Object[]{str, format});
+        SqlFun f = new SqlFun("str_to_date", new Object[]{str, format});
+        f.dialect(DialectSupport.builder()
+                .support(DbType.MySQL).support(DbType.MariaDB)
+                .unsupport(DbType.Oracle, DbType.SQLServer, DbType.Postgresql,
+                        DbType.DB2, DbType.H2, DbType.Hsql, DbType.Derby, DbType.SQLite)
+                .build());
+        return f;
     }
 
     /**
@@ -866,7 +1000,13 @@ public class SqlFun extends Column {
      * @return
      */
     public static SqlFun iF(Object bool, Object trueResult, Object falseResult) {
-        return new SqlFun("if", new Object[]{bool, trueResult, falseResult});
+        SqlFun f = new SqlFun("if", new Object[]{bool, trueResult, falseResult});
+        f.dialect(DialectSupport.builder()
+                .support(DbType.MySQL).support(DbType.MariaDB)
+                .unsupport(DbType.Oracle, DbType.SQLServer, DbType.Postgresql,
+                        DbType.DB2, DbType.H2, DbType.Hsql, DbType.Derby, DbType.SQLite)
+                .build());
+        return f;
     }
 
     /**
@@ -910,7 +1050,13 @@ public class SqlFun extends Column {
         List<Object> objectList = new ArrayList<>();
         objectList.add(separator);
         objectList.addAll(Arrays.asList(str));
-        return new SqlFun("concat_ws", objectList.toArray());
+        SqlFun f = new SqlFun("concat_ws", objectList.toArray());
+        f.dialect(DialectSupport.builder()
+                .support(DbType.MySQL).support(DbType.MariaDB)
+                .unsupport(DbType.Oracle, DbType.SQLServer, DbType.Postgresql,
+                        DbType.DB2, DbType.H2, DbType.Hsql, DbType.Derby, DbType.SQLite)
+                .build());
+        return f;
     }
 
     /**
@@ -967,7 +1113,12 @@ public class SqlFun extends Column {
      * @return
      */
     public static SqlFun instr(Object str1, Object str2) {
-        return new SqlFun("instr", new Object[]{str1, str2});
+        SqlFun f = new SqlFun("instr", new Object[]{str1, str2});
+        f.dialect(DialectSupport.builder()
+                .support(DbType.MySQL).support(DbType.MariaDB).support(DbType.Oracle).support(DbType.SQLite)
+                .unsupport(DbType.SQLServer, DbType.Postgresql, DbType.DB2, DbType.H2, DbType.Hsql, DbType.Derby)
+                .build());
+        return f;
     }
 
     /**
@@ -978,7 +1129,12 @@ public class SqlFun extends Column {
      * @return
      */
     public static <T, R> SqlFun instr(ColumnFun<T, R> str1, Object str2) {
-        return new SqlFun("instr", new Object[]{str1, str2});
+        SqlFun f = new SqlFun("instr", new Object[]{str1, str2});
+        f.dialect(DialectSupport.builder()
+                .support(DbType.MySQL).support(DbType.MariaDB).support(DbType.Oracle).support(DbType.SQLite)
+                .unsupport(DbType.SQLServer, DbType.Postgresql, DbType.DB2, DbType.H2, DbType.Hsql, DbType.Derby)
+                .build());
+        return f;
     }
 
     /**
@@ -989,7 +1145,12 @@ public class SqlFun extends Column {
      * @return
      */
     public static <T, R> SqlFun instr(ColumnFun<T, R> str1, ColumnFun<T, R> str2) {
-        return new SqlFun("instr", new Object[]{str1, str2});
+        SqlFun f = new SqlFun("instr", new Object[]{str1, str2});
+        f.dialect(DialectSupport.builder()
+                .support(DbType.MySQL).support(DbType.MariaDB).support(DbType.Oracle).support(DbType.SQLite)
+                .unsupport(DbType.SQLServer, DbType.Postgresql, DbType.DB2, DbType.H2, DbType.Hsql, DbType.Derby)
+                .build());
+        return f;
     }
 
     /**
@@ -1041,7 +1202,12 @@ public class SqlFun extends Column {
      * @return
      */
     public static SqlFun lPad(Object str1, int length, Object str2) {
-        return new SqlFun("lPad", new Object[]{str1, length, str2});
+        SqlFun f = new SqlFun("lPad", new Object[]{str1, length, str2});
+        f.dialect(DialectSupport.builder()
+                .support(DbType.MySQL).support(DbType.MariaDB).support(DbType.Oracle).support(DbType.SQLite)
+                .unsupport(DbType.SQLServer, DbType.Postgresql, DbType.DB2, DbType.H2, DbType.Hsql, DbType.Derby)
+                .build());
+        return f;
     }
 
 
@@ -1054,7 +1220,12 @@ public class SqlFun extends Column {
      * @return
      */
     public static <T, R> SqlFun lPad(ColumnFun<T, R> str1, int length, Object str2) {
-        return new SqlFun("lPad", new Object[]{str1, length, str2});
+        SqlFun f = new SqlFun("lPad", new Object[]{str1, length, str2});
+        f.dialect(DialectSupport.builder()
+                .support(DbType.MySQL).support(DbType.MariaDB).support(DbType.Oracle).support(DbType.SQLite)
+                .unsupport(DbType.SQLServer, DbType.Postgresql, DbType.DB2, DbType.H2, DbType.Hsql, DbType.Derby)
+                .build());
+        return f;
     }
 
     /**
@@ -1066,7 +1237,12 @@ public class SqlFun extends Column {
      * @return
      */
     public static <T, R> SqlFun lPad(ColumnFun<T, R> str1, int length, ColumnFun<T, R> str2) {
-        return new SqlFun("lPad", new Object[]{str1, length, str2});
+        SqlFun f = new SqlFun("lPad", new Object[]{str1, length, str2});
+        f.dialect(DialectSupport.builder()
+                .support(DbType.MySQL).support(DbType.MariaDB).support(DbType.Oracle).support(DbType.SQLite)
+                .unsupport(DbType.SQLServer, DbType.Postgresql, DbType.DB2, DbType.H2, DbType.Hsql, DbType.Derby)
+                .build());
+        return f;
     }
 
     /**
@@ -1078,7 +1254,12 @@ public class SqlFun extends Column {
      * @return
      */
     public static SqlFun rPad(Object str1, int length, Object str2) {
-        return new SqlFun("rPad", new Object[]{str1, length, str2});
+        SqlFun f = new SqlFun("rPad", new Object[]{str1, length, str2});
+        f.dialect(DialectSupport.builder()
+                .support(DbType.MySQL).support(DbType.MariaDB).support(DbType.Oracle).support(DbType.SQLite)
+                .unsupport(DbType.SQLServer, DbType.Postgresql, DbType.DB2, DbType.H2, DbType.Hsql, DbType.Derby)
+                .build());
+        return f;
     }
 
     /**
@@ -1090,7 +1271,12 @@ public class SqlFun extends Column {
      * @return
      */
     public static <T, R> SqlFun rPad(ColumnFun<T, R> str1, int length, Object str2) {
-        return new SqlFun("rPad", new Object[]{str1, length, str2});
+        SqlFun f = new SqlFun("rPad", new Object[]{str1, length, str2});
+        f.dialect(DialectSupport.builder()
+                .support(DbType.MySQL).support(DbType.MariaDB).support(DbType.Oracle).support(DbType.SQLite)
+                .unsupport(DbType.SQLServer, DbType.Postgresql, DbType.DB2, DbType.H2, DbType.Hsql, DbType.Derby)
+                .build());
+        return f;
     }
 
     /**
@@ -1102,7 +1288,12 @@ public class SqlFun extends Column {
      * @return
      */
     public static <T, R> SqlFun rPad(ColumnFun<T, R> str1, int length, ColumnFun<T, R> str2) {
-        return new SqlFun("rPad", new Object[]{str1, length, str2});
+        SqlFun f = new SqlFun("rPad", new Object[]{str1, length, str2});
+        f.dialect(DialectSupport.builder()
+                .support(DbType.MySQL).support(DbType.MariaDB).support(DbType.Oracle).support(DbType.SQLite)
+                .unsupport(DbType.SQLServer, DbType.Postgresql, DbType.DB2, DbType.H2, DbType.Hsql, DbType.Derby)
+                .build());
+        return f;
     }
 
     /**
@@ -1180,7 +1371,13 @@ public class SqlFun extends Column {
      * @return
      */
     public static SqlFun charIndex(Object query, Object str) {
-        return new SqlFun("charIndex", new Object[]{query, str});
+        SqlFun f = new SqlFun("charIndex", new Object[]{query, str});
+        f.dialect(DialectSupport.builder()
+                .support(DbType.SQLServer)
+                .unsupport(DbType.MySQL, DbType.MariaDB, DbType.Oracle, DbType.Postgresql,
+                        DbType.DB2, DbType.H2, DbType.Hsql, DbType.Derby, DbType.SQLite)
+                .build());
+        return f;
     }
 
     /**
@@ -1191,7 +1388,13 @@ public class SqlFun extends Column {
      * @return
      */
     public static <T, R> SqlFun charIndex(Object query, ColumnFun<T, R> str) {
-        return new SqlFun("charIndex", new Object[]{query, str});
+        SqlFun f = new SqlFun("charIndex", new Object[]{query, str});
+        f.dialect(DialectSupport.builder()
+                .support(DbType.SQLServer)
+                .unsupport(DbType.MySQL, DbType.MariaDB, DbType.Oracle, DbType.Postgresql,
+                        DbType.DB2, DbType.H2, DbType.Hsql, DbType.Derby, DbType.SQLite)
+                .build());
+        return f;
     }
 
     /**
@@ -1203,7 +1406,13 @@ public class SqlFun extends Column {
      * @return
      */
     public static SqlFun charIndex(Object query, Object str, int index) {
-        return new SqlFun("charIndex", new Object[]{query, str, index});
+        SqlFun f = new SqlFun("charIndex", new Object[]{query, str, index});
+        f.dialect(DialectSupport.builder()
+                .support(DbType.SQLServer)
+                .unsupport(DbType.MySQL, DbType.MariaDB, DbType.Oracle, DbType.Postgresql,
+                        DbType.DB2, DbType.H2, DbType.Hsql, DbType.Derby, DbType.SQLite)
+                .build());
+        return f;
     }
 
     /**
@@ -1215,7 +1424,13 @@ public class SqlFun extends Column {
      * @return
      */
     public static <T, R> SqlFun charIndex(Object query, ColumnFun<T, R> str, int index) {
-        return new SqlFun("charIndex", new Object[]{query, str, index});
+        SqlFun f = new SqlFun("charIndex", new Object[]{query, str, index});
+        f.dialect(DialectSupport.builder()
+                .support(DbType.SQLServer)
+                .unsupport(DbType.MySQL, DbType.MariaDB, DbType.Oracle, DbType.Postgresql,
+                        DbType.DB2, DbType.H2, DbType.Hsql, DbType.Derby, DbType.SQLite)
+                .build());
+        return f;
     }
 
     /**
@@ -1225,7 +1440,13 @@ public class SqlFun extends Column {
      * @return
      */
     public static SqlFun len(Object str) {
-        return new SqlFun("len", new Object[]{str});
+        SqlFun f = new SqlFun("len", new Object[]{str});
+        f.dialect(DialectSupport.builder()
+                .support(DbType.SQLServer)
+                .unsupport(DbType.MySQL, DbType.MariaDB, DbType.Oracle, DbType.Postgresql,
+                        DbType.DB2, DbType.H2, DbType.Hsql, DbType.Derby, DbType.SQLite)
+                .build());
+        return f;
     }
 
     /**
@@ -1235,7 +1456,13 @@ public class SqlFun extends Column {
      * @return
      */
     public static <T, R> SqlFun len(ColumnFun<T, R> str) {
-        return new SqlFun("len", new Object[]{str});
+        SqlFun f = new SqlFun("len", new Object[]{str});
+        f.dialect(DialectSupport.builder()
+                .support(DbType.SQLServer)
+                .unsupport(DbType.MySQL, DbType.MariaDB, DbType.Oracle, DbType.Postgresql,
+                        DbType.DB2, DbType.H2, DbType.Hsql, DbType.Derby, DbType.SQLite)
+                .build());
+        return f;
     }
 
     /**
@@ -1292,7 +1519,13 @@ public class SqlFun extends Column {
      * @return
      */
     public static SqlFun stuff(Object str, int index, int length, Object newStr) {
-        return new SqlFun("stuff", new Object[]{str, index, length, newStr});
+        SqlFun f = new SqlFun("stuff", new Object[]{str, index, length, newStr});
+        f.dialect(DialectSupport.builder()
+                .support(DbType.SQLServer)
+                .unsupport(DbType.MySQL, DbType.MariaDB, DbType.Oracle, DbType.Postgresql,
+                        DbType.DB2, DbType.H2, DbType.Hsql, DbType.Derby, DbType.SQLite)
+                .build());
+        return f;
     }
 
     /**
@@ -1305,7 +1538,13 @@ public class SqlFun extends Column {
      * @return
      */
     public static <T, R> SqlFun stuff(ColumnFun<T, R> str, int index, int length, Object newStr) {
-        return new SqlFun("stuff", new Object[]{str, index, length, newStr});
+        SqlFun f = new SqlFun("stuff", new Object[]{str, index, length, newStr});
+        f.dialect(DialectSupport.builder()
+                .support(DbType.SQLServer)
+                .unsupport(DbType.MySQL, DbType.MariaDB, DbType.Oracle, DbType.Postgresql,
+                        DbType.DB2, DbType.H2, DbType.Hsql, DbType.Derby, DbType.SQLite)
+                .build());
+        return f;
     }
 
     /**
@@ -1314,7 +1553,13 @@ public class SqlFun extends Column {
      * @return
      */
     public static SqlFun host_name() {
-        return new SqlFun("host_name", null);
+        SqlFun f = new SqlFun("host_name", null);
+        f.dialect(DialectSupport.builder()
+                .support(DbType.SQLServer)
+                .unsupport(DbType.MySQL, DbType.MariaDB, DbType.Oracle, DbType.Postgresql,
+                        DbType.DB2, DbType.H2, DbType.Hsql, DbType.Derby, DbType.SQLite)
+                .build());
+        return f;
     }
 
     /**
@@ -1323,7 +1568,13 @@ public class SqlFun extends Column {
      * @return
      */
     public static SqlFun user_name(Object id) {
-        return new SqlFun("user_name", new Object[]{id});
+        SqlFun f = new SqlFun("user_name", new Object[]{id});
+        f.dialect(DialectSupport.builder()
+                .support(DbType.SQLServer)
+                .unsupport(DbType.MySQL, DbType.MariaDB, DbType.Oracle, DbType.Postgresql,
+                        DbType.DB2, DbType.H2, DbType.Hsql, DbType.Derby, DbType.SQLite)
+                .build());
+        return f;
     }
 
     /**
@@ -1334,7 +1585,13 @@ public class SqlFun extends Column {
      * @return
      */
     public static SqlFun convert(Object type, Object value) {
-        return new SqlFun("convert", new Object[]{type, value});
+        SqlFun f = new SqlFun("convert", new Object[]{type, value});
+        f.dialect(DialectSupport.builder()
+                .support(DbType.SQLServer).support(DbType.MySQL).support(DbType.MariaDB)
+                .unsupport(DbType.Oracle, DbType.Postgresql,
+                        DbType.DB2, DbType.H2, DbType.Hsql, DbType.Derby, DbType.SQLite)
+                .build());
+        return f;
     }
 
     /**
@@ -1345,7 +1602,13 @@ public class SqlFun extends Column {
      * @return
      */
     public static <T, R> SqlFun convert(Object type, ColumnFun<T, R> value) {
-        return new SqlFun("convert", new Object[]{type, value});
+        SqlFun f = new SqlFun("convert", new Object[]{type, value});
+        f.dialect(DialectSupport.builder()
+                .support(DbType.SQLServer).support(DbType.MySQL).support(DbType.MariaDB)
+                .unsupport(DbType.Oracle, DbType.Postgresql,
+                        DbType.DB2, DbType.H2, DbType.Hsql, DbType.Derby, DbType.SQLite)
+                .build());
+        return f;
     }
 
     /**
@@ -1357,7 +1620,13 @@ public class SqlFun extends Column {
      * @return
      */
     public static SqlFun convert(Object type, Object value, Object style) {
-        return new SqlFun("convert", new Object[]{type, value, style});
+        SqlFun f = new SqlFun("convert", new Object[]{type, value, style});
+        f.dialect(DialectSupport.builder()
+                .support(DbType.SQLServer).support(DbType.MySQL).support(DbType.MariaDB)
+                .unsupport(DbType.Oracle, DbType.Postgresql,
+                        DbType.DB2, DbType.H2, DbType.Hsql, DbType.Derby, DbType.SQLite)
+                .build());
+        return f;
     }
 
     /**
@@ -1369,7 +1638,13 @@ public class SqlFun extends Column {
      * @return
      */
     public static <T, R> SqlFun convert(Object type, ColumnFun<T, R> value, Object style) {
-        return new SqlFun("convert", new Object[]{type, value, style});
+        SqlFun f = new SqlFun("convert", new Object[]{type, value, style});
+        f.dialect(DialectSupport.builder()
+                .support(DbType.SQLServer).support(DbType.MySQL).support(DbType.MariaDB)
+                .unsupport(DbType.Oracle, DbType.Postgresql,
+                        DbType.DB2, DbType.H2, DbType.Hsql, DbType.Derby, DbType.SQLite)
+                .build());
+        return f;
     }
 
     /**
@@ -1379,7 +1654,13 @@ public class SqlFun extends Column {
      * @return
      */
     public static SqlFun dataLength(Object value) {
-        return new SqlFun("dataLength", new Object[]{value});
+        SqlFun f = new SqlFun("dataLength", new Object[]{value});
+        f.dialect(DialectSupport.builder()
+                .support(DbType.SQLServer)
+                .unsupport(DbType.MySQL, DbType.MariaDB, DbType.Oracle, DbType.Postgresql,
+                        DbType.DB2, DbType.H2, DbType.Hsql, DbType.Derby, DbType.SQLite)
+                .build());
+        return f;
     }
 
     /**
@@ -1389,7 +1670,13 @@ public class SqlFun extends Column {
      * @return
      */
     public static <T, R> SqlFun dataLength(ColumnFun<T, R> value) {
-        return new SqlFun("dataLength", new Object[]{value});
+        SqlFun f = new SqlFun("dataLength", new Object[]{value});
+        f.dialect(DialectSupport.builder()
+                .support(DbType.SQLServer)
+                .unsupport(DbType.MySQL, DbType.MariaDB, DbType.Oracle, DbType.Postgresql,
+                        DbType.DB2, DbType.H2, DbType.Hsql, DbType.Derby, DbType.SQLite)
+                .build());
+        return f;
     }
 
     /**
@@ -1398,7 +1685,13 @@ public class SqlFun extends Column {
      * @return
      */
     public static SqlFun getDate() {
-        return new SqlFun("getDate", null);
+        SqlFun f = new SqlFun("getDate", null);
+        f.dialect(DialectSupport.builder()
+                .support(DbType.SQLServer)
+                .unsupport(DbType.MySQL, DbType.MariaDB, DbType.Oracle, DbType.Postgresql,
+                        DbType.DB2, DbType.H2, DbType.Hsql, DbType.Derby, DbType.SQLite)
+                .build());
+        return f;
     }
 
     /**
@@ -1410,7 +1703,13 @@ public class SqlFun extends Column {
      * @return
      */
     public static SqlFun dateAdd(Object datePart, int num, Object date) {
-        return new SqlFun("dateAdd", new Object[]{datePart, num, date});
+        SqlFun f = new SqlFun("dateAdd", new Object[]{datePart, num, date});
+        f.dialect(DialectSupport.builder()
+                .support(DbType.SQLServer)
+                .unsupport(DbType.MySQL, DbType.MariaDB, DbType.Oracle, DbType.Postgresql,
+                        DbType.DB2, DbType.H2, DbType.Hsql, DbType.Derby, DbType.SQLite)
+                .build());
+        return f;
     }
 
     /**
@@ -1422,7 +1721,13 @@ public class SqlFun extends Column {
      * @return
      */
     public static <T, R> SqlFun dateAdd(Object datePart, int num, ColumnFun<T, R> date) {
-        return new SqlFun("dateAdd", new Object[]{datePart, num, date});
+        SqlFun f = new SqlFun("dateAdd", new Object[]{datePart, num, date});
+        f.dialect(DialectSupport.builder()
+                .support(DbType.SQLServer)
+                .unsupport(DbType.MySQL, DbType.MariaDB, DbType.Oracle, DbType.Postgresql,
+                        DbType.DB2, DbType.H2, DbType.Hsql, DbType.Derby, DbType.SQLite)
+                .build());
+        return f;
     }
 
     /**
@@ -1434,7 +1739,13 @@ public class SqlFun extends Column {
      * @return
      */
     public static SqlFun dateDiff(Object datePart, Object startDate, Object endDate) {
-        return new SqlFun("dateDiff", new Object[]{datePart, startDate, endDate});
+        SqlFun f = new SqlFun("dateDiff", new Object[]{datePart, startDate, endDate});
+        f.dialect(DialectSupport.builder()
+                .support(DbType.SQLServer)
+                .unsupport(DbType.MySQL, DbType.MariaDB, DbType.Oracle, DbType.Postgresql,
+                        DbType.DB2, DbType.H2, DbType.Hsql, DbType.Derby, DbType.SQLite)
+                .build());
+        return f;
     }
 
     /**
@@ -1446,7 +1757,13 @@ public class SqlFun extends Column {
      * @return
      */
     public static <T, R> SqlFun dateDiff(Object datePart, ColumnFun<T, R> startDate, Object endDate) {
-        return new SqlFun("dateDiff", new Object[]{datePart, startDate, endDate});
+        SqlFun f = new SqlFun("dateDiff", new Object[]{datePart, startDate, endDate});
+        f.dialect(DialectSupport.builder()
+                .support(DbType.SQLServer)
+                .unsupport(DbType.MySQL, DbType.MariaDB, DbType.Oracle, DbType.Postgresql,
+                        DbType.DB2, DbType.H2, DbType.Hsql, DbType.Derby, DbType.SQLite)
+                .build());
+        return f;
     }
 
     /**
@@ -1458,7 +1775,13 @@ public class SqlFun extends Column {
      * @return
      */
     public static <T, R> SqlFun dateDiff(Object datePart, ColumnFun<T, R> startDate, ColumnFun<T, R> endDate) {
-        return new SqlFun("dateDiff", new Object[]{datePart, startDate, endDate});
+        SqlFun f = new SqlFun("dateDiff", new Object[]{datePart, startDate, endDate});
+        f.dialect(DialectSupport.builder()
+                .support(DbType.SQLServer)
+                .unsupport(DbType.MySQL, DbType.MariaDB, DbType.Oracle, DbType.Postgresql,
+                        DbType.DB2, DbType.H2, DbType.Hsql, DbType.Derby, DbType.SQLite)
+                .build());
+        return f;
     }
 
     /**
@@ -1469,7 +1792,13 @@ public class SqlFun extends Column {
      * @return
      */
     public static SqlFun dateName(Object datePart, Object date) {
-        return new SqlFun("dateName", new Object[]{datePart, date});
+        SqlFun f = new SqlFun("dateName", new Object[]{datePart, date});
+        f.dialect(DialectSupport.builder()
+                .support(DbType.SQLServer)
+                .unsupport(DbType.MySQL, DbType.MariaDB, DbType.Oracle, DbType.Postgresql,
+                        DbType.DB2, DbType.H2, DbType.Hsql, DbType.Derby, DbType.SQLite)
+                .build());
+        return f;
     }
 
     /**
@@ -1480,7 +1809,13 @@ public class SqlFun extends Column {
      * @return
      */
     public static <T, R> SqlFun dateName(Object datePart, ColumnFun<T, R> date) {
-        return new SqlFun("dateName", new Object[]{datePart, date});
+        SqlFun f = new SqlFun("dateName", new Object[]{datePart, date});
+        f.dialect(DialectSupport.builder()
+                .support(DbType.SQLServer)
+                .unsupport(DbType.MySQL, DbType.MariaDB, DbType.Oracle, DbType.Postgresql,
+                        DbType.DB2, DbType.H2, DbType.Hsql, DbType.Derby, DbType.SQLite)
+                .build());
+        return f;
     }
 
     /**
@@ -1491,7 +1826,13 @@ public class SqlFun extends Column {
      * @return
      */
     public static SqlFun datePart(Object datePart, Object date) {
-        return new SqlFun("datePart", new Object[]{datePart, date});
+        SqlFun f = new SqlFun("datePart", new Object[]{datePart, date});
+        f.dialect(DialectSupport.builder()
+                .support(DbType.SQLServer)
+                .unsupport(DbType.MySQL, DbType.MariaDB, DbType.Oracle, DbType.Postgresql,
+                        DbType.DB2, DbType.H2, DbType.Hsql, DbType.Derby, DbType.SQLite)
+                .build());
+        return f;
     }
 
     /**
@@ -1502,7 +1843,13 @@ public class SqlFun extends Column {
      * @return
      */
     public static <T, R> SqlFun datePart(Object datePart, ColumnFun<T, R> date) {
-        return new SqlFun("datePart", new Object[]{datePart, date});
+        SqlFun f = new SqlFun("datePart", new Object[]{datePart, date});
+        f.dialect(DialectSupport.builder()
+                .support(DbType.SQLServer)
+                .unsupport(DbType.MySQL, DbType.MariaDB, DbType.Oracle, DbType.Postgresql,
+                        DbType.DB2, DbType.H2, DbType.Hsql, DbType.Derby, DbType.SQLite)
+                .build());
+        return f;
     }
 
     /**
@@ -1716,6 +2063,60 @@ public class SqlFun extends Column {
     }
 
     /**
+     * 构造一个标准 SQL 窗口函数（含方言版本约束：MySQL 8.0+ / MariaDB 10.2+ / PG 9.4+ / Oracle 8i+ /
+     * SQL Server 2005+ / SQLite 3.25+；H2/Hsql/Derby/DB2 不支持）。
+     *
+     * <p>所有重载方法（rowNumber/rank/denseRank/ntile/firstValue/lastValue/lag/lead/nthValue）
+     * 内部都委托此方法，从而保证方言支持矩阵的一致性。</p>
+     */
+    private static SqlFun windowFunction(String name, Object[] args) {
+        SqlFun f = new SqlFun(name, args);
+        f.dialect(DialectSupport.builder()
+                .support(DbType.MySQL, DbVersion.from(8, 0))
+                .support(DbType.MariaDB, DbVersion.from(10, 2))
+                .support(DbType.Postgresql, DbVersion.from(9, 4))
+                .support(DbType.Oracle)
+                .support(DbType.SQLServer, DbVersion.from(2005, 0))
+                .support(DbType.SQLite, DbVersion.from(3, 25))
+                .unsupport(DbType.DB2, DbType.H2, DbType.Hsql, DbType.Derby)
+                .build());
+        return f;
+    }
+
+    /**
+     * 构造一个 lag/lead 类窗口函数（与 {@link #windowFunction} 同方言支持，但 SQL Server 要求 2012+）。
+     */
+    private static SqlFun lagLeadFunction(String name, Object[] args) {
+        SqlFun f = new SqlFun(name, args);
+        f.dialect(DialectSupport.builder()
+                .support(DbType.MySQL, DbVersion.from(8, 0))
+                .support(DbType.MariaDB, DbVersion.from(10, 2))
+                .support(DbType.Postgresql, DbVersion.from(9, 4))
+                .support(DbType.Oracle)
+                .support(DbType.SQLServer, DbVersion.from(2012, 0))
+                .support(DbType.SQLite, DbVersion.from(3, 25))
+                .unsupport(DbType.DB2, DbType.H2, DbType.Hsql, DbType.Derby)
+                .build());
+        return f;
+    }
+
+    /**
+     * 构造 nth_value 类窗口函数（仅 MySQL 8.0+/MariaDB 10.3+/PG 11+/Oracle/SQLite 3.30+ 支持；SQL Server 不支持）。
+     */
+    private static SqlFun nthValueFunction(String name, Object[] args) {
+        SqlFun f = new SqlFun(name, args);
+        f.dialect(DialectSupport.builder()
+                .support(DbType.MySQL, DbVersion.from(8, 0))
+                .support(DbType.MariaDB, DbVersion.from(10, 3))
+                .support(DbType.Postgresql, DbVersion.from(11, 0))
+                .support(DbType.Oracle)
+                .support(DbType.SQLite, DbVersion.from(3, 30))
+                .unsupport(DbType.SQLServer, DbType.DB2, DbType.H2, DbType.Hsql, DbType.Derby)
+                .build());
+        return f;
+    }
+
+    /**
      * 校验当前函数对给定方言与版本是否兼容。
      * <p><b>不缓存结果</b> —— 同一个 SqlFun 实例可能在不同 SQL 上下文对应不同方言
      * （多数据源场景）。校验本身是常数级查表（{@code DialectSupport.supports} 为 O(1)
@@ -1796,27 +2197,51 @@ public class SqlFun extends Column {
     }
 
     /**
-     * 空值替换（SQL 标准 IFNULL；Oracle 旧版叫 NVL）。
-     * <p>MySQL / SQLite / H2 / HSQL / Derby / DB2: IFNULL(c, v)。Oracle 9i+: NVL；PG: COALESCE 兜底。
-     * 推荐 PG/Oracle 用户用 {@link #nvl} 别名。</p>
+     * 空值替换（方言差异：MySQL/MariaDB/SQLite/H2/Hsql/Derby/DB2 用 IFNULL；Oracle 9i+ 用 NVL；
+     * PostgreSQL 用 COALESCE；SQL Server 用 ISNULL）。<br>
+     * 推荐 PG/Oracle/SQLServer 用户用 {@link #coalesce} 或 {@link #nvl}（Oracle）替代。
      */
     public static SqlFun ifNull(Object value, Object defaultValue) {
-        return new SqlFun("ifnull", new Object[]{value, defaultValue});
+        SqlFun f = new SqlFun("ifnull", new Object[]{value, defaultValue});
+        f.dialect(DialectSupport.builder()
+                .support(DbType.MySQL).support(DbType.MariaDB).support(DbType.SQLite)
+                .support(DbType.H2).support(DbType.Hsql).support(DbType.Derby).support(DbType.DB2)
+                .unsupport(DbType.Oracle, DbType.Postgresql, DbType.SQLServer)
+                .build());
+        return f;
     }
 
     public static <T, R> SqlFun ifNull(ColumnFun<T, R> value, Object defaultValue) {
-        return new SqlFun("ifnull", new Object[]{value, defaultValue});
+        SqlFun f = new SqlFun("ifnull", new Object[]{value, defaultValue});
+        f.dialect(DialectSupport.builder()
+                .support(DbType.MySQL).support(DbType.MariaDB).support(DbType.SQLite)
+                .support(DbType.H2).support(DbType.Hsql).support(DbType.Derby).support(DbType.DB2)
+                .unsupport(DbType.Oracle, DbType.Postgresql, DbType.SQLServer)
+                .build());
+        return f;
     }
 
     /**
-     * 空值替换（Oracle NVL 别名；其它方言内部等价于 IFNULL）。
+     * 空值替换（Oracle 9i+ 专属 NVL；其它方言用 IFNULL 或 COALESCE）。
      */
     public static SqlFun nvl(Object value, Object defaultValue) {
-        return new SqlFun("nvl", new Object[]{value, defaultValue});
+        SqlFun f = new SqlFun("nvl", new Object[]{value, defaultValue});
+        f.dialect(DialectSupport.builder()
+                .support(DbType.Oracle)
+                .unsupport(DbType.MySQL, DbType.MariaDB, DbType.SQLServer, DbType.Postgresql,
+                        DbType.DB2, DbType.H2, DbType.Hsql, DbType.Derby, DbType.SQLite)
+                .build());
+        return f;
     }
 
     public static <T, R> SqlFun nvl(ColumnFun<T, R> value, Object defaultValue) {
-        return new SqlFun("nvl", new Object[]{value, defaultValue});
+        SqlFun f = new SqlFun("nvl", new Object[]{value, defaultValue});
+        f.dialect(DialectSupport.builder()
+                .support(DbType.Oracle)
+                .unsupport(DbType.MySQL, DbType.MariaDB, DbType.SQLServer, DbType.Postgresql,
+                        DbType.DB2, DbType.H2, DbType.Hsql, DbType.Derby, DbType.SQLite)
+                .build());
+        return f;
     }
 
     /**
