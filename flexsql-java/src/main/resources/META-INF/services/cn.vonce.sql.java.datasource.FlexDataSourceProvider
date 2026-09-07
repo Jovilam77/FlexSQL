@@ -1,0 +1,2 @@
+cn.vonce.sql.java.datasource.HikariDataSourceProvider
+cn.vonce.sql.java.datasource.DruidDataSourceProvider

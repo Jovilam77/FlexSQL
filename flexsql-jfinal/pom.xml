@@ -4,9 +4,11 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <name>flexsql-java</name>
-    <description>
-        This is the Java implementation of SqlBean.
+    <name>flexsql-jfinal</name>
+    <description>This is a tool that uses java object-oriented idea to write and generate SQL statements. On this basis,
+        it also implements lightweight plug-in support similar to JPA for mybatis and JFinal. A large number of
+        common SQL execution methods are built in plug-ins to improve development efficiency, reduce a large number of
+        SQL statement writing, and make developers focus on business code writing.
     </description>
     <url>www.vonce.cn</url>
     <licenses>
@@ -31,26 +33,12 @@
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <flexsql.version>1.7.2</flexsql.version>
+        <jfinal.version>5.0.0</jfinal.version>
         <mybatis.version>3.4.0</mybatis.version>
-        <mybatis.spring.version>1.3.2</mybatis.spring.version>
     </properties>
 
     <build>
         <plugins>
-            <!--编译插件-->
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.11.0</version>
-                <configuration>
-                    <compilerArgument>
-                        -proc:none
-                    </compilerArgument>
-                    <source>1.8</source>
-                    <target>1.8</target>
-                    <encoding>UTF-8</encoding>
-                </configuration>
-            </plugin>
             <!--生产源码文件插件-->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -111,22 +99,37 @@
                     <autoPublish>true</autoPublish>
                 </configuration>
             </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.11.0</version>
+                <configuration>
+                    <source>8</source>
+                    <target>8</target>
+                </configuration>
+            </plugin>
         </plugins>
     </build>
 
     <groupId>cn.vonce</groupId>
-    <artifactId>flexsql-java</artifactId>
+    <artifactId>flexsql-jfinal</artifactId>
     <version>1.7.2</version>
     <packaging>jar</packaging>
 
     <dependencies>
-        <!-- FlexSQL core -->
+        <!-- FlexSQL java -->
         <dependency>
             <groupId>cn.vonce</groupId>
-            <artifactId>flexsql-core</artifactId>
+            <artifactId>flexsql-java</artifactId>
             <version>${flexsql.version}</version>
         </dependency>
-        
+        <!-- JFinal -->
+        <dependency>
+            <groupId>com.jfinal</groupId>
+            <artifactId>jfinal</artifactId>
+            <version>${jfinal.version}</version>
+            <scope>provided</scope>
+        </dependency>
         <!-- mybatis -->
         <dependency>
             <groupId>org.mybatis</groupId>
@@ -134,12 +137,6 @@
             <version>${mybatis.version}</version>
             <scope>provided</scope>
         </dependency>
-        <!-- junit -->
-        <dependency>
-            <groupId>junit</groupId>
-            <artifactId>junit</artifactId>
-            <version>4.13.1</version>
-            <scope>test</scope>
-        </dependency>
     </dependencies>
+
 </project>

@@ -13,6 +13,7 @@
         <module>flexsql-java</module>
         <module>flexsql-solon</module>
         <module>flexsql-spring</module>
+        <module>flexsql-jfinal</module>
     </modules>
 
     <!-- 版本信息 -->
@@ -28,6 +29,7 @@
         <junit>4.6</junit>
         <solon.version>2.6.0</solon.version>
         <android.version>26</android.version>
+        <jfinal.version>5.0.0</jfinal.version>
     </properties>
 
     <build>

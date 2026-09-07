@@ -13,25 +13,40 @@ import cn.vonce.sql.uitls.StringUtil;
  */
 public enum DbType {
 
-    MySQL(new MysqlDialect()),
-    MariaDB(new MysqlDialect()),
-    SQLServer(new SqlServerDialect()),
-    Oracle(new OracleDialect()),
-    Postgresql(new PostgresqlDialect()),
-    DB2(new DB2Dialect()),
-    H2(new H2Dialect()),
-    Hsql(new HsqlDialect()),
-    Derby(new DerbyDialect()),
-    SQLite(new SqliteDialect());
+    MySQL(new MysqlDialect(), "com.mysql.cj.jdbc.Driver"),
+    MariaDB(new MysqlDialect(), "org.mariadb.jdbc.Driver"),
+    SQLServer(new SqlServerDialect(), "com.microsoft.sqlserver.jdbc.SQLServerDriver"),
+    Oracle(new OracleDialect(), "oracle.jdbc.OracleDriver"),
+    Postgresql(new PostgresqlDialect(), "org.postgresql.Driver"),
+    DB2(new DB2Dialect(), "com.ibm.db2.jcc.DB2Driver"),
+    H2(new H2Dialect(), "org.h2.Driver"),
+    Hsql(new HsqlDialect(), "org.hsqldb.jdbc.JDBCDriver"),
+    Derby(new DerbyDialect(), "org.apache.derby.jdbc.EmbeddedDriver"),
+    SQLite(new SqliteDialect(), "org.sqlite.JDBC");
 
     private SqlDialect sqlDialect;
+    private String driverClass;
 
     DbType(SqlDialect sqlDialect) {
+        this(sqlDialect, null);
+    }
+
+    DbType(SqlDialect sqlDialect, String driverClass) {
         this.sqlDialect = sqlDialect;
+        this.driverClass = driverClass;
     }
 
     public SqlDialect getSqlDialect() {
         return sqlDialect;
+    }
+
+    /**
+     * 获取数据库驱动类名
+     *
+     * @return 驱动类名
+     */
+    public String getDriverClass() {
+        return driverClass;
     }
 
     public static DbType getDbType(String productName) {
