@@ -30,7 +30,7 @@
     <!-- 版本信息 -->
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <flexsql.version>1.7.2</flexsql.version>
+        <flexsql.version>1.8.0-beta1</flexsql.version>
         <caffeine.version>2.9.2</caffeine.version>
     </properties>
 
@@ -95,7 +95,7 @@
 
     <groupId>cn.vonce</groupId>
     <artifactId>flexsql-caffeine</artifactId>
-    <version>1.7.2</version>
+    <version>1.8.0-beta1</version>
     <packaging>jar</packaging>
 
     <dependencies>

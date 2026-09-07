@@ -32,7 +32,7 @@ import java.util.concurrent.ConcurrentMap;
  * 是空操作、不会报错。如对内存特别敏感，请仅在 LOCAL 短 TTL 场景启用。</p>
  *
  * @author Jovi
- * @since 1.7.2
+ * @since 1.8.0-beta1
  */
 public class IndexedQueryCache implements QueryCache {
 

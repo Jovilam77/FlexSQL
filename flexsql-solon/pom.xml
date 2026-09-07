@@ -32,7 +32,7 @@
     <!-- 版本信息 -->
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <flexsql.version>1.7.2</flexsql.version>
+        <flexsql.version>1.8.0-beta1</flexsql.version>
         <solon.version>2.6.0</solon.version>
     </properties>
 
@@ -74,7 +74,7 @@
                 </executions>
             </plugin>
             <!--gpg加密插件-->
-           <!-- <plugin>
+            <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-gpg-plugin</artifactId>
                 <version>3.1.0</version>
@@ -87,7 +87,7 @@
                         </goals>
                     </execution>
                 </executions>
-            </plugin>-->
+            </plugin>
             <plugin>
                 <groupId>org.sonatype.central</groupId>
                 <artifactId>central-publishing-maven-plugin</artifactId>
@@ -112,7 +112,7 @@
 
     <groupId>cn.vonce</groupId>
     <artifactId>flexsql-solon</artifactId>
-    <version>1.7.2</version>
+    <version>1.8.0-beta1</version>
     <packaging>jar</packaging>
 
     <dependencies>
