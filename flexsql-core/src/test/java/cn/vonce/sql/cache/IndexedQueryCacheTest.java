@@ -1,11 +1,14 @@
 package cn.vonce.sql.cache;
 
+import org.junit.Assert;
+import org.junit.Test;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
 /**
- * {@link IndexedQueryCache} 单元测试（main 风格）。
+ * {@link IndexedQueryCache} 单元测试（JUnit）。
  *
  * <p>覆盖场景：</p>
  * <ul>
@@ -19,21 +22,22 @@ import java.util.List;
  */
 public class IndexedQueryCacheTest {
 
-    public static boolean singleBeanPutBuildsIndexAndEvictById() {
+    @Test
+    public void singleBeanPutBuildsIndexAndEvictById() {
         SimpleQueryCache base = new SimpleQueryCache(100, 60);
         IndexedQueryCache idx = new IndexedQueryCache(base);
         QueryCacheKey key = newKey("user");
         idx.put(key, new IndexedUser(7L, "alice"), "user", null);
 
-        if (idx.trackedTableCount() != 1) return false;
-        if (idx.totalIndexedIds() != 1) return false;
+        Assert.assertEquals("单 bean 应建立 1 张表的索引", 1, idx.trackedTableCount());
+        Assert.assertEquals("应记录 1 个 id", 1, idx.totalIndexedIds());
 
-        int n = idx.evictById("user", 7L);
-        if (n != 1) return false;
-        return base.get(key) == null;
+        Assert.assertEquals("evictById 应命中 1 条", 1, idx.evictById("user", 7L));
+        Assert.assertNull("被失效的缓存项应已从底层缓存移除", base.get(key));
     }
 
-    public static boolean listBeanPutDoesNotIndex() {
+    @Test
+    public void listBeanPutDoesNotIndex() {
         SimpleQueryCache base = new SimpleQueryCache(100, 60);
         IndexedQueryCache idx = new IndexedQueryCache(base);
         QueryCacheKey key = newKey("userList");
@@ -41,39 +45,43 @@ public class IndexedQueryCacheTest {
         idx.put(key, users, "user", null);
 
         // 反向索引必须没建（list 不索引）
-        if (idx.trackedTableCount() != 0) return false;
-        return idx.evictById("user", 1L) == 0;
+        Assert.assertEquals("List 结果不建反向索引", 0, idx.trackedTableCount());
+        Assert.assertEquals("List 结果 evictById 应为 0", 0, idx.evictById("user", 1L));
     }
 
-    public static boolean nonIdBeanPutSkipsIndex() {
+    @Test
+    public void nonIdBeanPutSkipsIndex() {
         SimpleQueryCache base = new SimpleQueryCache(100, 60);
         IndexedQueryCache idx = new IndexedQueryCache(base);
         QueryCacheKey key = newKey("plain");
         idx.put(key, new NonIdBean(), "plain", null);
 
-        return idx.trackedTableCount() == 0
-                && idx.totalIndexedIds() == 0
-                && idx.evictById("plain", 0L) == 0;
+        Assert.assertEquals(0, idx.trackedTableCount());
+        Assert.assertEquals(0, idx.totalIndexedIds());
+        Assert.assertEquals(0, idx.evictById("plain", 0L));
     }
 
-    public static boolean primitiveAndStringValuesSkipIndex() {
+    @Test
+    public void primitiveAndStringValuesSkipIndex() {
         SimpleQueryCache base = new SimpleQueryCache(100, 60);
         IndexedQueryCache idx = new IndexedQueryCache(base);
         idx.put(newKey("k1"), "hello", "literal", null);
         idx.put(newKey("k2"), Long.valueOf(123), "literal", null);
         idx.put(newKey("k3"), Boolean.TRUE, "literal", null);
-        return idx.trackedTableCount() == 0;
+        Assert.assertEquals("非 bean 值一律不建索引", 0, idx.trackedTableCount());
     }
 
-    public static boolean evictByIdOnMissingTableReturnsZero() {
+    @Test
+    public void evictByIdOnMissingTableReturnsZero() {
         SimpleQueryCache base = new SimpleQueryCache(100, 60);
         IndexedQueryCache idx = new IndexedQueryCache(base);
         idx.put(newKey("t"), new IndexedUser(1L, "x"), "t", null);
-        return idx.evictById("nonexistent", 1L) == 0
-                && idx.evictById("t", 999L) == 0;
+        Assert.assertEquals("未知 table → 0（且不抛异常）", 0, idx.evictById("nonexistent", 1L));
+        Assert.assertEquals("未知 id → 0", 0, idx.evictById("t", 999L));
     }
 
-    public static boolean evictByIdsBatch() {
+    @Test
+    public void evictByIdsBatch() {
         SimpleQueryCache base = new SimpleQueryCache(100, 60);
         IndexedQueryCache idx = new IndexedQueryCache(base);
         idx.put(newKey("k1"), new IndexedUser(1L, "a"), "u", null);
@@ -82,13 +90,14 @@ public class IndexedQueryCacheTest {
 
         int total = idx.evictByIds("u", Arrays.asList(1L, 2L, 999L));
         // 1L 和 2L 各失效 1 条；999L 不存在 → 总数 2
-        return total == 2
-                && base.get(newKey("k1")) == null
-                && base.get(newKey("k2")) == null
-                && base.get(newKey("k3")) != null;
+        Assert.assertEquals(2, total);
+        Assert.assertNull(base.get(newKey("k1")));
+        Assert.assertNull(base.get(newKey("k2")));
+        Assert.assertNotNull("未在失效列表中的 id 应保留", base.get(newKey("k3")));
     }
 
-    public static boolean evictByTableClearsIndex() {
+    @Test
+    public void evictByTableClearsIndex() {
         SimpleQueryCache base = new SimpleQueryCache(100, 60);
         IndexedQueryCache idx = new IndexedQueryCache(base);
         idx.put(newKey("k1"), new IndexedUser(1L, "a"), "u", null);
@@ -96,22 +105,25 @@ public class IndexedQueryCacheTest {
 
         idx.evictByTable("u", null, null, null);
 
-        boolean indexCleared = idx.trackedTableCount() == 0;
-        boolean storeCleared = base.get(newKey("k1")) == null && base.get(newKey("k2")) == null;
-        boolean evictAfterReturnsZero = idx.evictById("u", 1L) == 0;
-        return indexCleared && storeCleared && evictAfterReturnsZero;
+        Assert.assertEquals("按表失效应同时清空反向索引", 0, idx.trackedTableCount());
+        Assert.assertNull(base.get(newKey("k1")));
+        Assert.assertNull(base.get(newKey("k2")));
+        Assert.assertEquals("索引清空后 evictById 应为 0", 0, idx.evictById("u", 1L));
     }
 
-    public static boolean clearClearsIndex() {
+    @Test
+    public void clearClearsIndex() {
         SimpleQueryCache base = new SimpleQueryCache(100, 60);
         IndexedQueryCache idx = new IndexedQueryCache(base);
         idx.put(newKey("k1"), new IndexedUser(1L, "a"), "u", null);
 
         idx.clear();
-        return idx.trackedTableCount() == 0 && idx.totalIndexedIds() == 0;
+        Assert.assertEquals(0, idx.trackedTableCount());
+        Assert.assertEquals(0, idx.totalIndexedIds());
     }
 
-    public static boolean multipleSameIdSharesKey() {
+    @Test
+    public void multipleSameIdSharesKey() {
         SimpleQueryCache base = new SimpleQueryCache(100, 60);
         IndexedQueryCache idx = new IndexedQueryCache(base);
         // 同一个 id 同一行被 put 进多个 cache key（比如：默认 + 含租户）
@@ -120,54 +132,21 @@ public class IndexedQueryCacheTest {
         idx.put(kDefault, new IndexedUser(5L, "x"), "u", null);
         idx.put(kTenant, new IndexedUser(5L, "y"), "u", "tenantA");
 
-        int n = idx.evictById("u", 5L);
-        return n == 2
-                && base.get(kDefault) == null
-                && base.get(kTenant) == null;
+        Assert.assertEquals("同一 id 的多个缓存键都应被失效", 2, idx.evictById("u", 5L));
+        Assert.assertNull(base.get(kDefault));
+        Assert.assertNull(base.get(kTenant));
     }
 
-    public static boolean delegatesReadAndIsDistributed() {
+    @Test
+    public void delegatesReadAndIsDistributed() {
         SimpleQueryCache base = new SimpleQueryCache(100, 60);
         IndexedQueryCache idx = new IndexedQueryCache(base);
         QueryCacheKey key = newKey("u");
         idx.put(key, new IndexedUser(1L, "a"), "u", null);
 
         // get 走 delegate
-        Object got = idx.get(key);
-        boolean readOk = got instanceof IndexedUser;
-        boolean notDistributed = !idx.isDistributed();
-        return readOk && notDistributed;
-    }
-
-    public static void main(String[] args) {
-        check("singleBeanPutBuildsIndexAndEvictById", singleBeanPutBuildsIndexAndEvictById());
-        check("listBeanPutDoesNotIndex", listBeanPutDoesNotIndex());
-        check("nonIdBeanPutSkipsIndex", nonIdBeanPutSkipsIndex());
-        check("primitiveAndStringValuesSkipIndex", primitiveAndStringValuesSkipIndex());
-        check("evictByIdOnMissingTableReturnsZero", evictByIdOnMissingTableReturnsZero());
-        check("evictByIdsBatch", evictByIdsBatch());
-        check("evictByTableClearsIndex", evictByTableClearsIndex());
-        check("clearClearsIndex", clearClearsIndex());
-        check("multipleSameIdSharesKey", multipleSameIdSharesKey());
-        check("delegatesReadAndIsDistributed", delegatesReadAndIsDistributed());
-
-        System.out.println("passed, " + passed + " failed, " + failed);
-        if (failed > 0) {
-            System.exit(1);
-        }
-    }
-
-    private static int passed = 0;
-    private static int failed = 0;
-
-    private static void check(String name, boolean cond) {
-        if (cond) {
-            passed++;
-            System.out.println("PASS: " + name);
-        } else {
-            failed++;
-            System.out.println("FAIL: " + name);
-        }
+        Assert.assertTrue("get 应委托给底层缓存", idx.get(key) instanceof IndexedUser);
+        Assert.assertFalse("本地缓存不应标记为分布式", idx.isDistributed());
     }
 
     private static QueryCacheKey newKey(String sql) {

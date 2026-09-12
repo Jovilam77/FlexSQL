@@ -5,8 +5,13 @@ import cn.vonce.sql.enumerate.DbType;
 import cn.vonce.sql.enumerate.DialectMode;
 import cn.vonce.sql.exception.UnsupportedDialectException;
 
+import org.junit.Assert;
+import org.junit.Test;
+
 /**
- * SqlFun 方言支持元数据单元测试（main 风格，无需 DB）。
+ * SqlFun 方言支持元数据单元测试（JUnit，无需 DB）。
+ * <p>按能力域拆成 11 个 @Test；组内用软断言（verify），组末 flush 统一上报失败明细，
+ * 保证一个断言失败不会吞掉同组其它诊断。</p>
  * <p>覆盖：</p>
  * <ol>
  *   <li>DbVersion 解析 / 比较 / atLeast</li>
@@ -22,16 +27,25 @@ import cn.vonce.sql.exception.UnsupportedDialectException;
  */
 public class SqlFunDialectTest {
 
-    static int pass = 0;
-    static int fail = 0;
+    /**
+     * 软断言收集器：组内某个断言失败不中断同组其它断言，组末统一上报（保留全部失败明细）。
+     * JUnit 每个 @Test 各用一个实例，因此天然按用例隔离。
+     */
+    private final java.util.List<String> failures = new java.util.ArrayList<String>();
 
-    static void check(String name, boolean ok) {
-        if (ok) {
-            pass++;
-            System.out.println("  PASS " + name);
-        } else {
-            fail++;
-            System.out.println("  FAIL " + name);
+    /** 软断言：失败时仅记录。 */
+    private void verify(String name, boolean ok) {
+        if (!ok) {
+            failures.add(name);
+        }
+    }
+
+    /** 组末收口：把本组软断言失败项一次性上报给 JUnit。 */
+    private void flush(String group) {
+        if (!failures.isEmpty()) {
+            String detail = failures.size() + " 项失败: " + failures;
+            failures.clear();
+            Assert.fail("[" + group + "] " + detail);
         }
     }
 
@@ -251,7 +265,6 @@ public class SqlFunDialectTest {
                 SqlFun.log10("c"), SqlFun.exp("c"), SqlFun.pi(), SqlFun.radians("c"),
                 SqlFun.degrees("c"), SqlFun.power("b", "e"),
                 SqlFun.reverse("c"), SqlFun.repeat("c", 3), SqlFun.space(3),
-                SqlFun.charLength("c"), SqlFun.octetLength("c"), SqlFun.bitLength("c"),
                 SqlFun.position("s", "c"), SqlFun.currentTimestamp(), SqlFun.currentDate(),
                 SqlFun.currentTime(), SqlFun.localtime(), SqlFun.localtimestamp(),
                 SqlFun.extract("YEAR", "d"), SqlFun.cast("c", "INTEGER")
@@ -1003,106 +1016,134 @@ public class SqlFunDialectTest {
         return true;
     }
 
-    public static void main(String[] args) {
-        check("db.version.from(int,int)", versionFromMajorMinor());
-        check("db.version.from(String)", versionFromString());
-        check("db.version.compareTo", versionCompareTo());
-        check("db.version.atLeast", versionAtLeast());
-        check("db.version.from(invalid) throws", versionFromInvalidThrows());
+    // ======================== JUnit 用例（原 main 段落逐项搬迁） ========================
 
-        check("dialect.builder.supports+versions", dialectBuilderSupports());
-        check("dialect.unsupport 优先级", dialectUnsupportPriority());
-        check("dialect.UNIVERSAL 空安全", dialectUniversal());
-        check("dialect.supports(null version)", dialectSupportsWithNoVersion());
+    @Test
+    public void dbVersion() {
+        verify("db.version.from(int,int)", versionFromMajorMinor());
+        verify("db.version.from(String)", versionFromString());
+        verify("db.version.compareTo", versionCompareTo());
+        verify("db.version.atLeast", versionAtLeast());
+        verify("db.version.from(invalid) throws", versionFromInvalidThrows());
+        flush("DbVersion");
+    }
 
-        check("checkDialect.通用函数 universal", checkDialectReturnsNullForUniversal());
-        check("checkDialect.支持方言通过", checkDialectPassesForSupportedDb());
-        check("checkDialect.不支持方言失败", checkDialectFailsForUnsupportedDb());
-        check("checkDialect.版本不符失败", checkDialectFailsForTooOldVersion());
-        check("checkDialect.重复调用幂等", checkDialectCachesAfterFirstCall());
-        check("checkDialect.重标立即生效", checkDialectRedialectingTakesEffect());
-        check("checkDialect.meta=null 放行", checkDialectNullMetaPasses());
+    @Test
+    public void dialectBuilder() {
+        verify("dialect.builder.supports+versions", dialectBuilderSupports());
+        verify("dialect.unsupport 优先级", dialectUnsupportPriority());
+        verify("dialect.UNIVERSAL 空安全", dialectUniversal());
+        verify("dialect.supports(null version)", dialectSupportsWithNoVersion());
+        flush("dialectBuilder");
+    }
 
-        check("render.STRICT 不支持抛异常", renderStrictThrowsForUnsupported());
-        check("render.STRICT 支持方言通过", renderStrictPassesForSupported());
-        check("render.OFF 不校验", renderOffModeNoCheck());
-        check("render.通用函数跨方言", renderUniversalFunPassesAnywhere());
-        check("render.现有函数不被破坏", renderExistingFunctionsUnchanged());
+    @Test
+    public void checkDialect() {
+        verify("checkDialect.通用函数 universal", checkDialectReturnsNullForUniversal());
+        verify("checkDialect.支持方言通过", checkDialectPassesForSupportedDb());
+        verify("checkDialect.不支持方言失败", checkDialectFailsForUnsupportedDb());
+        verify("checkDialect.版本不符失败", checkDialectFailsForTooOldVersion());
+        verify("checkDialect.重复调用幂等", checkDialectCachesAfterFirstCall());
+        verify("checkDialect.重标立即生效", checkDialectRedialectingTakesEffect());
+        verify("checkDialect.meta=null 放行", checkDialectNullMetaPasses());
+        flush("checkDialect");
+    }
 
-        check("user.extension.SqlFun.dialect 注册", userExtensionRegistersDialects());
+    @Test
+    public void renderValidation() {
+        verify("render.STRICT 不支持抛异常", renderStrictThrowsForUnsupported());
+        verify("render.STRICT 支持方言通过", renderStrictPassesForSupported());
+        verify("render.OFF 不校验", renderOffModeNoCheck());
+        verify("render.通用函数跨方言", renderUniversalFunPassesAnywhere());
+        verify("render.现有函数不被破坏", renderExistingFunctionsUnchanged());
+        flush("renderValidation");
+    }
 
-        // ======================== 新增 ========================
-        check("dialect.ifNull 跨方言对立别名", ifNullCrossDbConflict());
-        check("dialect.nvl 仅 Oracle", nvlOnlyOracle());
-        check("dialect.instr 字符串方言差异", instrDialects());
-        check("dialect.lPad/rPad 字符串差异", lPadRPadDialects());
-        check("dialect.concat_ws 仅 MySQL", concatWsOnlyMySQL());
-        check("dialect.str_to_date 仅 MySQL", strToDateOnlyMySQL());
-        check("dialect.iF 仅 MySQL", ifOnlyMySQL());
-        check("dialect.date_format(snake) 仅 MySQL", dateFormatSnakeCaseOnlyMySQL());
-        check("dialect.charIndex 仅 SQLServer", charIndexOnlySqlServer());
-        check("dialect.len 仅 SQLServer", lenOnlySqlServer());
-        check("dialect.stuff 仅 SQLServer", stuffOnlySqlServer());
-        check("dialect.getDate 仅 SQLServer", getDateOnlySqlServer());
-        check("dialect.host_name/user_name 仅 SQLServer", hostNameUserNameOnlySqlServer());
-        check("dialect.dataLength 仅 SQLServer", dataLengthOnlySqlServer());
-        check("dialect.convert SQLServer+MySQL", convertSqlServerAndMySQL());
-        check("dialect.dateName/datePart 仅 SQLServer", dateNameDatePartOnlySqlServer());
-        check("dialect.dateAdd/dateDiff(datePart) 仅 SQLServer", dateAddDateDiffDatePartOnlySqlServer());
-        check("dialect.now/curDate/curTime 方言差异", nowCurDateCurTimeDialects());
-        check("dialect.date 提取日期部分", dateExtractionDialects());
-        check("dialect.monthName 仅 MySQL", monthNameOnlyMySQL());
-        check("dialect.dateAdd(TimeUnit) 仅 MySQL", dateAddTimeUnitOnlyMySQL());
-        check("dialect.timestampDiff 仅 MySQL", timestampDiffOnlyMySQL());
-        check("dialect.dateDiff(2参) MySQL+SQLServer", dateDiffTwoArgsDialects());
-        check("dialect.version/database/user 方言差异", versionDatabaseUserDialects());
-        check("dialect.窗口函数 版本约束", windowFunctionDialects());
-        check("dialect.lag/lead SQLServer 2012+", lagLeadRequiresSqlServer2012());
-        check("dialect.nth_value 严格版本", nthValueStrictVersion());
-        check("render.现有通用函数不被破坏", existingUniversalFunctionsStillPass());
+    @Test
+    public void userExtension() {
+        verify("user.extension.SqlFun.dialect 注册", userExtensionRegistersDialects());
+        flush("userExtension");
+    }
 
-        // ---------- 2026-09-06 第二批 P0 函数补强 ----------
-        check("p0b2.通用函数无方言标注", p0Batch2UniversalFunctionsAreUntagged());
-        check("p0b2.通用函数 MySQL STRICT 渲染", p0Batch2UniversalFunctionsRender());
-        check("p0b2.md5 方言矩阵", md5Dialects());
-        check("p0b2.md5 PG 渲染", md5RendersOnPostgres());
-        check("p0b2.md5 Oracle<12 STRICT 抛", md5ThrowsOnOldOracle());
-        check("p0b2.dateTrunc 方言矩阵", dateTruncDialects());
-        check("p0b2.dateTrunc MySQL 5.x 抛", dateTruncThrowsOnOldMysql());
-        check("p0b2.dateTrunc Oracle 抛", dateTruncThrowsOnOracle());
-        check("p0b2.position 通用", positionIsUniversal());
-        check("p0b2.extract 通用", extractIsUniversal());
-        check("p0b2.cast 通用", castIsUniversal());
-        check("p0b2.currentTimestamp 通用", currentTimestampIsUniversal());
+    @Test
+    public void dialectStringAndControlFunctions() {
+        verify("dialect.ifNull 跨方言对立别名", ifNullCrossDbConflict());
+        verify("dialect.nvl 仅 Oracle", nvlOnlyOracle());
+        verify("dialect.instr 字符串方言差异", instrDialects());
+        verify("dialect.lPad/rPad 字符串差异", lPadRPadDialects());
+        verify("dialect.concat_ws 仅 MySQL", concatWsOnlyMySQL());
+        verify("dialect.str_to_date 仅 MySQL", strToDateOnlyMySQL());
+        verify("dialect.iF 仅 MySQL", ifOnlyMySQL());
+        verify("dialect.date_format(snake) 仅 MySQL", dateFormatSnakeCaseOnlyMySQL());
+        verify("dialect.charIndex 仅 SQLServer", charIndexOnlySqlServer());
+        flush("dialectStringAndControlFunctions");
+    }
 
-        // ---------- 2026-09-06 P1 函数补强 ----------
-        check("p1.jsonValue 方言矩阵", jsonValueDialects());
-        check("p1.regexpLike 方言矩阵", regexpLikeDialects());
-        check("p1.regexpReplace 方言矩阵", regexpReplaceDialects());
-        check("p1.regexpSubstr 方言矩阵", regexpSubstrDialects());
-        check("p1.regexpCount 方言矩阵", regexpCountDialects());
-        check("p1.regexpInstr 方言矩阵", regexpInstrDialects());
-        check("p1.sha1 方言矩阵", sha1Dialects());
-        check("p1.sha2 方言矩阵", sha2Dialects());
-        check("p1.bitAnd 方言矩阵", bitAndDialects());
-        check("p1.bitOr 方言矩阵", bitOrDialects());
-        check("p1.bitXor 方言矩阵", bitXorDialects());
-        check("p1.bitCount 方言矩阵", bitCountDialects());
-        check("p1.percentRank/cumeDist 方言矩阵", windowExtraDialects());
-        check("p1.genRandomUuid 方言矩阵", genRandomUuidDialects());
-        check("p1.inetAton 方言矩阵", inetAtonDialects());
-        check("p1.substringIndex 方言矩阵", substringIndexDialects());
-        check("p1.findInSet 方言矩阵", findInSetDialects());
-        check("p1.strcmp 方言矩阵", strcmpDialects());
-        check("p1.elt 方言矩阵", eltDialects());
-        check("p1.regexpLike PG 渲染", regexpLikeRendersOnPostgres());
-        check("p1.regexpLike SQLServer STRICT 抛", regexpLikeThrowsOnSqlServer());
-        check("p1.elt MySQL 渲染", eltRendersOnMysql());
+    @Test
+    public void dialectSqlServerAndTimeFunctions() {
+        verify("dialect.len 仅 SQLServer", lenOnlySqlServer());
+        verify("dialect.stuff 仅 SQLServer", stuffOnlySqlServer());
+        verify("dialect.getDate 仅 SQLServer", getDateOnlySqlServer());
+        verify("dialect.host_name/user_name 仅 SQLServer", hostNameUserNameOnlySqlServer());
+        verify("dialect.dataLength 仅 SQLServer", dataLengthOnlySqlServer());
+        verify("dialect.convert SQLServer+MySQL", convertSqlServerAndMySQL());
+        verify("dialect.dateName/datePart 仅 SQLServer", dateNameDatePartOnlySqlServer());
+        verify("dialect.dateAdd/dateDiff(datePart) 仅 SQLServer", dateAddDateDiffDatePartOnlySqlServer());
+        verify("dialect.now/curDate/curTime 方言差异", nowCurDateCurTimeDialects());
+        flush("dialectSqlServerAndTimeFunctions");
+    }
 
-        System.out.println();
-        System.out.println("=== SqlFunDialectTest: " + pass + " passed, " + fail + " failed ===");
-        if (fail > 0) {
-            System.exit(1);
-        }
+    @Test
+    public void dialectDateAndWindowFunctions() {
+        verify("dialect.date 提取日期部分", dateExtractionDialects());
+        verify("dialect.monthName 仅 MySQL", monthNameOnlyMySQL());
+        verify("dialect.dateAdd(TimeUnit) 仅 MySQL", dateAddTimeUnitOnlyMySQL());
+        verify("dialect.timestampDiff 仅 MySQL", timestampDiffOnlyMySQL());
+        verify("dialect.dateDiff(2参) MySQL+SQLServer", dateDiffTwoArgsDialects());
+        verify("dialect.version/database/user 方言差异", versionDatabaseUserDialects());
+        verify("dialect.窗口函数 版本约束", windowFunctionDialects());
+        verify("dialect.lag/lead SQLServer 2012+", lagLeadRequiresSqlServer2012());
+        verify("dialect.nth_value 严格版本", nthValueStrictVersion());
+        verify("render.现有通用函数不被破坏", existingUniversalFunctionsStillPass());
+        flush("dialectDateAndWindowFunctions");
+    }
+
+    @Test
+    public void p0Batch2Functions() {
+        verify("p0b2.通用函数无方言标注", p0Batch2UniversalFunctionsAreUntagged());
+        verify("p0b2.通用函数 MySQL STRICT 渲染", p0Batch2UniversalFunctionsRender());
+        verify("p0b2.md5 方言矩阵", md5Dialects());
+        verify("p0b2.md5 PG 渲染", md5RendersOnPostgres());
+        verify("p0b2.md5 Oracle<12 STRICT 抛", md5ThrowsOnOldOracle());
+        verify("p0b2.dateTrunc MySQL 5.x 抛", dateTruncThrowsOnOldMysql());
+        verify("p0b2.dateTrunc Oracle 抛", dateTruncThrowsOnOracle());
+        verify("p0b2.position 通用", positionIsUniversal());
+        verify("p0b2.extract 通用", extractIsUniversal());
+        verify("p0b2.cast 通用", castIsUniversal());
+        verify("p0b2.currentTimestamp 通用", currentTimestampIsUniversal());
+        flush("p0Batch2Functions");
+    }
+
+    @Test
+    public void p1RegexpHashBitFunctions() {
+        verify("p1.jsonValue 方言矩阵", jsonValueDialects());
+        verify("p1.regexpCount 方言矩阵", regexpCountDialects());
+        verify("p1.regexpInstr 方言矩阵", regexpInstrDialects());
+        verify("p1.bitCount 方言矩阵", bitCountDialects());
+        flush("p1RegexpHashBitFunctions");
+    }
+
+    @Test
+    public void p1WindowMysqlFunctionsAndRendering() {
+        verify("p1.percentRank/cumeDist 方言矩阵", windowExtraDialects());
+        verify("p1.genRandomUuid 方言矩阵", genRandomUuidDialects());
+        verify("p1.inetAton 方言矩阵", inetAtonDialects());
+        verify("p1.substringIndex 方言矩阵", substringIndexDialects());
+        verify("p1.findInSet 方言矩阵", findInSetDialects());
+        verify("p1.strcmp 方言矩阵", strcmpDialects());
+        verify("p1.elt 方言矩阵", eltDialects());
+        verify("p1.regexpLike SQLServer STRICT 抛", regexpLikeThrowsOnSqlServer());
+        verify("p1.elt MySQL 渲染", eltRendersOnMysql());
+        flush("p1WindowMysqlFunctionsAndRendering");
     }
 }

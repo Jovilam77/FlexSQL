@@ -1,82 +1,88 @@
 package cn.vonce.sql.cache.caffeine;
 
-import cn.vonce.sql.config.CacheMode;
 import cn.vonce.sql.cache.QueryCache;
 import cn.vonce.sql.cache.QueryCacheConfig;
 import cn.vonce.sql.cache.QueryCacheKey;
+import cn.vonce.sql.config.CacheMode;
+import org.junit.After;
+import org.junit.Assert;
+import org.junit.Test;
 
 /**
- * CaffeineQueryCache 单元测试（main 风格，无需 DB，与项目既有测试约定一致）。
+ * CaffeineQueryCache 单元测试（JUnit，无需 DB）。
  */
 public class CaffeineQueryCacheTest {
 
-    static int pass = 0;
-    static int fail = 0;
-
-    static int check(String name, boolean ok) {
-        if (ok) {
-            pass++;
-            System.out.println("  PASS " + name);
-        } else {
-            fail++;
-            System.out.println("  FAIL " + name);
-        }
-        return ok ? 1 : 0;
+    /** 注销可插拔本地缓存工厂，避免污染同 JVM 的其它用例。 */
+    @After
+    public void uninstallFactory() {
+        CaffeineQueryCache.uninstall();
     }
 
     static QueryCacheKey key(String sql, String tenant, String schema, String dataSource) {
         return new QueryCacheKey(String.class, null, sql, tenant, schema, "", dataSource);
     }
 
-    static boolean putGet() {
+    @Test
+    public void putGet() {
         CaffeineQueryCache cache = new CaffeineQueryCache(100, 600);
         QueryCacheKey k = key("SELECT * FROM t_user WHERE id=1", "tA", null, "ds1");
         cache.put(k, "A", "t_user", "tA");
-        return "A".equals(cache.get(k))
-                && cache.get(key("SELECT * FROM t_user WHERE id=2", "tA", null, "ds1")) == null;
+        Assert.assertEquals("A", cache.get(k));
+        Assert.assertNull("不同 SQL 不应命中",
+                cache.get(key("SELECT * FROM t_user WHERE id=2", "tA", null, "ds1")));
     }
 
-    static boolean evictByTable() {
+    @Test
+    public void evictByTable() {
         CaffeineQueryCache cache = new CaffeineQueryCache(100, 600);
         QueryCacheKey kUser = key("SELECT * FROM t_user", "tA", null, "ds1");
         QueryCacheKey kOrder = key("SELECT * FROM t_order", "tA", null, "ds1");
         cache.put(kUser, "U", "t_user", "tA");
         cache.put(kOrder, "O", "t_order", "tA");
         cache.evictByTable("t_user", null, "tA", "ds1");
-        return cache.get(kUser) == null && "O".equals(cache.get(kOrder));
+        Assert.assertNull(cache.get(kUser));
+        Assert.assertEquals("其它表不应被连带失效", "O", cache.get(kOrder));
     }
 
-    static boolean dataSourceIsolated() {
+    @Test
+    public void dataSourceIsolated() {
         CaffeineQueryCache cache = new CaffeineQueryCache(100, 600);
         QueryCacheKey k1 = key("SELECT * FROM t_user", "tA", null, "ds1");
         QueryCacheKey k2 = key("SELECT * FROM t_user", "tA", null, "ds2");
         cache.put(k1, "A", "t_user", "tA");
         cache.put(k2, "B", "t_user", "tA");
         cache.evictByTable("t_user", null, "tA", "ds1");
-        return cache.get(k1) == null && "B".equals(cache.get(k2));
+        Assert.assertNull(cache.get(k1));
+        Assert.assertEquals("跨数据源同表名不应被连带失效", "B", cache.get(k2));
     }
 
-    static boolean tenantIsolated() {
+    @Test
+    public void tenantIsolated() {
         CaffeineQueryCache cache = new CaffeineQueryCache(100, 600);
         QueryCacheKey k1 = key("SELECT * FROM t_user", "tA", null, "ds1");
         QueryCacheKey k2 = key("SELECT * FROM t_user", "tB", null, "ds1");
         cache.put(k1, "A", "t_user", "tA");
         cache.put(k2, "B", "t_user", "tB");
         cache.evictByTable("t_user", null, "tA", "ds1");
-        return cache.get(k1) == null && "B".equals(cache.get(k2));
+        Assert.assertNull(cache.get(k1));
+        Assert.assertEquals("跨租户同表名不应被连带失效", "B", cache.get(k2));
     }
 
-    static boolean schemaIsolated() {
+    @Test
+    public void schemaIsolated() {
         CaffeineQueryCache cache = new CaffeineQueryCache(100, 600);
         QueryCacheKey k1 = key("SELECT * FROM t_user", "tA", "sch1", "ds1");
         QueryCacheKey k2 = key("SELECT * FROM t_user", "tA", "sch2", "ds1");
         cache.put(k1, "A", "t_user", "tA");
         cache.put(k2, "B", "t_user", "tA");
         cache.evictByTable("t_user", "sch1", "tA", "ds1");
-        return cache.get(k1) == null && "B".equals(cache.get(k2));
+        Assert.assertNull(cache.get(k1));
+        Assert.assertEquals("跨 schema 同表名不应被连带失效", "B", cache.get(k2));
     }
 
-    static boolean maxSizeEviction() throws Exception {
+    @Test
+    public void maxSizeEviction() throws Exception {
         CaffeineQueryCache cache = new CaffeineQueryCache(2, 0);
         for (int i = 0; i < 50; i++) {
             cache.put(key("SELECT * FROM t_user WHERE id=" + i, "tA", null, "ds1"), "V" + i, "t_user", "tA");
@@ -89,80 +95,67 @@ public class CaffeineQueryCacheTest {
             Thread.sleep(10);
             size = cache.estimatedSize();
         }
-        return size <= 2;
+        Assert.assertTrue("容量上限应为 2，实际=" + size, size <= 2);
     }
 
-    static boolean ttlExpiry() throws Exception {
+    @Test
+    public void ttlExpiry() throws Exception {
         CaffeineQueryCache cache = new CaffeineQueryCache(100, 1);
         QueryCacheKey k = key("SELECT * FROM t_user WHERE id=1", "tA", null, "ds1");
         cache.put(k, "A", "t_user", "tA");
-        boolean hitBefore = "A".equals(cache.get(k));
+        Assert.assertEquals("A", cache.get(k));
         Thread.sleep(1500);
-        return hitBefore && cache.get(k) == null;
+        Assert.assertNull("TTL 到期后应失效", cache.get(k));
     }
 
-    static boolean noTtlKeepsValue() throws Exception {
+    @Test
+    public void noTtlKeepsValue() throws Exception {
         CaffeineQueryCache cache = new CaffeineQueryCache(100);
         QueryCacheKey k = key("SELECT * FROM t_user WHERE id=1", "tA", null, "ds1");
         cache.put(k, "A", "t_user", "tA");
         Thread.sleep(200);
-        return "A".equals(cache.get(k));
+        Assert.assertEquals("未设置 TTL 时值不应过期", "A", cache.get(k));
     }
 
-    static boolean clearAll() {
+    @Test
+    public void clearAll() {
         CaffeineQueryCache cache = new CaffeineQueryCache(100, 600);
         QueryCacheKey k = key("SELECT * FROM t_user", "tA", null, "ds1");
         cache.put(k, "A", "t_user", "tA");
         cache.clear();
-        return cache.get(k) == null && cache.estimatedSize() == 0;
+        Assert.assertNull(cache.get(k));
+        Assert.assertEquals(0L, cache.estimatedSize());
     }
 
-    static boolean notDistributed() {
-        CaffeineQueryCache cache = new CaffeineQueryCache(100, 600);
-        return !cache.isDistributed();
+    @Test
+    public void notDistributed() {
+        Assert.assertFalse(new CaffeineQueryCache(100, 600).isDistributed());
     }
 
-    static boolean customMode() {
+    @Test
+    public void customMode() {
         QueryCacheConfig cfg = QueryCacheConfig.custom(new CaffeineQueryCache(100, 600));
-        return cfg.getMode() == CacheMode.CUSTOM && cfg.getCache() instanceof CaffeineQueryCache;
+        Assert.assertEquals(CacheMode.CUSTOM, cfg.getMode());
+        Assert.assertTrue(cfg.getCache() instanceof CaffeineQueryCache);
     }
 
-    static boolean installAsLocalImplementation() {
+    @Test
+    public void installAsLocalImplementation() {
         CaffeineQueryCache.install();
         try {
             QueryCacheConfig cfg = QueryCacheConfig.local(100, 600, 0);
-            boolean ok = cfg.getMode() == CacheMode.LOCAL && cfg.getCache() instanceof CaffeineQueryCache;
-            return ok;
+            Assert.assertEquals(CacheMode.LOCAL, cfg.getMode());
+            Assert.assertTrue("install() 后 LOCAL 应产出 Caffeine 实现", cfg.getCache() instanceof CaffeineQueryCache);
         } finally {
             CaffeineQueryCache.uninstall();
         }
     }
 
-    static boolean uninstallRestoresSimple() {
+    @Test
+    public void uninstallRestoresSimple() {
         CaffeineQueryCache.install();
         CaffeineQueryCache.uninstall();
         QueryCache cache = QueryCacheConfig.local(100, 600, 0).getCache();
-        return !(cache instanceof CaffeineQueryCache);
-    }
-
-    public static void main(String[] args) throws Exception {
-        check("putGet", putGet());
-        check("evictByTable", evictByTable());
-        check("dataSourceIsolated", dataSourceIsolated());
-        check("tenantIsolated", tenantIsolated());
-        check("schemaIsolated", schemaIsolated());
-        check("maxSizeEviction", maxSizeEviction());
-        check("ttlExpiry", ttlExpiry());
-        check("noTtlKeepsValue", noTtlKeepsValue());
-        check("clearAll", clearAll());
-        check("notDistributed", notDistributed());
-        check("customMode", customMode());
-        check("installAsLocalImplementation", installAsLocalImplementation());
-        check("uninstallRestoresSimple", uninstallRestoresSimple());
-
-        System.out.println("\nCaffeineQueryCacheTest: " + pass + " passed, " + fail + " failed");
-        if (fail > 0) {
-            System.exit(1);
-        }
+        Assert.assertFalse("uninstall() 后应回退到内置实现", cache instanceof CaffeineQueryCache);
     }
 }

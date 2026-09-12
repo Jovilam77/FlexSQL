@@ -1,0 +1,221 @@
+---select1---
+SELECT `d_essay`.*, (`d_user`.`headPortrait`) AS `头像`, (`d_user`.`nickname`) AS `昵称`  FROM d_essay `d_essay` INNER JOIN d_user `d_user` ON `d_user`.`id` = `d_essay`.`userId` WHERE (`d_essay`.`userId` = '1111' OR (`d_user`.`nickname` = 'vicky' AND (`d_user`.`headPortrait` = '2222' OR `d_user`.`headPortrait` = '3333')) AND date_format(`d_essay`.`creationTime`, '%Y-%m-%d') = date_format(now(), '%Y-%m-%d')) ORDER BY `d_essay`.`id` DESC
+---select2---
+SELECT (`d_essay`.`id`) AS `序号`, (`d_essay`.`content`) AS `文章内容`, (`d_essay`.`creationTime`) AS `创建时间`, (`d_user`.`nickname`) AS `用户昵称`  FROM d_essay `d_essay` INNER JOIN d_user `d_user` ON `d_user`.`id` = `d_essay`.`userId` AND `d_user`.`id` > 1 WHERE (date_format(`d_essay`.`creationTime`, '%Y-%m-%d') > '2020-01-01' AND `d_user`.`nickname` = 'vicky')
+---select3---
+SELECT (count(`d_essay`.`id`)) AS `count`, `d_essay`.`categoryId`  FROM d_essay `d_essay` INNER JOIN d_user `d_user` ON `d_user`.`id` = `d_essay`.`userId` LEFT JOIN d_essay_category `d_essay_category` ON `d_essay_category`.`id` = `d_essay`.`categoryId` GROUP BY `d_essay`.`categoryId`  HAVING (`count` = 5)
+---selectLock MySQL8 SKIP LOCKED + page---
+SELECT `d_user`.`id`  FROM d_user `d_user` WHERE (`d_user`.`username` = 'jovi') ORDER BY `d_user`.`id` DESC   LIMIT 0, 10 FOR UPDATE SKIP LOCKED
+---selectLock MySQL5.7 SKIP LOCKED（应无锁）---
+SELECT `d_user`.`id`  FROM d_user `d_user` WHERE (`d_user`.`username` = 'jovi')
+---selectLock MySQL未知版本 SKIP LOCKED---
+SELECT `d_user`.`id`  FROM d_user `d_user` FOR UPDATE SKIP LOCKED
+---selectLock MySQL8 FOR UPDATE---
+SELECT `d_user`.`id`  FROM d_user `d_user` FOR UPDATE
+---selectLock PG13 SKIP LOCKED + page---
+SELECT "d_user"."id"  FROM d_user "d_user" ORDER BY "d_user"."id" DESC   LIMIT 10 OFFSET 0 FOR UPDATE SKIP LOCKED
+---selectLock PG9.4 SKIP LOCKED（应无锁）---
+SELECT "d_user"."id"  FROM d_user "d_user"
+---selectLock Oracle19 SKIP LOCKED + page（锁在最内层）---
+SELECT  *  FROM (SELECT  TB . * ,  ROWNUM RN FROM (SELECT "d_user"."id"  FROM d_user "d_user" WHERE ("d_user"."username" = 'jovi') ORDER BY "d_user"."id" DESC   FOR UPDATE SKIP LOCKED) TB  WHERE  ROWNUM  <= 10) WHERE RN > 0
+---selectLock Oracle10 SKIP LOCKED（应无锁）---
+SELECT "d_user"."id"  FROM d_user "d_user"
+---selectLock Oracle19 FOR UPDATE（无分页）---
+SELECT "d_user"."id"  FROM d_user "d_user" FOR UPDATE
+---selectLock Oracle19 SKIP LOCKED（无分页）---
+SELECT "d_user"."id"  FROM d_user "d_user" FOR UPDATE SKIP LOCKED
+---selectLock SQLServer2019 SKIP LOCKED + page（提示在最内层 FROM）---
+SELECT  *  FROM (SELECT  TOP 10 ROW_NUMBER()  OVER ( ORDER BY "d_user"."id" DESC  ) ROWNUM , "d_user"."id"  FROM d_user "d_user" WITH (UPDLOCK, READPAST) WHERE ("d_user"."username" = 'jovi') ORDER BY "d_user"."id" DESC  ) T WHERE  T. ROWNUM  > 0
+---selectLock SQLServer2019 FOR UPDATE（无分页）---
+SELECT "d_user"."id"  FROM d_user "d_user" WITH (UPDLOCK) WHERE ("d_user"."username" = 'jovi')
+---selectLock SQLServer2019 SKIP LOCKED + JOIN（两表均有提示）---
+SELECT "d_user"."id"  FROM d_user "d_user" WITH (UPDLOCK, READPAST) INNER JOIN d_role "d_role" WITH (UPDLOCK, READPAST) ON d_user.id = d_role.user_id
+---selectLock H2 FOR UPDATE---
+SELECT "d_user"."id"  FROM d_user "d_user" FOR UPDATE
+---selectLock H2 FOR UPDATE SKIP LOCKED---
+SELECT "d_user"."id"  FROM d_user "d_user" FOR UPDATE SKIP LOCKED
+---selectLock H2 FOR SHARE NOWAIT---
+SELECT "d_user"."id"  FROM d_user "d_user" FOR SHARE NOWAIT
+---selectLock HSQLDB FOR UPDATE---
+SELECT "d_user"."id"  FROM d_user "d_user" FOR UPDATE
+---selectLock HSQLDB FOR UPDATE NOWAIT---
+SELECT "d_user"."id"  FROM d_user "d_user" FOR UPDATE NOWAIT
+---selectLock HSQLDB FOR SHARE（应无锁）---
+SELECT "d_user"."id"  FROM d_user "d_user"
+---selectLock HSQLDB FOR UPDATE SKIP LOCKED（应无锁）---
+SELECT "d_user"."id"  FROM d_user "d_user"
+---selectLock DB2 FOR UPDATE---
+SELECT "d_user"."id"  FROM d_user "d_user" FOR UPDATE
+---selectLock DB2 FOR UPDATE SKIP LOCKED（-> SKIP LOCKED DATA）---
+SELECT "d_user"."id"  FROM d_user "d_user" FOR UPDATE SKIP LOCKED DATA
+---selectLock DB2 FOR UPDATE NOWAIT---
+SELECT "d_user"."id"  FROM d_user "d_user" FOR UPDATE NOWAIT
+---selectLock DB2 FOR SHARE（应无锁）---
+SELECT "d_user"."id"  FROM d_user "d_user"
+---variants MySQL8 FOR SHARE---
+SELECT `d_user`.`id`  FROM d_user `d_user` FOR SHARE
+---variants MySQL8 FOR SHARE NOWAIT---
+SELECT `d_user`.`id`  FROM d_user `d_user` FOR SHARE NOWAIT
+---variants MySQL8 FOR UPDATE NOWAIT---
+SELECT `d_user`.`id`  FROM d_user `d_user` FOR UPDATE NOWAIT
+---variants MySQL8 FOR UPDATE OF d_user, d_role---
+SELECT `d_user`.`id`  FROM d_user `d_user` FOR UPDATE OF d_user, d_role
+---variants MySQL8 FOR SHARE OF d_user SKIP LOCKED---
+SELECT `d_user`.`id`  FROM d_user `d_user` FOR SHARE OF d_user SKIP LOCKED
+---variants MySQL5.7 FOR SHARE（应无锁）---
+SELECT `d_user`.`id`  FROM d_user `d_user`
+---variants PG13 FOR SHARE NOWAIT---
+SELECT "d_user"."id"  FROM d_user "d_user" FOR SHARE NOWAIT
+---variants PG13 FOR UPDATE OF d_user, d_role---
+SELECT "d_user"."id"  FROM d_user "d_user" FOR UPDATE OF d_user, d_role
+---variants PG9.4 FOR UPDATE NOWAIT（应无锁）---
+SELECT "d_user"."id"  FROM d_user "d_user"
+---variants Oracle19 FOR UPDATE NOWAIT---
+SELECT "d_user"."id"  FROM d_user "d_user" FOR UPDATE NOWAIT
+---variants Oracle19 FOR SHARE（应无锁）---
+SELECT "d_user"."id"  FROM d_user "d_user"
+---variants Oracle19 FOR UPDATE OF d_user SKIP LOCKED + page（锁在最内层）---
+SELECT  *  FROM (SELECT  TB . * ,  ROWNUM RN FROM (SELECT "d_user"."id"  FROM d_user "d_user" ORDER BY "d_user"."id" DESC   FOR UPDATE SKIP LOCKED) TB  WHERE  ROWNUM  <= 10) WHERE RN > 0
+---variants SQLServer2019 FOR UPDATE NOWAIT（表提示 UPDLOCK, NOWAIT）---
+SELECT "d_user"."id"  FROM d_user "d_user" WITH (UPDLOCK, NOWAIT)
+---variants SQLServer2019 FOR SHARE（表提示 UPDLOCK）---
+SELECT "d_user"."id"  FROM d_user "d_user" WITH (UPDLOCK)
+---selectCte MySQL8 多CTE（子查询为 Select）---
+WITH cteA AS (SELECT `d_user`.`id`  FROM d_user `d_user` WHERE (`d_user`.`id` > 0)), cteB AS (SELECT `d_user`.`id`  FROM d_user `d_user` WHERE (`d_user`.`id` < 100)) SELECT `d_user`.`id`  FROM cteA `cteA`
+---selectCte MySQL8 原生SQL子查询CTE（含列定义）---
+WITH t (id, name) AS (SELECT id, name FROM d_user WHERE status = 1) SELECT `d_user`.`id`  FROM d_user `d_user`
+---selectCte MySQL8 递归CTE（builder UNION ALL）---
+WITH RECURSIVE counter AS (SELECT 1 AS n  UNION ALL SELECT n + 1  FROM counter `counter` WHERE (`n` < 5)) SELECT n  FROM counter `counter`
+---selectCte PG13 递归CTE（builder UNION ALL）---
+WITH RECURSIVE counter AS (SELECT 1 AS n  UNION ALL SELECT n + 1  FROM counter "counter" WHERE ("n" < 5)) SELECT n  FROM counter "counter"
+---selectCte Oracle19 递归CTE（builder UNION ALL）---
+WITH counter AS (SELECT 1 AS n  FROM dual "dual" UNION ALL SELECT n + 1  FROM counter "counter" WHERE ("n" < 5)) SELECT n  FROM counter "counter"
+---selectCte SQLServer 非递归CTE（无 RECURSIVE 关键字）---
+WITH cteS AS (SELECT "d_user"."id"  FROM d_user "d_user" WHERE ("d_user"."id" > 0)) SELECT "d_user"."id"  FROM cteS "cteS"
+---selectCte MySQL8 组合：CTE + 分页 + SKIP LOCKED---
+WITH active_user AS (SELECT `d_user`.`id`  FROM d_user `d_user` WHERE (`d_user`.`username` = 'jovi')) SELECT `d_user`.`id`  FROM active_user `active_user` ORDER BY `d_user`.`id` DESC   LIMIT 0, 10 FOR UPDATE SKIP LOCKED
+---selectCte SQLServer CTE + 分页（CTE 在包裹外）---
+WITH cteSP AS (SELECT "d_user"."id"  FROM d_user "d_user" WHERE ("d_user"."id" > 0)) SELECT  *  FROM (SELECT  TOP 10 ROW_NUMBER()  OVER ( ORDER BY "d_user"."id" ASC  ) ROWNUM , "d_user"."id"  FROM cteSP "cteSP" ORDER BY "d_user"."id" ASC  ) T WHERE  T. ROWNUM  > 0
+---selectCte MySQL8 顶层 UNION（去重）---
+SELECT `d_user`.`id`  FROM d_user `d_user` WHERE (`d_user`.`id` > 0) UNION SELECT `d_user`.`id`  FROM d_user `d_user` WHERE (`d_user`.`id` < 100)
+---selectCte MySQL8 顶层 UNION ALL（不去重）---
+SELECT `d_user`.`id`  FROM d_user `d_user` WHERE (`d_user`.`gender` = 1) UNION ALL SELECT `d_user`.`id`  FROM d_user `d_user` WHERE (`d_user`.`gender` = 0)
+---selectCte MySQL8 CTE + UNION ALL 组合---
+WITH active_users AS (SELECT `d_user`.`id`  FROM d_user `d_user` WHERE (`d_user`.`gender` = 1) UNION ALL SELECT `d_user`.`id`  FROM d_user `d_user` WHERE (`d_user`.`gender` = 0)) SELECT `d_user`.`id`  FROM active_users `active_users`
+---upsert MySQL 单行 setAll---
+INSERT INTO d_user(`id`, `username`, `headPortrait`, `nickname`, `gender`, `integral`)VALUES('10000', 'jovi', 'jovi.png', '麻花疼', '1', '100' ) ON DUPLICATE KEY UPDATE `username` = VALUES(`username`), `headPortrait` = VALUES(`headPortrait`), `nickname` = VALUES(`nickname`), `gender` = VALUES(`gender`), `integral` = VALUES(`integral`)
+---upsert MySQL 单行 doNothing---
+INSERT IGNORE INTO d_user(`id`, `username`, `headPortrait`, `nickname`, `gender`, `integral`)VALUES('10001', 'vicky', 'vicky.png', '薇琪', '0', '100' )
+---upsert MySQL 字面量+引用---
+INSERT INTO d_user(`id`, `username`, `headPortrait`, `nickname`, `gender`, `integral`)VALUES('10002', 'tom', 'tom.png', '汤姆', '1', '100' ) ON DUPLICATE KEY UPDATE `nickname` = '固定昵称', `headPortrait` = VALUES(`headPortrait`)
+---upsert PG 单行 setAll---
+INSERT INTO d_user("id", "username", "headPortrait", "nickname", "gender", "integral")VALUES('10003', 'lily', 'lily.png', '莉莉', 0, 100 ) ON CONFLICT ("id") DO UPDATE SET "username" = EXCLUDED."username", "headPortrait" = EXCLUDED."headPortrait", "nickname" = EXCLUDED."nickname", "gender" = EXCLUDED."gender", "integral" = EXCLUDED."integral"
+---upsert PG 单行 doNothing---
+INSERT INTO d_user("id", "username", "headPortrait", "nickname", "gender", "integral")VALUES('10004', 'lucy', 'lucy.png', '露西', 1, 100 ) ON CONFLICT ("id") DO NOTHING
+---upsert SQLite 单行 setAll---
+INSERT INTO d_user("id", "username", "headPortrait", "nickname", "gender", "integral")VALUES('10005', 'jack', 'jack.png', '杰克', 0, 100 ) ON CONFLICT ("id") DO UPDATE SET "username" = EXCLUDED."username", "headPortrait" = EXCLUDED."headPortrait", "nickname" = EXCLUDED."nickname", "gender" = EXCLUDED."gender", "integral" = EXCLUDED."integral"
+---upsert Oracle 单行 setAll（MERGE）---
+MERGE INTO d_user T USING (SELECT '10006'  AS "id", 'rose'  AS "username", 'rose.png'  AS "headPortrait", '萝丝'  AS "nickname", '1'  AS "gender", '100'  AS "integral" FROM DUAL) ON (T."id" = SRC."id") WHEN MATCHED THEN UPDATE SET T."username" = SRC."username", T."headPortrait" = SRC."headPortrait", T."nickname" = SRC."nickname", T."gender" = SRC."gender", T."integral" = SRC."integral" WHEN NOT MATCHED THEN INSERT ("id", "username", "headPortrait", "nickname", "gender", "integral")VALUES(SRC."id", SRC."username", SRC."headPortrait", SRC."nickname", SRC."gender", SRC."integral")
+---upsert Oracle 单行 doNothing（MERGE）---
+MERGE INTO d_user T USING (SELECT '10007'  AS "id", 'bob'  AS "username", 'bob.png'  AS "headPortrait", '鲍勃'  AS "nickname", '0'  AS "gender", '100'  AS "integral" FROM DUAL) ON (T."id" = SRC."id") WHEN NOT MATCHED THEN INSERT ("id", "username", "headPortrait", "nickname", "gender", "integral")VALUES(SRC."id", SRC."username", SRC."headPortrait", SRC."nickname", SRC."gender", SRC."integral")
+---upsert SQLServer 单行 setAll（MERGE）---
+MERGE INTO d_user T USING ((VALUES('10008', 'kate', 'kate.png', '凯特', '1', '100' )) AS SRC ("id", "username", "headPortrait", "nickname", "gender", "integral")) ON (T."id" = SRC."id") WHEN MATCHED THEN UPDATE SET T."username" = SRC."username", T."headPortrait" = SRC."headPortrait", T."nickname" = SRC."nickname", T."gender" = SRC."gender", T."integral" = SRC."integral" WHEN NOT MATCHED THEN INSERT ("id", "username", "headPortrait", "nickname", "gender", "integral")VALUES(SRC."id", SRC."username", SRC."headPortrait", SRC."nickname", SRC."gender", SRC."integral")
+---upsert SQLServer 单行 doNothing（MERGE）---
+MERGE INTO d_user T USING ((VALUES('10009', 'neo', 'neo.png', '尼奥', '0', '100' )) AS SRC ("id", "username", "headPortrait", "nickname", "gender", "integral")) ON (T."id" = SRC."id") WHEN NOT MATCHED THEN INSERT ("id", "username", "headPortrait", "nickname", "gender", "integral")VALUES(SRC."id", SRC."username", SRC."headPortrait", SRC."nickname", SRC."gender", SRC."integral")
+---upsert MySQL 多行 setAll---
+INSERT INTO d_user(`id`, `username`, `nickname`, `headPortrait`, `gender`, `integral`)VALUES('20001', 'a', 'A', 'a.png', 1, 10), ('20002', 'b', 'B', 'b.png', 0, 20) ON DUPLICATE KEY UPDATE `username` = VALUES(`username`), `nickname` = VALUES(`nickname`), `headPortrait` = VALUES(`headPortrait`), `gender` = VALUES(`gender`), `integral` = VALUES(`integral`)
+---upsert Oracle 多行 setAll（MERGE）---
+MERGE INTO d_user T USING (SELECT '20003'  AS "id", 'c'  AS "username", 'C'  AS "nickname", 'c.png'  AS "headPortrait", 1  AS "gender", 30  AS "integral" FROM DUAL UNION ALL SELECT '20004'  AS "id", 'd'  AS "username", 'D'  AS "nickname", 'd.png'  AS "headPortrait", 0  AS "gender", 40  AS "integral" FROM DUAL) ON (T."id" = SRC."id") WHEN MATCHED THEN UPDATE SET T."username" = SRC."username", T."nickname" = SRC."nickname", T."headPortrait" = SRC."headPortrait", T."gender" = SRC."gender", T."integral" = SRC."integral" WHEN NOT MATCHED THEN INSERT ("id", "username", "nickname", "headPortrait", "gender", "integral")VALUES(SRC."id", SRC."username", SRC."nickname", SRC."headPortrait", SRC."gender", SRC."integral")
+---upsert SQLServer 多行 setAll（MERGE）---
+MERGE INTO d_user T USING ((VALUES('20005', 'e', 'E', 'e.png', 1, 50), ('20006', 'f', 'F', 'f.png', 0, 60)) AS SRC ("id", "username", "nickname", "headPortrait", "gender", "integral")) ON (T."id" = SRC."id") WHEN MATCHED THEN UPDATE SET T."username" = SRC."username", T."nickname" = SRC."nickname", T."headPortrait" = SRC."headPortrait", T."gender" = SRC."gender", T."integral" = SRC."integral" WHEN NOT MATCHED THEN INSERT ("id", "username", "nickname", "headPortrait", "gender", "integral")VALUES(SRC."id", SRC."username", SRC."nickname", SRC."headPortrait", SRC."gender", SRC."integral")
+---upsert H2 单行 setAll（MERGE）---
+MERGE INTO d_user T USING ((VALUES('10010', 'h2a', 'h2a.png', 'H2甲', '0', '100' )) AS SRC ("id", "username", "headPortrait", "nickname", "gender", "integral")) ON (T."id" = SRC."id") WHEN MATCHED THEN UPDATE SET T."username" = SRC."username", T."headPortrait" = SRC."headPortrait", T."nickname" = SRC."nickname", T."gender" = SRC."gender", T."integral" = SRC."integral" WHEN NOT MATCHED THEN INSERT ("id", "username", "headPortrait", "nickname", "gender", "integral")VALUES(SRC."id", SRC."username", SRC."headPortrait", SRC."nickname", SRC."gender", SRC."integral")
+---upsert H2 单行 doNothing（MERGE）---
+MERGE INTO d_user T USING ((VALUES('10011', 'h2b', 'h2b.png', 'H2乙', '1', '100' )) AS SRC ("id", "username", "headPortrait", "nickname", "gender", "integral")) ON (T."id" = SRC."id") WHEN NOT MATCHED THEN INSERT ("id", "username", "headPortrait", "nickname", "gender", "integral")VALUES(SRC."id", SRC."username", SRC."headPortrait", SRC."nickname", SRC."gender", SRC."integral")
+---upsert H2 多行 setAll（MERGE）---
+MERGE INTO d_user T USING ((VALUES('20007', 'g', 'G', 'g.png', 1, 70), ('20008', 'h', 'H', 'h.png', 0, 80)) AS SRC ("id", "username", "nickname", "headPortrait", "gender", "integral")) ON (T."id" = SRC."id") WHEN MATCHED THEN UPDATE SET T."username" = SRC."username", T."nickname" = SRC."nickname", T."headPortrait" = SRC."headPortrait", T."gender" = SRC."gender", T."integral" = SRC."integral" WHEN NOT MATCHED THEN INSERT ("id", "username", "nickname", "headPortrait", "gender", "integral")VALUES(SRC."id", SRC."username", SRC."nickname", SRC."headPortrait", SRC."gender", SRC."integral")
+---upsert HSQLDB 单行 setAll（MERGE）---
+MERGE INTO d_user T USING ((VALUES('10012', 'hs1', 'hs1.png', 'HS甲', 0, 100 )) AS SRC ("id", "username", "headPortrait", "nickname", "gender", "integral")) ON (T."id" = SRC."id") WHEN MATCHED THEN UPDATE SET T."username" = SRC."username", T."headPortrait" = SRC."headPortrait", T."nickname" = SRC."nickname", T."gender" = SRC."gender", T."integral" = SRC."integral" WHEN NOT MATCHED THEN INSERT ("id", "username", "headPortrait", "nickname", "gender", "integral")VALUES(SRC."id", SRC."username", SRC."headPortrait", SRC."nickname", SRC."gender", SRC."integral")
+---upsert HSQLDB 单行 doNothing（MERGE）---
+MERGE INTO d_user T USING ((VALUES('10013', 'hs2', 'hs2.png', 'HS乙', 1, 100 )) AS SRC ("id", "username", "headPortrait", "nickname", "gender", "integral")) ON (T."id" = SRC."id") WHEN NOT MATCHED THEN INSERT ("id", "username", "headPortrait", "nickname", "gender", "integral")VALUES(SRC."id", SRC."username", SRC."headPortrait", SRC."nickname", SRC."gender", SRC."integral")
+---upsert HSQLDB 多行 setAll（MERGE）---
+MERGE INTO d_user T USING ((VALUES('20009', 'i', 'I', 'i.png', 1, 90), ('20010', 'j', 'J', 'j.png', 0, 100)) AS SRC ("id", "username", "nickname", "headPortrait", "gender", "integral")) ON (T."id" = SRC."id") WHEN MATCHED THEN UPDATE SET T."username" = SRC."username", T."nickname" = SRC."nickname", T."headPortrait" = SRC."headPortrait", T."gender" = SRC."gender", T."integral" = SRC."integral" WHEN NOT MATCHED THEN INSERT ("id", "username", "nickname", "headPortrait", "gender", "integral")VALUES(SRC."id", SRC."username", SRC."nickname", SRC."headPortrait", SRC."gender", SRC."integral")
+---upsert DB2 单行 setAll（MERGE）---
+MERGE INTO d_user T USING ((VALUES('10014', 'db1', 'db1.png', 'DB甲', 0, 100 )) AS SRC ("id", "username", "headPortrait", "nickname", "gender", "integral")) ON (T."id" = SRC."id") WHEN MATCHED THEN UPDATE SET T."username" = SRC."username", T."headPortrait" = SRC."headPortrait", T."nickname" = SRC."nickname", T."gender" = SRC."gender", T."integral" = SRC."integral" WHEN NOT MATCHED THEN INSERT ("id", "username", "headPortrait", "nickname", "gender", "integral")VALUES(SRC."id", SRC."username", SRC."headPortrait", SRC."nickname", SRC."gender", SRC."integral")
+---upsert DB2 单行 doNothing（MERGE）---
+MERGE INTO d_user T USING ((VALUES('10015', 'db2', 'db2.png', 'DB乙', 1, 100 )) AS SRC ("id", "username", "headPortrait", "nickname", "gender", "integral")) ON (T."id" = SRC."id") WHEN NOT MATCHED THEN INSERT ("id", "username", "headPortrait", "nickname", "gender", "integral")VALUES(SRC."id", SRC."username", SRC."headPortrait", SRC."nickname", SRC."gender", SRC."integral")
+---upsert DB2 多行 setAll（MERGE）---
+MERGE INTO d_user T USING ((VALUES('20011', 'k', 'K', 'k.png', 1, 110), ('20012', 'l', 'L', 'l.png', 0, 120)) AS SRC ("id", "username", "nickname", "headPortrait", "gender", "integral")) ON (T."id" = SRC."id") WHEN MATCHED THEN UPDATE SET T."username" = SRC."username", T."nickname" = SRC."nickname", T."headPortrait" = SRC."headPortrait", T."gender" = SRC."gender", T."integral" = SRC."integral" WHEN NOT MATCHED THEN INSERT ("id", "username", "nickname", "headPortrait", "gender", "integral")VALUES(SRC."id", SRC."username", SRC."nickname", SRC."headPortrait", SRC."gender", SRC."integral")
+---windowFun 1: ROW_NUMBER() OVER (PARTITION BY .. ORDER BY ..)---
+SELECT (row_number() OVER ( PARTITION BY `user_id`   ORDER BY `create_time` DESC)) AS `rn`  FROM d_essay `d_essay`
+---windowFun 2: SUM() OVER (PARTITION BY ..)---
+SELECT sum(`amount`) OVER ( PARTITION BY `dept_id` )  FROM d_essay `d_essay`
+---windowFun 3: RANK() OVER (ORDER BY ..) 无分区---
+SELECT rank() OVER ( ORDER BY `score` DESC)  FROM d_essay `d_essay`
+---windowFun 4: LAG() OVER (PARTITION BY .. ORDER BY ..) Lambda 列---
+SELECT lag(`d_user`.`nickname`, 1) OVER ( PARTITION BY `dept`   ORDER BY `d_user`.`id` ASC)  FROM d_user `d_user`
+---windowFun 5: 帧子句 ROWS BETWEEN ... AND CURRENT ROW---
+SELECT sum(`amount`) OVER ( ORDER BY `create_time` ASC ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)  FROM d_essay `d_essay`
+---audit INSERT---
+INSERT INTO t_audit(`name`, `create_by`, `create_time`, `update_by`, `update_time` )VALUES('测试审计', 'operator_001', '2026-09-13 00:21:06.223', NULL, NULL )
+[断言] create_by 含 operator_001 => true
+[断言] create_time 被填充（非 NULL）=> true
+[断言] bean.createBy 已回填 => true
+---audit UPDATE---
+UPDATE t_audit SET `id` = 1, `name` = '更新审计', `update_by` = 'operator_001', `update_time` = '2026-09-13 00:21:06.225'  WHERE (`t_audit`.`id` = 1)
+[断言] readonly 的 create_by 不在 SET => true
+[断言] readonly 的 create_time 不在 SET => true
+[断言] update_by 被刷新为 operator_001 => true
+---dynSchema 合法---
+SELECT (`t_audit`.`id`) AS `id`, (`t_audit`.`name`) AS `name`, (`t_audit`.`create_by`) AS `createBy`, (`t_audit`.`create_time`) AS `createTime`, (`t_audit`.`update_by`) AS `updateBy`, (`t_audit`.`update_time`) AS `updateTime`  FROM tenant_a.t_audit `t_audit` WHERE (`t_audit`.`id` = 1)
+[断言] 合法 schema 拼入 => true
+[断言] 非法 schema 被拦截 => 非法的动态Schema名称（可能存在SQL注入风险）：a'; DROP TABLE t_audit; --
+[断言] 非法 schema 抛异常 => true
+---tenant INSERT---
+INSERT INTO t_tenant(`name`, `tenant_id` )VALUES('租户数据', 't-abc' )
+[断言] INSERT 含 tenant_id 列 => true
+[断言] INSERT 写入上下文租户 t-abc => true
+[断言] INSERT 忽略业务层 evil => true
+---tenant SELECT（无 where）---
+SELECT  FROM t_tenant `t_tenant` WHERE (`t_tenant`.`tenant_id` = 't-abc')
+[断言] SELECT 无 where 时追加租户过滤 => true
+---tenant SELECT（有 where）---
+SELECT  FROM t_tenant `t_tenant` WHERE (`t_tenant`.`tenant_id` = 't-abc') AND (`t_tenant`.`name` = '租户数据')
+[断言] SELECT 有 where 时仍强制租户过滤 => true
+---tenant UPDATE---
+UPDATE t_tenant SET `id` = 1, `name` = '更新'  WHERE (`t_tenant`.`tenant_id` = 't-abc') AND (`t_tenant`.`id` = 1)
+[断言] UPDATE 的 SET 跳过 tenant_id => true
+[断言] UPDATE 的 WHERE 强制租户过滤 => true
+---tenant DELETE---
+DELETE FROM t_tenant WHERE (`t_tenant`.`tenant_id` = 't-abc') AND (`t_tenant`.`id` = 1)
+[断言] DELETE 的 WHERE 强制租户过滤 => true
+---join + schema + tenant---
+SELECT (`o`.`id`) AS `id`, (`o`.`order_no`) AS `orderNo`, (`o`.`tenant_id`) AS `tenantId`, (`jt`.`id`) AS `jt_id`, (`jt`.`name`) AS `jt_name`, (`jt`.`tenant_id`) AS `jt_tenantId`  FROM tenant_a.t_order `o` INNER JOIN tenant_a.t_tenant `jt` ON `jt`.`id` = `o`.`tenant_id` AND (`jt`.`tenant_id` = 't-abc') WHERE (`o`.`tenant_id` = 't-abc')
+[断言] 主表带动态 schema 前缀 => true
+[断言] 关联表带动态 schema 前缀 => true
+[断言] 关联表 ON 子句追加租户过滤 => true
+[断言] 主表 WHERE 强制租户过滤 => true
+---union + schema---
+SELECT  FROM tenant_a.t_tenant `t_tenant` WHERE (`t_tenant`.`tenant_id` = 't-abc') UNION SELECT  FROM tenant_a.t_tenant `t_tenant` WHERE (`t_tenant`.`tenant_id` = 't-abc')
+[断言] UNION 子查询主表覆盖动态 schema（出现两次） => true
+---exists(Select)---
+SELECT  FROM t_order `o` WHERE ( EXISTS (SELECT  FROM t_tenant `t_tenant` WHERE (`t_tenant`.`tenant_id` = 't-abc')))
+[断言] EXISTS 子查询生成 => true
+---notExists(raw)---
+SELECT  FROM t_order `o` WHERE ( NOT EXISTS (SELECT 1 FROM t_tenant WHERE tenant_id = 'x'))
+[断言] NOT EXISTS 原生子查询生成 => true
+---exists AND combine---
+SELECT  FROM t_order `o` WHERE (`o`.`order_no` = 'k' AND  EXISTS (SELECT  FROM t_tenant `t_tenant` WHERE (`t_tenant`.`tenant_id` = 't-abc')))
+[断言] EXISTS 与 AND 组合 => true
+---in(Select)---
+SELECT  FROM t_order `o` WHERE (`o`.`order_no` IN (SELECT  FROM t_tenant `t_tenant` WHERE (`t_tenant`.`tenant_id` = 't-abc'))
+[断言] IN 子查询生成 => true
+---notIn(Select)---
+SELECT  FROM t_order `o` WHERE (`o`.`order_no` NOT IN (SELECT  FROM t_tenant `t_tenant` WHERE (`t_tenant`.`tenant_id` = 't-abc'))
+[断言] NOT IN 子查询生成 => true
+---eq(Select) 比较子查询---
+SELECT  FROM t_order `o` WHERE (`o`.`order_no` = (SELECT  FROM t_tenant `t_tenant` WHERE (`t_tenant`.`tenant_id` = 't-abc')))
+[断言] 比较子查询生成 (列 = (子查询)) => true
+---in/eq(Select) + 组合---
+SELECT  FROM t_order `o` WHERE (`o`.`order_no` = (SELECT  FROM t_tenant `t_tenant` WHERE (`t_tenant`.`tenant_id` = 't-abc')) AND `o`.`order_no` > (SELECT  FROM t_tenant `t_tenant` WHERE (`t_tenant`.`tenant_id` = 't-abc')))
+[断言] 子查询流式组合 => true

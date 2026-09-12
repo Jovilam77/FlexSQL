@@ -2,9 +2,12 @@ package cn.vonce.sql.config;
 
 import cn.vonce.sql.cache.QueryCacheConfig;
 import cn.vonce.sql.cache.SqlBeanServices;
+import org.junit.After;
+import org.junit.Assert;
+import org.junit.Test;
 
 /**
- * {@link FlexsqlCacheProperties} 单元测试（main 风格）。
+ * {@link FlexsqlCacheProperties} 单元测试（JUnit）。
  * <p>校验核心翻译逻辑：</p>
  * <ul>
  *   <li>默认全 null → {@link FlexsqlCacheProperties#isEmpty()} 返回 true</li>
@@ -19,107 +22,89 @@ import cn.vonce.sql.cache.SqlBeanServices;
  */
 public class FlexsqlCachePropertiesTest {
 
-    public static boolean defaultIsEmpty() {
-        return new FlexsqlCacheProperties().isEmpty();
+    /** 复位全局缓存配置，避免污染同 JVM 的其它用例。 */
+    @After
+    public void resetGlobalCacheConfig() {
+        SqlBeanServices.setCacheConfig(QueryCacheConfig.off());
     }
 
-    public static boolean localOnlyMakesNotEmpty() {
+    @Test
+    public void defaultIsEmpty() {
+        Assert.assertTrue(new FlexsqlCacheProperties().isEmpty());
+    }
+
+    @Test
+    public void localOnlyMakesNotEmpty() {
         FlexsqlCacheProperties p = new FlexsqlCacheProperties();
         p.getLocal().setMaximumSize(500L);
-        return !p.isEmpty() && p.toSqlBeanConfig().getLocalMaximumSize() == 500L;
+        Assert.assertFalse(p.isEmpty());
+        Assert.assertEquals(Long.valueOf(500L), p.toSqlBeanConfig().getLocalMaximumSize());
     }
 
-    public static boolean metricsOnlyMakesNotEmpty() {
+    @Test
+    public void metricsOnlyMakesNotEmpty() {
         FlexsqlCacheProperties p = new FlexsqlCacheProperties();
         p.setMetricsLogIntervalSeconds(30L);
         SqlBeanConfig cfg = p.toSqlBeanConfig();
         // 注意：SqlBeanConfig.getCacheMetricsLogIntervalSeconds() 默认返回 60L（永远不会返 null）；
         // 这里只校验 isEmpty() = false + translation 链路不断裂
-        return !p.isEmpty() && cfg.getCacheMetricsLogIntervalSeconds() != null;
+        Assert.assertFalse(p.isEmpty());
+        Assert.assertNotNull(cfg.getCacheMetricsLogIntervalSeconds());
     }
 
-    public static boolean modeOnlyTranslatesCorrectly() {
+    @Test
+    public void modeOnlyTranslatesCorrectly() {
         FlexsqlCacheProperties p = new FlexsqlCacheProperties();
         p.setMode(CacheMode.LOCAL);
         SqlBeanConfig cfg = p.toSqlBeanConfig();
-        return cfg.getCacheMode() == CacheMode.LOCAL
-                && cfg.getLocalMaximumSize() == null
-                && cfg.getLocalExpireAfterWrite() == null
-                && cfg.getLocalExpireAfterAccess() == null
-                && cfg.getRedisExpireAfterWrite() == null;
+        Assert.assertEquals(CacheMode.LOCAL, cfg.getCacheMode());
+        Assert.assertNull(cfg.getLocalMaximumSize());
+        Assert.assertNull(cfg.getLocalExpireAfterWrite());
+        Assert.assertNull(cfg.getLocalExpireAfterAccess());
+        Assert.assertNull(cfg.getRedisExpireAfterWrite());
     }
 
-    public static boolean allLocalFieldsTranslate() {
+    @Test
+    public void allLocalFieldsTranslate() {
         FlexsqlCacheProperties p = new FlexsqlCacheProperties();
         p.setMode(CacheMode.LOCAL);
         p.getLocal().setMaximumSize(2000L);
         p.getLocal().setExpireAfterWrite(300L);
         p.getLocal().setExpireAfterAccess(60L);
         SqlBeanConfig cfg = p.toSqlBeanConfig();
-        return cfg.getCacheMode() == CacheMode.LOCAL
-                && cfg.getLocalMaximumSize() == 2000L
-                && cfg.getLocalExpireAfterWrite() == 300L
-                && cfg.getLocalExpireAfterAccess() == 60L;
+        Assert.assertEquals(CacheMode.LOCAL, cfg.getCacheMode());
+        Assert.assertEquals(Long.valueOf(2000L), cfg.getLocalMaximumSize());
+        Assert.assertEquals(Long.valueOf(300L), cfg.getLocalExpireAfterWrite());
+        Assert.assertEquals(Long.valueOf(60L), cfg.getLocalExpireAfterAccess());
     }
 
-    public static boolean redisFieldTranslates() {
+    @Test
+    public void redisFieldTranslates() {
         FlexsqlCacheProperties p = new FlexsqlCacheProperties();
         p.getRedis().setExpireAfterWrite(900L);
         SqlBeanConfig cfg = p.toSqlBeanConfig();
-        return cfg.getCacheMode() == null
-                && cfg.getRedisExpireAfterWrite() == 900L;
+        Assert.assertNull(cfg.getCacheMode());
+        Assert.assertEquals(Long.valueOf(900L), cfg.getRedisExpireAfterWrite());
     }
 
-    public static boolean toSqlBeanConfigReturnsFreshEachTime() {
+    @Test
+    public void toSqlBeanConfigReturnsFreshEachTime() {
         FlexsqlCacheProperties p = new FlexsqlCacheProperties();
         p.setMode(CacheMode.LOCAL);
         SqlBeanConfig cfg1 = p.toSqlBeanConfig();
         SqlBeanConfig cfg2 = p.toSqlBeanConfig();
-        return cfg1 != cfg2 && cfg1.getCacheMode() == CacheMode.LOCAL && cfg2.getCacheMode() == CacheMode.LOCAL;
+        Assert.assertNotSame(cfg1, cfg2);
+        Assert.assertEquals(CacheMode.LOCAL, cfg1.getCacheMode());
+        Assert.assertEquals(CacheMode.LOCAL, cfg2.getCacheMode());
     }
 
-    public static boolean emptyDoesNotTouchDefaultCacheConfig() {
+    @Test
+    public void emptyDoesNotTouchDefaultCacheConfig() {
         SqlBeanServices.setCacheConfig(QueryCacheConfig.local(1234, 60, 0));
         FlexsqlCacheProperties p = new FlexsqlCacheProperties();
-        boolean isEmpty = p.isEmpty();
         // 注意：我们不会自动调用 apply；这里仅校验 isEmpty + translation 行为
-        SqlBeanConfig cfg = p.toSqlBeanConfig();
-        boolean cacheUnchangedAfterTouch = SqlBeanServices.getCacheConfig().getMode() != CacheMode.OFF;
-        return isEmpty && cfg.getCacheMode() == null && cacheUnchangedAfterTouch;
-    }
-
-    public static void main(String[] args) {
-        // 复位起步状态
-        SqlBeanServices.setCacheConfig(QueryCacheConfig.off());
-
-        check("defaultIsEmpty", defaultIsEmpty());
-        check("localOnlyMakesNotEmpty", localOnlyMakesNotEmpty());
-        check("metricsOnlyMakesNotEmpty", metricsOnlyMakesNotEmpty());
-        check("modeOnlyTranslatesCorrectly", modeOnlyTranslatesCorrectly());
-        check("allLocalFieldsTranslate", allLocalFieldsTranslate());
-        check("redisFieldTranslates", redisFieldTranslates());
-        check("toSqlBeanConfigReturnsFreshEachTime", toSqlBeanConfigReturnsFreshEachTime());
-        check("emptyDoesNotTouchDefaultCacheConfig", emptyDoesNotTouchDefaultCacheConfig());
-
-        // 复位，避免影响其他测试
-        SqlBeanServices.setCacheConfig(QueryCacheConfig.off());
-
-        System.out.println("passed, " + passed + " failed, " + failed);
-        if (failed > 0) {
-            System.exit(1);
-        }
-    }
-
-    private static int passed = 0;
-    private static int failed = 0;
-
-    private static void check(String name, boolean cond) {
-        if (cond) {
-            passed++;
-            System.out.println("PASS: " + name);
-        } else {
-            failed++;
-            System.out.println("FAIL: " + name);
-        }
+        Assert.assertTrue(p.isEmpty());
+        Assert.assertNull(p.toSqlBeanConfig().getCacheMode());
+        Assert.assertNotEquals(CacheMode.OFF, SqlBeanServices.getCacheConfig().getMode());
     }
 }

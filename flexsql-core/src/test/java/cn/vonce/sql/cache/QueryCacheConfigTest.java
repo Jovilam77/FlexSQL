@@ -3,32 +3,27 @@ package cn.vonce.sql.cache;
 import cn.vonce.sql.config.CacheMode;
 import cn.vonce.sql.config.SqlBeanConfig;
 import cn.vonce.sql.service.SqlBeanService;
+import org.junit.After;
+import org.junit.Assert;
+import org.junit.Test;
 
 import java.lang.reflect.InvocationHandler;
-import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
+import java.util.Collections;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.Collections;
 
 /**
- * QueryCacheConfig / SqlBeanServices 全局开关单元测试（main 风格，无需 DB）。
+ * QueryCacheConfig / SqlBeanServices 全局开关单元测试（JUnit）。
  */
 public class QueryCacheConfigTest {
 
-    static int pass = 0;
-    static int fail = 0;
-
-    static int check(String name, boolean ok) {
-        if (ok) {
-            pass++;
-            System.out.println("  PASS " + name);
-        } else {
-            fail++;
-            System.out.println("  FAIL " + name);
-        }
-        return ok ? 1 : 0;
+    /** 复位全局状态（缓存模式 + 可插拔本地缓存工厂），避免污染同 JVM 的其它用例。 */
+    @After
+    public void resetGlobalState() {
+        QueryCacheConfig.setLocalCacheFactory(null);
+        SqlBeanServices.setCacheConfig(QueryCacheConfig.off());
     }
 
     @SuppressWarnings("unchecked")
@@ -106,100 +101,103 @@ public class QueryCacheConfigTest {
         }
     }
 
-    public static void main(String[] args) {
-        // ---- QueryCacheConfig 工厂 ----
+    @Test
+    public void factoryCreatesOffLocalAndRedisConfigs() {
         QueryCacheConfig off = QueryCacheConfig.off();
-        check("off.mode", off.getMode() == CacheMode.OFF);
-        check("off.cacheNull", off.getCache() == null);
+        Assert.assertEquals(CacheMode.OFF, off.getMode());
+        Assert.assertNull("OFF 模式不应带缓存实现", off.getCache());
 
         QueryCacheConfig local = QueryCacheConfig.local(100, 600, 0);
-        check("local.mode", local.getMode() == CacheMode.LOCAL);
-        check("local.isSimple", local.getCache() instanceof SimpleQueryCache);
-        check("local.notDistributed", !local.getCache().isDistributed());
+        Assert.assertEquals(CacheMode.LOCAL, local.getMode());
+        Assert.assertTrue(local.getCache() instanceof SimpleQueryCache);
+        Assert.assertFalse("本地缓存不应标记为分布式", local.getCache().isDistributed());
 
         QueryCacheConfig redis = QueryCacheConfig.redis(new MemRedisOps(), 600);
-        check("redis.mode", redis.getMode() == CacheMode.REDIS);
-        check("redis.isRedis", redis.getCache() instanceof RedisQueryCache);
-        check("redis.distributed", redis.getCache().isDistributed());
+        Assert.assertEquals(CacheMode.REDIS, redis.getMode());
+        Assert.assertTrue(redis.getCache() instanceof RedisQueryCache);
+        Assert.assertTrue("Redis 缓存应标记为分布式", redis.getCache().isDistributed());
+    }
 
-        // ---- custom：外部实现注入 ----
+    @Test
+    public void customModeUsesExternalImplementation() {
         StubQueryCache stub = new StubQueryCache();
         QueryCacheConfig custom = QueryCacheConfig.custom(stub);
-        check("custom.mode", custom.getMode() == CacheMode.CUSTOM);
-        check("custom.sameInstance", custom.getCache() == stub);
-        check("custom.nullBecomesOff", QueryCacheConfig.custom(null).getMode() == CacheMode.OFF);
+        Assert.assertEquals(CacheMode.CUSTOM, custom.getMode());
+        Assert.assertSame("CUSTOM 模式应直接持有外部实现", stub, custom.getCache());
+        Assert.assertEquals("custom(null) 应退化为 OFF", CacheMode.OFF, QueryCacheConfig.custom(null).getMode());
+    }
 
-        // ---- 可插拔本地缓存工厂（Caffeine 等可选模块通过它替换 LOCAL 实现）----
+    /** 可插拔本地缓存工厂（Caffeine 等可选模块通过它替换 LOCAL 实现） */
+    @Test
+    public void pluggableLocalCacheFactory() {
+        StubQueryCache stub = new StubQueryCache();
         QueryCacheFactory factory = (maxSize, writeTtl, accessTtl) -> stub;
-        QueryCacheConfig.setLocalCacheFactory(factory);
-        check("factory.registered", QueryCacheConfig.getLocalCacheFactory() == factory);
-        QueryCacheConfig localByFactory = QueryCacheConfig.local(100, 600, 0);
-        check("factory.usedByLocal", localByFactory.getCache() == stub);
-        check("factory.keepsLocalMode", localByFactory.getMode() == CacheMode.LOCAL);
-        QueryCacheConfig.setLocalCacheFactory(null);
-        check("factory.unregistered", QueryCacheConfig.getLocalCacheFactory() == null);
-        check("factory.fallbackToSimple", QueryCacheConfig.local(100, 600, 0).getCache() instanceof SimpleQueryCache);
+        try {
+            QueryCacheConfig.setLocalCacheFactory(factory);
+            Assert.assertSame(factory, QueryCacheConfig.getLocalCacheFactory());
 
-        // ---- 全局开关驱动 SqlBeanServices.caching ----
+            QueryCacheConfig localByFactory = QueryCacheConfig.local(100, 600, 0);
+            Assert.assertSame("LOCAL 应改用工厂产出实现", stub, localByFactory.getCache());
+            Assert.assertEquals("换实现不应改变模式语义", CacheMode.LOCAL, localByFactory.getMode());
+        } finally {
+            QueryCacheConfig.setLocalCacheFactory(null);
+        }
+        Assert.assertNull(QueryCacheConfig.getLocalCacheFactory());
+        Assert.assertTrue("卸载工厂后应回退到内置 SimpleQueryCache",
+                QueryCacheConfig.local(100, 600, 0).getCache() instanceof SimpleQueryCache);
+    }
+
+    /** 全局开关驱动 SqlBeanServices.caching */
+    @Test
+    public void globalSwitchDrivesSqlBeanServices() {
         SqlBeanServices.setCacheConfig(QueryCacheConfig.off());
         SqlBeanService<Object, Object> d = dummy();
-        check("off.returnsDelegate", SqlBeanServices.caching(d) == d);
-        check("null.delegate", SqlBeanServices.caching(null) == null);
-        check("getCacheConfig.off", SqlBeanServices.getCacheConfig().getMode() == CacheMode.OFF);
+        Assert.assertSame("OFF 模式应原样返回 delegate", d, SqlBeanServices.caching(d));
+        Assert.assertNull(SqlBeanServices.caching(null));
+        Assert.assertEquals(CacheMode.OFF, SqlBeanServices.getCacheConfig().getMode());
 
-        SqlBeanServices.setCacheConfig(local);
-        check("switchToLocal", SqlBeanServices.getCacheConfig().getMode() == CacheMode.LOCAL);
+        SqlBeanServices.setCacheConfig(QueryCacheConfig.local(100, 600, 0));
+        Assert.assertEquals(CacheMode.LOCAL, SqlBeanServices.getCacheConfig().getMode());
         // 注：local/redis 模式的端到端包裹（需真实 SqlBeanMeta）留待带 DB 的集成测试。
+    }
 
-        SqlBeanServices.setCacheConfig(QueryCacheConfig.off()); // 复位，确保不影响其它测试
-
-        // ===== applyFromSqlBeanConfig：SqlBeanConfig → 全局 QueryCacheConfig =====
+    /** SqlBeanConfig → 全局 QueryCacheConfig 的翻译与优先级 */
+    @Test
+    public void applyFromSqlBeanConfig() {
+        // 1) 正常应用
         SqlBeanConfig cfgLocal = new SqlBeanConfig();
         cfgLocal.setCacheMode(CacheMode.LOCAL);
         cfgLocal.setLocalMaximumSize(500L);
         cfgLocal.setLocalExpireAfterWrite(300L);
-        // 没调编程式 setCacheConfig，先复位 OFF
         SqlBeanServices.setCacheConfig(QueryCacheConfig.off());
-        boolean applied1 = SqlBeanServices.applyFromSqlBeanConfig(cfgLocal, null);
-        check("apply.localApplied", applied1);
-        check("apply.localMode", SqlBeanServices.getCacheConfig().getMode() == CacheMode.LOCAL);
-        check("apply.localMaxSize", ((SimpleQueryCache) SqlBeanServices.getCacheConfig().getCache()).getClass() == SimpleQueryCache.class);
+        Assert.assertTrue(SqlBeanServices.applyFromSqlBeanConfig(cfgLocal, null));
+        Assert.assertEquals(CacheMode.LOCAL, SqlBeanServices.getCacheConfig().getMode());
+        Assert.assertTrue(SqlBeanServices.getCacheConfig().getCache() instanceof SimpleQueryCache);
 
-        // 用户没设 cacheMode → 视为未配置，不写 OFF 也不动其他
+        // 2) 用户没设 cacheMode → 视为未配置，不写 OFF 也不动其他
         SqlBeanServices.setCacheConfig(QueryCacheConfig.off());
         SqlBeanConfig cfgEmpty = new SqlBeanConfig();
         cfgEmpty.setToUpperCase(true); // 任意非 cache 字段
-        boolean applied2 = SqlBeanServices.applyFromSqlBeanConfig(cfgEmpty, null);
-        check("apply.emptyNotApplied", !applied2);
-        check("apply.emptyKeepsOff", SqlBeanServices.getCacheConfig().getMode() == CacheMode.OFF);
+        Assert.assertFalse(SqlBeanServices.applyFromSqlBeanConfig(cfgEmpty, null));
+        Assert.assertEquals(CacheMode.OFF, SqlBeanServices.getCacheConfig().getMode());
 
-        // 编程式优先：已 setCacheConfig(LOCAL) 时 Bean 即使是 REDIS 也不覆盖
+        // 3) 编程式优先：已 setCacheConfig(LOCAL) 时 Bean 即使是 REDIS 也不覆盖
         SqlBeanServices.setCacheConfig(QueryCacheConfig.local(100, 60, 0));
         SqlBeanConfig cfgRedis = new SqlBeanConfig();
         cfgRedis.setCacheMode(CacheMode.REDIS);
-        boolean applied3 = SqlBeanServices.applyFromSqlBeanConfig(cfgRedis, new MemRedisOps());
-        check("apply.programmaticWinsNoCover", !applied3);
-        check("apply.programmaticKeepsLocal", SqlBeanServices.getCacheConfig().getMode() == CacheMode.LOCAL);
+        Assert.assertFalse(SqlBeanServices.applyFromSqlBeanConfig(cfgRedis, new MemRedisOps()));
+        Assert.assertEquals("编程式配置优先，不应被 Bean 覆盖",
+                CacheMode.LOCAL, SqlBeanServices.getCacheConfig().getMode());
 
-        // REDIS 模式缺 RedisOps → 应用但降级 OFF
+        // 4) REDIS 模式缺 RedisOps → 应用但降级 OFF
         SqlBeanServices.setCacheConfig(QueryCacheConfig.off());
         SqlBeanConfig cfgRedisNoImpl = new SqlBeanConfig();
         cfgRedisNoImpl.setCacheMode(CacheMode.REDIS);
-        boolean applied4 = SqlBeanServices.applyFromSqlBeanConfig(cfgRedisNoImpl, null);
-        check("apply.redisWithoutImplStillApplied", applied4);
-        check("apply.redisDowngradeOff", SqlBeanServices.getCacheConfig().getMode() == CacheMode.OFF);
+        Assert.assertTrue(SqlBeanServices.applyFromSqlBeanConfig(cfgRedisNoImpl, null));
+        Assert.assertEquals("缺 RedisOps 应降级 OFF", CacheMode.OFF, SqlBeanServices.getCacheConfig().getMode());
 
-        // null config 直接 no-op
+        // 5) null config 直接 no-op
         SqlBeanServices.setCacheConfig(QueryCacheConfig.off());
-        boolean applied5 = SqlBeanServices.applyFromSqlBeanConfig(null, null);
-        check("apply.nullConfigNoOp", !applied5);
-
-        // 复位为 OFF
-        SqlBeanServices.setCacheConfig(QueryCacheConfig.off());
-
-        System.out.println("\nQueryCacheConfigTest: " + pass + " passed, " + fail + " failed");
-        if (fail > 0) {
-            System.exit(1);
-        }
+        Assert.assertFalse(SqlBeanServices.applyFromSqlBeanConfig(null, null));
     }
 }

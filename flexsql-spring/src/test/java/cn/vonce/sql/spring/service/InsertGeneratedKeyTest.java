@@ -8,6 +8,10 @@ import org.apache.ibatis.session.SqlSession;
 import org.apache.ibatis.session.SqlSessionFactory;
 import org.apache.ibatis.session.SqlSessionFactoryBuilder;
 import org.h2.jdbcx.JdbcDataSource;
+import org.junit.After;
+import org.junit.Assert;
+import org.junit.Before;
+import org.junit.Test;
 import org.mybatis.spring.SqlSessionTemplate;
 import org.mybatis.spring.transaction.SpringManagedTransactionFactory;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
@@ -27,24 +31,17 @@ import java.util.Arrays;
  * 随后 {@code prepareStatement} 抛 “connection closed”，被包装为
  * {@code 插入并取回自增id失败: connection closed}。</p>
  * <p>覆盖场景：① 无 Spring 事务（原先必然失败）；② 存在 Spring 事务（连接应复用事务连接并随事务回滚）。</p>
- * <p>直接以 main 方式运行（与项目内其它测试风格一致）。</p>
+ * <p>每个用例在 {@code @Before} 重建 Spring 上下文并重建 H2 表，因此自增 id 期望值（1/2/3）
+ * 是确定的，且用例之间互不依赖。</p>
  */
-public class InsertGeneratedKeyIT {
+public class InsertGeneratedKeyTest {
 
     private static final String URL = "jdbc:h2:mem:flexsql_insert_it;DB_CLOSE_DELAY=-1";
 
-    static int passed = 0;
-    static int failed = 0;
-
-    static void check(boolean cond, String msg) {
-        if (cond) {
-            passed++;
-            System.out.println("[PASS] " + msg);
-        } else {
-            failed++;
-            System.out.println("[FAIL] " + msg);
-        }
-    }
+    private AnnotationConfigApplicationContext ctx;
+    private ItUserService service;
+    private SqlSessionTemplate rawTemplate;
+    private DataSourceTransactionManager txManager;
 
     /**
      * 使用 lite 配置（不加 {@code @Configuration}）：Spring 4.1 的 CGLIB 在 JDK9+ 上需要额外
@@ -97,6 +94,24 @@ public class InsertGeneratedKeyIT {
         }
     }
 
+    @Before
+    public void setUp() throws Exception {
+        ctx = new AnnotationConfigApplicationContext();
+        ctx.register(Ctx.class);
+        ctx.refresh();
+        createTable(ctx.getBean(DataSource.class));
+        service = ctx.getBean(ItUserService.class);
+        rawTemplate = new SqlSessionTemplate(ctx.getBean(SqlSessionFactory.class));
+        txManager = ctx.getBean(DataSourceTransactionManager.class);
+    }
+
+    @After
+    public void tearDown() {
+        if (ctx != null) {
+            ctx.close();
+        }
+    }
+
     private static void createTable(DataSource dataSource) throws Exception {
         try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
             statement.execute("DROP TABLE IF EXISTS it_user");
@@ -107,76 +122,74 @@ public class InsertGeneratedKeyIT {
         }
     }
 
-    public static void main(String[] args) throws Exception {
-        AnnotationConfigApplicationContext ctx = new AnnotationConfigApplicationContext();
-        ctx.register(Ctx.class);
-        ctx.refresh();
-
-        DataSource dataSource = ctx.getBean(DataSource.class);
-        createTable(dataSource);
-
-        ItUserService service = ctx.getBean(ItUserService.class);
-
-        // 0. 复现根因：无 Spring 事务时 SqlSessionTemplate#getConnection() 返回的连接已被关闭
-        SqlSessionTemplate rawTemplate = new SqlSessionTemplate(ctx.getBean(SqlSessionFactory.class));
+    /** 复现根因：无 Spring 事务时 SqlSessionTemplate#getConnection() 返回的连接已被关闭。 */
+    @Test
+    public void sqlSessionTemplateConnectionIsClosedWithoutTransaction() throws Exception {
         Connection rawConn = rawTemplate.getConnection();
-        check(rawConn.isClosed(),
-                "根因复现：无 Spring 事务时 SqlSessionTemplate#getConnection() 返回的连接已关闭（旧实现的报错来源）");
+        Assert.assertTrue("根因复现：无 Spring 事务时 SqlSessionTemplate#getConnection() 返回的连接已关闭（旧实现的报错来源）",
+                rawConn.isClosed());
+    }
 
-        // 1. 无 Spring 事务：单条插入应成功并回填自增 id
+    /** 无 Spring 事务：单条插入应成功并回填自增 id。 */
+    @Test
+    public void singleInsertReturnsGeneratedKey() {
         ItUser first = new ItUser("Alice", 18);
-        int count = 0;
-        String error = null;
+        int count;
         try {
             count = service.insert(first);
         } catch (SqlBeanException e) {
-            error = e.getMessage();
+            Assert.fail("无事务：insert 不应抛异常，实际=" + e.getMessage());
+            return;
         }
-        check(error == null, "无事务：insert 不应抛异常" + (error == null ? "" : "，实际=" + error));
-        check(count == 1, "无事务：insert 返回受影响行数=1，实际=" + count);
-        check(first.getId() != null && first.getId() == 1L,
-                "无事务：自增 id 已回填到实体，实际=" + first.getId());
+        Assert.assertEquals("无事务：insert 返回受影响行数应为 1", 1, count);
+        Assert.assertEquals("无事务：自增 id 应回填到实体", Long.valueOf(1L), first.getId());
+    }
 
-        // 2. 无 Spring 事务：集合批量插入应逐条回填 id
+    /** 无 Spring 事务：集合批量插入应逐条回填 id。 */
+    @Test
+    public void batchInsertReturnsGeneratedKeys() {
         ItUser second = new ItUser("Bob", 20);
         ItUser third = new ItUser("Cindy", 22);
-        int batchCount = service.insert(Arrays.asList(second, third));
-        check(batchCount == 2, "无事务：批量 insert 返回=2，实际=" + batchCount);
-        check(second.getId() != null && second.getId() == 2L && third.getId() != null && third.getId() == 3L,
-                "无事务：批量自增 id 依次回填，实际=" + second.getId() + "," + third.getId());
+        Assert.assertEquals("无事务：批量 insert 返回应为 2", 2, service.insert(Arrays.asList(second, third)));
+        // @Before 每用例重建空表，GENERATED BY DEFAULT AS IDENTITY 从 1 起算，故批量首条回填 1、次条回填 2。
+        Assert.assertEquals("无事务：批量自增 id 应依次回填（第 1 条）", Long.valueOf(1L), second.getId());
+        Assert.assertEquals("无事务：批量自增 id 应依次回填（第 2 条）", Long.valueOf(2L), third.getId());
+    }
 
-        // 3. 存在 Spring 事务：连接应复用事务连接，插入随事务提交
-        DataSourceTransactionManager txManager = ctx.getBean(DataSourceTransactionManager.class);
-        TransactionTemplate transactionTemplate = new TransactionTemplate(txManager);
+    /** 存在 Spring 事务：连接应复用事务连接，插入随事务提交。 */
+    @Test
+    public void insertInsideSpringTransaction() {
+        TransactionTemplate tx = new TransactionTemplate(txManager);
         ItUser fourth = new ItUser("Dave", 30);
-        transactionTemplate.execute(status -> service.insert(fourth));
-        check(fourth.getId() != null && fourth.getId() == 4L,
-                "有事务：自增 id 已回填，实际=" + fourth.getId());
+        tx.execute(status -> service.insert(fourth));
+        Assert.assertEquals("有事务：自增 id 应回填", Long.valueOf(1L), fourth.getId());
+    }
 
-        // 4. 存在 Spring 事务：异常回滚后数据不应落库
+    /** 存在 Spring 事务：异常回滚后数据不应落库。 */
+    @Test
+    public void transactionRollbackDoesNotPersist() {
         int beforeRollback = service.count();
+        TransactionTemplate tx = new TransactionTemplate(txManager);
         try {
-            transactionTemplate.execute(status -> {
+            tx.execute(status -> {
                 service.insert(new ItUser("Rollback", 40));
                 throw new IllegalStateException("rollback for test");
             });
-        } catch (IllegalStateException ignore) {
+            Assert.fail("应抛出 IllegalStateException 以触发回滚");
+        } catch (IllegalStateException expected) {
             // 预期异常
         }
-        check(service.count() == beforeRollback,
-                "有事务：回滚后不落库，期望=" + beforeRollback + "，实际=" + service.count());
+        Assert.assertEquals("有事务：回滚后数据不应落库", beforeRollback, service.count());
+    }
 
-        // 5. 事务结束后连接未泄漏：仍能继续插入
-        ItUser fifth = new ItUser("Eve", 50);
-        check(service.insert(fifth) == 1 && fifth.getId() != null,
-                "有事务之后：连接可正常获取并继续插入，实际 id=" + fifth.getId());
+    /** 事务结束后连接未泄漏：仍能继续插入。 */
+    @Test
+    public void connectionUsableAfterTransaction() {
+        TransactionTemplate tx = new TransactionTemplate(txManager);
+        tx.execute(status -> service.insert(new ItUser("Eve", 50)));
 
-        ctx.close();
-
-        System.out.println();
-        System.out.println("=== InsertGeneratedKeyIT: " + passed + " passed, " + failed + " failed ===");
-        if (failed > 0) {
-            System.exit(1);
-        }
+        ItUser afterTx = new ItUser("Frank", 60);
+        Assert.assertEquals("事务之后应能继续插入", 1, service.insert(afterTx));
+        Assert.assertNotNull("事务之后自增 id 应正常回填", afterTx.getId());
     }
 }

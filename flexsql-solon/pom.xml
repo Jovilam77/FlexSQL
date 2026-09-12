@@ -132,6 +132,13 @@
             <artifactId>mybatis-solon-plugin</artifactId>
             <version>${solon.version}</version>
         </dependency>
+        <!-- 仅测试用：JUnit 4 支撑 CacheAutoWireSolonTest 等回归用例 -->
+        <dependency>
+            <groupId>junit</groupId>
+            <artifactId>junit</artifactId>
+            <version>4.13.1</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
 </project>

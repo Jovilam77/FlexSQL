@@ -5,6 +5,9 @@ import cn.vonce.sql.cache.QueryCacheConfig;
 import cn.vonce.sql.cache.SqlBeanServices;
 import cn.vonce.sql.service.SqlBeanService;
 import cn.vonce.sql.solon.config.AutoConfigSolon;
+import org.junit.After;
+import org.junit.Assert;
+import org.junit.Test;
 import org.noear.solon.SolonApp;
 import org.noear.solon.core.AppContext;
 import org.noear.solon.core.NvMap;
@@ -16,37 +19,20 @@ import java.lang.reflect.Constructor;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Solon 集成测试：直接驱动真实的 AutoConfigSolon 接线逻辑（不依赖完整 Solon 启动，规避 mybatis 等其它插件）。
+ * Solon 集成测试（JUnit）：直接驱动真实的 AutoConfigSolon 接线逻辑（不依赖完整 Solon 启动，规避 mybatis 等其它插件）。
  * <p>新机制下缓存开关已迁移到全局 {@link QueryCacheConfig}（默认 OFF，二选一 LOCAL/REDIS）。
- * runEnabled 段在方法开头设置 LOCAL，runDisabled 段设置 OFF；每段使用独立 AppContext，互不干扰。</p>
- * <p>直接以 main 方式运行（与项目内 QueryCacheTest 风格一致）。</p>
+ * 启用段在方法开头设置 LOCAL，关闭段设置 OFF；每段使用独立 AppContext，互不干扰。</p>
  */
 public class CacheAutoWireSolonTest {
 
-    static int passed = 0;
-    static int failed = 0;
-
-    static void check(boolean cond, String msg) {
-        if (cond) {
-            passed++;
-            System.out.println("[PASS] " + msg);
-        } else {
-            failed++;
-            System.out.println("[FAIL] " + msg);
-        }
+    /** 复位全局缓存配置，避免污染同 JVM 的其它用例。 */
+    @After
+    public void resetGlobalCacheConfig() {
+        SqlBeanServices.setCacheConfig(QueryCacheConfig.off());
     }
 
-    public static void main(String[] args) throws Exception {
-        runEnabled();
-        runDisabled();
-        SqlBeanServices.setCacheConfig(QueryCacheConfig.off()); // 复位全局配置
-        System.out.println("Solon 集成测试：" + passed + " passed, " + failed + " failed");
-        if (failed > 0) {
-            System.exit(1);
-        }
-    }
-
-    static void runEnabled() throws Exception {
+    @Test
+    public void localModeWrapsBeanAsCacheProxy() throws Exception {
         SqlBeanServices.setCacheConfig(QueryCacheConfig.local(1000L, 600L, 0L));
         AppContext context = new AppContext(Thread.currentThread().getContextClassLoader(), new Props());
         AtomicInteger counter = new AtomicInteger();
@@ -55,26 +41,24 @@ public class CacheAutoWireSolonTest {
         context.wrapAndPut(SqlBeanService.class, stub);  // 先注册 bean（与真实 Solon 中 BeanWrap 已带 raw 实例一致）
         AutoConfigSolon plugin = new AutoConfigSolon();
         plugin.start(context);                 // subWrapsOfType 回灌已存在 bean -> 触发包裹回调
-        // DIAG: 验证 bean 是否已被替换为缓存代理
-        context.subWrapsOfType(SqlBeanService.class, bw -> System.out.println("[DIAG] subWrapsOfType 命中 bean: " + bw.raw().getClass().getName() + " isCacheProxy=" + CacheableSqlBeanService.isCacheProxy(bw.raw())));
         fireBeanLoadEnd(context);              // 额外派发事件，验证幂等不重复包裹
 
         @SuppressWarnings("unchecked")
         SqlBeanService<TestUser, Integer> bean = (SqlBeanService<TestUser, Integer>) context.getBean(SqlBeanService.class);
-        check(CacheableSqlBeanService.isCacheProxy(bean),
-                "Solon：LOCAL bean 应被 AutoConfigSolon 包裹为缓存代理");
+        Assert.assertTrue("Solon：LOCAL bean 应被 AutoConfigSolon 包裹为缓存代理",
+                CacheableSqlBeanService.isCacheProxy(bean));
 
         bean.selectById(1);
         bean.selectById(1);
-        check(counter.get() == 1,
-                "Solon：第二次相同 selectById 命中缓存，delegate 仅调用 1 次，实际=" + counter.get());
+        Assert.assertEquals("Solon：第二次相同 selectById 命中缓存，delegate 仅调用 1 次",
+                1, counter.get());
 
         bean.selectById(2);
-        check(counter.get() == 2,
-                "Solon：不同 id 重新回源，累计调用=" + counter.get());
+        Assert.assertEquals("Solon：不同 id 重新回源，累计调用应为 2", 2, counter.get());
     }
 
-    static void runDisabled() throws Exception {
+    @Test
+    public void offModeLeavesBeanUnwrapped() throws Exception {
         SqlBeanServices.setCacheConfig(QueryCacheConfig.off());
         AppContext context = new AppContext(Thread.currentThread().getContextClassLoader(), new Props());
         AtomicInteger counter = new AtomicInteger();
@@ -87,13 +71,12 @@ public class CacheAutoWireSolonTest {
 
         @SuppressWarnings("unchecked")
         SqlBeanService<TestUser, Integer> bean = (SqlBeanService<TestUser, Integer>) context.getBean(SqlBeanService.class);
-        check(!CacheableSqlBeanService.isCacheProxy(bean),
-                "Solon：OFF bean 不应被包裹（全局配置关闭）");
+        Assert.assertFalse("Solon：OFF bean 不应被包裹（全局配置关闭）",
+                CacheableSqlBeanService.isCacheProxy(bean));
 
         bean.selectById(1);
         bean.selectById(1);
-        check(counter.get() == 2,
-                "Solon：OFF 每次都回源 delegate（无缓存），累计调用=" + counter.get());
+        Assert.assertEquals("Solon：OFF 每次都回源 delegate（无缓存），累计调用应为 2", 2, counter.get());
     }
 
     /** 通过反射构造一个最小 SolonApp 来派发 AppBeanLoadEndEvent（其 ctor 为 protected）。事件内容不影响包裹逻辑，仅用于触发监听。 */

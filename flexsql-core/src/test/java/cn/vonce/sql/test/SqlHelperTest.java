@@ -25,9 +25,15 @@ import java.util.Date;
 import java.util.List;
 
 /**
- * sql语句生成测试
- * 测试中写的sql，可能某些字段的条件写的不符合现实逻辑，不要在意，只是为了测试语法支持。
- * 实例仅供参考，可自由发挥写出符合自己业务需要的sql语句
+ * sql语句生成测试。
+ * <p>本类是两个角色合一：</p>
+ * <ol>
+ *   <li><b>场景库</b>：大量 API 用法演示（可 {@link #main(String[])} 直接运行打印全部 SQL，便于人工排查）；</li>
+ *   <li><b>JUnit 用例</b>：{@link #goldenSqlSnapshot()} 把全部场景输出与 golden 快照逐行精确比对，
+ *       使这些场景真正参与 CI（此前只打印、无断言，surefire 不执行）。</li>
+ * </ol>
+ * <p>测试中写的sql，可能某些字段的条件写的不符合现实逻辑，不要在意，只是为了测试语法支持。
+ * 实例仅供参考，可自由发挥写出符合自己业务需要的sql语句。</p>
  */
 public class SqlHelperTest {
 
@@ -1701,5 +1707,132 @@ public class SqlHelperTest {
         System.out.println("[断言] 子查询流式组合 => " + (sql4.contains("= (") && sql4.contains("> (") && sql4.contains("AND")));
     }
 
+    // ======================== JUnit：golden SQL 快照断言 ========================
 
+    private static final String GOLDEN_RESOURCE = "golden/sqlhelper-golden.txt";
+    private static final String GOLDEN_UPDATE_FLAG = "flexsql.golden.update";
+
+    /**
+     * 全场景 golden 快照断言。
+     * <p>把 {@link #main(String[])} 的全部输出（剔除非确定性的耗时行）与
+     * {@code src/test/resources/golden/sqlhelper-golden.txt} 逐行精确比对。</p>
+     * <p>注意：演示场景里既有的 {@code [断言] ... => true/false} 行同样落在快照内，
+     * 因此任何渲染回归都会让本用例失败，而不是只打印出来没人看。</p>
+     * <p>确需变更 SQL 渲染时，用
+     * {@code mvn test -Dtest=SqlHelperTest -Dflexsql.golden.update=true} 重新生成快照，
+     * 人工 review diff 后再提交。</p>
+     */
+    @org.junit.Test
+    public void goldenSqlSnapshot() throws Exception {
+        String actual = runAll();
+
+        java.io.InputStream in = getClass().getClassLoader().getResourceAsStream(GOLDEN_RESOURCE);
+        java.nio.file.Path goldenFile = java.nio.file.Paths.get("src/test/resources/" + GOLDEN_RESOURCE);
+
+        if (in == null || Boolean.getBoolean(GOLDEN_UPDATE_FLAG)) {
+            java.nio.file.Files.createDirectories(goldenFile.getParent());
+            java.nio.file.Files.write(goldenFile, actual.getBytes("UTF-8"));
+            if (in == null) {
+                throw new IllegalStateException("golden 快照缺失，已生成，请复核后重新运行: " + goldenFile.toAbsolutePath());
+            }
+            return;
+        }
+        String expected;
+        try {
+            expected = normalizeResource(in);
+        } finally {
+            in.close();
+        }
+        if (!expected.equals(actual)) {
+            org.junit.Assert.fail(describeDiff(expected, actual));
+        }
+    }
+
+    /** 兜底复位线程上下文（演示场景内部已 try/finally 恢复），避免污染同 JVM 的其它用例。 */
+    @org.junit.After
+    public void resetContexts() {
+        TenantContextHolder.clearTenantId();
+        DynSchemaContextHolder.clearSchema();
+    }
+
+    /** 运行全部演示场景，捕获其全部输出并归一化。 */
+    static String runAll() {
+        java.io.PrintStream original = System.out;
+        java.io.ByteArrayOutputStream buffer = new java.io.ByteArrayOutputStream();
+        try {
+            System.setOut(new java.io.PrintStream(buffer, true, "UTF-8"));
+            main(new String[0]);
+        } catch (Exception e) {
+            throw new IllegalStateException("运行 SqlHelperTest 演示场景失败", e);
+        } finally {
+            System.setOut(original);
+        }
+        try {
+            return normalize(buffer.toString("UTF-8"));
+        } catch (java.io.UnsupportedEncodingException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    /** 归一化：统一换行、去掉行尾空白、剔除非确定性的耗时行、掩去自动填充的时间戳、去掉尾部空行。 */
+    static String normalize(String raw) {
+        StringBuilder sb = new StringBuilder();
+        for (String line : raw.replace("\r\n", "\n").replace('\r', '\n').split("\n", -1)) {
+            if (line.startsWith("耗时：")) {
+                continue;
+            }
+            // 审计字段 create_time/update_time 由框架注入 now()，每次运行时间戳不同，
+            // 掩去毫秒级时间戳字面量（'YYYY-MM-DD HH:MM:SS.mmm'）以保证快照可复现。
+            line = line.replaceAll("'\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}\\.\\d{1,3}'", "'<TS>'");
+            sb.append(trimEnd(line)).append('\n');
+        }
+        int end = sb.length();
+        while (end > 0 && sb.charAt(end - 1) == '\n') {
+            end--;
+        }
+        return sb.substring(0, end) + "\n";
+    }
+
+    private static String normalizeResource(java.io.InputStream in) throws java.io.IOException {
+        java.io.ByteArrayOutputStream buffer = new java.io.ByteArrayOutputStream();
+        byte[] chunk = new byte[8192];
+        int n;
+        while ((n = in.read(chunk)) > 0) {
+            buffer.write(chunk, 0, n);
+        }
+        return normalize(new String(buffer.toByteArray(), "UTF-8"));
+    }
+
+    private static String trimEnd(String s) {
+        int end = s.length();
+        while (end > 0 && Character.isWhitespace(s.charAt(end - 1))) {
+            end--;
+        }
+        return s.substring(0, end);
+    }
+
+    /** 生成可读的差异描述：首个不一致行 + 前文上下文 + 两边行数。 */
+    private static String describeDiff(String expected, String actual) {
+        String[] e = expected.split("\n", -1);
+        String[] a = actual.split("\n", -1);
+        int limit = Math.max(e.length, a.length);
+        for (int i = 0; i < limit; i++) {
+            String el = i < e.length ? e[i] : "<缺失>";
+            String al = i < a.length ? a[i] : "<缺失>";
+            if (!el.equals(al)) {
+                StringBuilder sb = new StringBuilder();
+                sb.append("golden SQL 快照不一致，首个差异位于第 ").append(i + 1).append(" 行：\n");
+                sb.append("  期望: ").append(el).append('\n');
+                sb.append("  实际: ").append(al).append('\n');
+                sb.append("  —— 前文上下文 ——\n");
+                for (int c = Math.max(0, i - 3); c < i; c++) {
+                    sb.append("    ").append(c < e.length ? e[c] : "").append('\n');
+                }
+                sb.append("  —— 行数：期望 ").append(e.length - 1).append(" 行，实际 ").append(a.length - 1).append(" 行 ——\n");
+                sb.append("  如确为有意变更：mvn test -Dtest=SqlHelperTest -Dflexsql.golden.update=true 更新快照后 review diff。");
+                return sb.toString();
+            }
+        }
+        return "golden SQL 快照不一致（未定位到差异行）";
+    }
 }
