@@ -23,9 +23,11 @@ import cn.vonce.sql.uitls.SqlBeanUtil;
 import org.apache.ibatis.session.SqlSession;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.jdbc.datasource.DataSourceUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -80,13 +82,17 @@ public class MybatisSqlBeanServiceImpl<T, ID> extends BaseSqlBeanServiceImpl<T> 
 
     /**
      * 统一使用 getGeneratedKeys 回填自增id（取代两段式 last_insert_id）
-     * 通过 MyBatis 当前会话的连接执行，保留 @DbSwitch 路由与事务参与
+     * <p>连接从 MyBatis 使用的 DataSource 经 {@link DataSourceUtils} 获取：存在 Spring 事务时复用事务连接，
+     * 无事务时新开一条并在使用后归还，因此单数据源、多数据源（{@code @DbTransactional} 的 xid 场景）都能正确取键。</p>
+     * <p>注意：不能使用 {@code SqlSession#getConnection()}——它走 {@code SqlSessionTemplate} 代理，
+     * 在无 Spring 事务时会在返回连接前关闭当前 SqlSession，导致后续操作报 “connection closed”。</p>
      */
     private int insertWithGeneratedKeys(Collection<T> beans) {
         if (beans == null || beans.isEmpty()) {
             return 0;
         }
-        Connection conn = sqlSession.getConnection();
+        DataSource dataSource = sqlSession.getConfiguration().getEnvironment().getDataSource();
+        Connection conn = DataSourceUtils.getConnection(dataSource);
         List<Long> keys = new ArrayList<>();
         try {
             for (T bean : beans) {
@@ -105,6 +111,9 @@ public class MybatisSqlBeanServiceImpl<T, ID> extends BaseSqlBeanServiceImpl<T> 
             }
         } catch (SQLException e) {
             throw new SqlBeanException("插入并取回自增id失败: " + e.getMessage(), e);
+        } finally {
+            // 事务连接不关闭（交由事务提交时释放）；非事务连接在此归还连接池
+            DataSourceUtils.releaseConnection(conn, dataSource);
         }
         SqlBeanUtil.setAutoIncrId(clazz, keys, beans.toArray());
         return beans.size();

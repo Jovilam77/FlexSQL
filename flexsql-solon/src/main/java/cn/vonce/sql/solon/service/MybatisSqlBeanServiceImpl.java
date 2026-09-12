@@ -23,6 +23,7 @@ import org.apache.ibatis.solon.annotation.Db;
 import org.noear.solon.annotation.Component;
 import org.noear.solon.annotation.Inject;
 import org.noear.solon.data.annotation.Tran;
+import org.noear.solon.data.tran.TranUtils;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
@@ -31,6 +32,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.*;
+import java.util.logging.Logger;
 
 /**
  * Solon环境的Mybatis实现
@@ -40,6 +42,8 @@ import java.util.*;
  */
 @Component
 public class MybatisSqlBeanServiceImpl<T, ID> extends BaseSqlBeanServiceImpl<T> implements SqlBeanService<T, ID>, AdvancedDbManageService<T> {
+
+    private static final Logger logger = Logger.getLogger(MybatisSqlBeanServiceImpl.class.getName());
 
     @Db
     private MybatisSqlBeanDao<T> mybatisSqlBeanDao;
@@ -73,14 +77,18 @@ public class MybatisSqlBeanServiceImpl<T, ID> extends BaseSqlBeanServiceImpl<T> 
 
     /**
      * 统一使用 getGeneratedKeys 回填自增id（取代两段式 last_insert_id）
-     * 通过当前事务绑定的连接执行，保留 @DbSwitch 路由与事务参与
+     * <p>连接经 {@link TranUtils#getConnection(DataSource)} 获取：{@code @Tran} 生效时复用事务连接（由事务收尾），
+     * 无事务时新开一条并在使用后关闭；多数据源 {@code @DbTransactional}（xid）场景下
+     * {@code DynamicDataSource} 返回的是共享 {@code ConnectionProxy}，其 close() 在事务中为 no-op，语义不变。</p>
      */
     private int insertWithGeneratedKeys(Collection<T> beans) {
         if (beans == null || beans.isEmpty()) {
             return 0;
         }
         List<Long> keys = new ArrayList<>();
-        try (Connection conn = dataSource.getConnection()) {
+        Connection conn = null;
+        try {
+            conn = TranUtils.getConnection(dataSource);
             for (T bean : beans) {
                 String sql = SqlBeanProvider.insertBeanSql(getSqlBeanMeta(), clazz, Collections.singletonList(bean));
                 try (PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
@@ -97,6 +105,15 @@ public class MybatisSqlBeanServiceImpl<T, ID> extends BaseSqlBeanServiceImpl<T> 
             }
         } catch (SQLException e) {
             throw new SqlBeanException("插入并取回自增id失败: " + e.getMessage(), e);
+        } finally {
+            // 事务连接由 Solon 事务负责提交/回滚并关闭，只有非事务连接才在这里归还
+            if (conn != null && !TranUtils.inTrans()) {
+                try {
+                    conn.close();
+                } catch (SQLException e) {
+                    logger.warning("Failed to close connection: " + e.getMessage());
+                }
+            }
         }
         SqlBeanUtil.setAutoIncrId(clazz, keys, beans.toArray());
         return beans.size();

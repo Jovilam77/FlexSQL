@@ -189,6 +189,13 @@
             <version>${junit}</version>
             <scope>test</scope>
         </dependency>
+        <!-- 仅测试用：为「插入并回填自增id」提供真实数据库回归验证 -->
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <version>2.1.214</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
 </project>
