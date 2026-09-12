@@ -26,8 +26,10 @@ import java.util.concurrent.ConcurrentHashMap;
  * 查询缓存装饰器（基于 JDK 动态代理，后端无关）。
  * <p>用一层代理包裹任意 {@link SqlBeanService} 实现，无需为每个后端写重复代码、也不侵入执行层：
  * <ul>
- *   <li>查询方法（select、count 等）：以「SQL + 租户 + 动态 schema + 数据源 + 分页 + 返回类型」为键查缓存；
- *       命中（含空结果）返回深拷贝副本，未命中执行原方法并回填（同样存副本，空结果亦缓存以防穿透）。</li>
+ *   <li>查询方法（select、count 等）：以「操作名 + SQL + 租户 + 动态 schema + 数据源 + 分页 + 返回类型」为键查缓存；
+ *       命中（含空结果）返回深拷贝副本，未命中执行原方法并回填（同样存副本，空结果亦缓存以防穿透）。
+ *       键中的<b>操作名</b>不可省略：{@code select}/{@code selectOne}/{@code selectMap}/{@code selectMapList}
+ *       用的是同一段 SQL 但返回形态不同，只有加上操作名才能避免串键（详见 {@link QueryCacheKey}）。</li>
  *   <li>写方法（insert、update、delete、copy、backup）：执行原方法后按「表 + 动态 schema + 租户 + 数据源」失效相关缓存项；
  *       copy/backup 的失效目标是其 {@code targetTableName}（而非源表）。</li>
  *   <li>其余方法（含分页 {@code paging}、ConditionHandle 等难以稳定构建 key 的入口）直接透传，不参与缓存。</li>
@@ -428,7 +430,7 @@ public final class CacheableSqlBeanService {
                     // paging(...) 等不参与缓存
                     return null;
             }
-            return new QueryCacheKey(beanClass, returnType, sql, String.valueOf(tenant), schema, "", dataSource);
+            return new QueryCacheKey(beanClass, returnType, name, sql, String.valueOf(tenant), schema, "", dataSource);
         }
     }
 }

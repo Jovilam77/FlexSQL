@@ -3,6 +3,7 @@ package cn.vonce.sql.define;
 import cn.vonce.sql.bean.Column;
 import cn.vonce.sql.bean.Order;
 import cn.vonce.sql.bean.RawValue;
+import cn.vonce.sql.constant.SqlConstant;
 import cn.vonce.sql.enumerate.DbType;
 import cn.vonce.sql.enumerate.SqlSort;
 import cn.vonce.sql.enumerate.TimeUnit;
@@ -29,6 +30,17 @@ public class SqlFun extends Column {
      */
     private DialectSupport dialectSupport;
 
+    /**
+     * 参数分隔符，默认 {@code ", "}。
+     * <p>绝大多数函数的参数用逗号分隔；但少数 SQL 标准语法用「关键字 + 空格」分隔：
+     * {@code CAST(expr AS type)}、{@code EXTRACT(field FROM date)}、{@code POSITION(sub IN str)}。
+     * 这类函数必须用 {@link #spaceSeparated()} 标记，否则会渲染成
+     * {@code cast(expr, AS, type)} 这种任何数据库都无法执行的语法。
+     * <p><b>注意</b>：关键字不能当普通字符串参数传入 —— {@code String} 会被当作<b>字面量加引号</b>，
+     * 必须用 {@link RawValue} 包裹才会按原样输出。</p>
+     */
+    private String separator = SqlConstant.COMMA;
+
     private SqlFun(String funName, Object[] values) {
         this.funName = funName;
         this.values = values;
@@ -38,8 +50,48 @@ public class SqlFun extends Column {
         return funName;
     }
 
+    /**
+     * 用于方言校验日志 / 异常信息的展示名。
+     * <p>运算符型函数（{@code bitAnd / bitOr / bitXor} 这类以 {@code (a & b)} 形式渲染的函数）
+     * 的 {@code funName} 故意为空（空名 + 括号正好渲染成 {@code (a & b)}），
+     * 直接输出会得到 {@code "SqlFun. 在当前方言 ... 中不被支持"} 这种缺名字的提示，故给出替代名。</p>
+     */
+    private String errorLabel() {
+        return (funName == null || funName.isEmpty()) ? "(operator expression)" : funName;
+    }
+
     public Object[] getValues() {
         return values;
+    }
+
+    /**
+     * 参数分隔符（默认 {@code ", "}，见 {@link #spaceSeparated()}）。
+     */
+    public String getSeparator() {
+        return separator;
+    }
+
+    /**
+     * 参数之间用空格分隔（而非默认的逗号）。
+     * <p>用于 {@code CAST(x AS t)} / {@code EXTRACT(f FROM d)} / {@code POSITION(s IN x)} 这类
+     * SQL 标准语法：关键字本身要用 {@link RawValue} 包裹，参数之间不能再插逗号。</p>
+     *
+     * @return this
+     */
+    public SqlFun spaceSeparated() {
+        this.separator = SqlConstant.SPACES;
+        return this;
+    }
+
+    /**
+     * 自定义参数分隔符（一般用 {@link #spaceSeparated()} 即可）。
+     *
+     * @param separator 分隔符，为空时回退为逗号
+     * @return this
+     */
+    public SqlFun argSeparator(String separator) {
+        this.separator = (separator == null || separator.isEmpty()) ? SqlConstant.COMMA : separator;
+        return this;
     }
 
     @Override
@@ -2145,7 +2197,7 @@ public class SqlFun extends Column {
             return null;
         }
         // 返回非 null 标识失败。renderer 端 STRICT 模式抛异常；WARN 模式输出日志。
-        return this.funName;
+        return errorLabel();
     }
 
     /**
@@ -2157,7 +2209,7 @@ public class SqlFun extends Column {
                 ? null
                 : DbVersion.from(sqlBeanMeta.getDatabaseMajorVersion(), sqlBeanMeta.getDatabaseMinorVersion());
         return new cn.vonce.sql.exception.UnsupportedDialectException(
-                this.funName,
+                errorLabel(),
                 dbType,
                 version,
                 dialectSupport.getSupported(),
@@ -2484,7 +2536,20 @@ public class SqlFun extends Column {
         return new SqlFun("degrees", new Object[]{radians});
     }
 
-    // ---------------- C. 字符串函数（SQL 标准/全方言支持，无需标注） ----------------
+    // ---------------- C. 字符串函数 ----------------
+
+    /**
+     * 长度类标准函数（{@code CHAR_LENGTH} / {@code OCTET_LENGTH} / {@code BIT_LENGTH}）的方言矩阵。
+     * <p>只声明「不支持」列表（{@code supported} 为空 → 除下列方言外全部通过校验）。
+     * Oracle / SQL Server / SQLite / Derby 未提供这些 SQL 标准函数
+     * （分别提供 {@code LENGTH} / {@code LEN} / {@code LENGTH} / 无）。</p>
+     */
+    private static final DialectSupport LENGTH_FUN_DIALECT = DialectSupport.builder()
+            .unsupport(cn.vonce.sql.enumerate.DbType.Oracle)
+            .unsupport(cn.vonce.sql.enumerate.DbType.SQLServer)
+            .unsupport(cn.vonce.sql.enumerate.DbType.SQLite)
+            .unsupport(cn.vonce.sql.enumerate.DbType.Derby)
+            .build();
 
     /**
      * 反转字符串（SQL 标准 REVERSE，全方言支持）。
@@ -2516,60 +2581,77 @@ public class SqlFun extends Column {
     }
 
     /**
-     * 字符长度（SQL 标准 CHAR_LENGTH/CHARACTER_LENGTH，全方言支持）。
+     * 字符长度（SQL 标准 {@code CHAR_LENGTH} / {@code CHARACTER_LENGTH}）。
+     * <p>Oracle / SQL Server / SQLite 没有该函数，见 {@code LENGTH_FUN_DIALECT}。</p>
      */
     public static SqlFun charLength(Object str) {
-        return new SqlFun("char_length", new Object[]{str});
+        SqlFun f = new SqlFun("char_length", new Object[]{str});
+        f.dialect(LENGTH_FUN_DIALECT);
+        return f;
     }
 
     public static <T, R> SqlFun charLength(ColumnFun<T, R> str) {
-        return new SqlFun("char_length", new Object[]{str});
+        SqlFun f = new SqlFun("char_length", new Object[]{str});
+        f.dialect(LENGTH_FUN_DIALECT);
+        return f;
     }
 
     /**
-     * 字节长度（SQL 标准 OCTET_LENGTH，全方言支持）。
+     * 字节长度（SQL 标准 {@code OCTET_LENGTH}）。
+     * <p>Oracle / SQL Server / SQLite 没有该函数，见 {@code LENGTH_FUN_DIALECT}。</p>
      */
     public static SqlFun octetLength(Object str) {
-        return new SqlFun("octet_length", new Object[]{str});
+        SqlFun f = new SqlFun("octet_length", new Object[]{str});
+        f.dialect(LENGTH_FUN_DIALECT);
+        return f;
     }
 
     public static <T, R> SqlFun octetLength(ColumnFun<T, R> str) {
-        return new SqlFun("octet_length", new Object[]{str});
+        SqlFun f = new SqlFun("octet_length", new Object[]{str});
+        f.dialect(LENGTH_FUN_DIALECT);
+        return f;
     }
 
     /**
-     * 位长度（SQL 标准 BIT_LENGTH，全方言支持）。
+     * 位长度（SQL 标准 {@code BIT_LENGTH}）。
+     * <p>Oracle / SQL Server / SQLite 没有该函数，见 {@code LENGTH_FUN_DIALECT}。</p>
      */
     public static SqlFun bitLength(Object str) {
-        return new SqlFun("bit_length", new Object[]{str});
+        SqlFun f = new SqlFun("bit_length", new Object[]{str});
+        f.dialect(LENGTH_FUN_DIALECT);
+        return f;
     }
 
     public static <T, R> SqlFun bitLength(ColumnFun<T, R> str) {
-        return new SqlFun("bit_length", new Object[]{str});
+        SqlFun f = new SqlFun("bit_length", new Object[]{str});
+        f.dialect(LENGTH_FUN_DIALECT);
+        return f;
     }
 
     /**
      * 查找子串位置（SQL 标准 POSITION，全方言支持；PG 同时支持 strpos）。
      * <p>等价于 MySQL LOCATE/INSTR、SQL Server CHARINDEX、Oracle INSTR。</p>
+     * <p>渲染为 {@code POSITION(subStr IN str)}（参数以空格分隔，不是逗号）。
+     * 要引用列请传 {@link ColumnFun}；传 {@code String} 会被当作字符串字面量。</p>
      *
-     * @param subStr 待查找子串
-     * @param str    数据源字符串
+     * @param subStr 待查找子串（字面量或表达式）
+     * @param str    被查找的数据源（字面量或列）
      * @return
      */
     public static SqlFun position(Object subStr, Object str) {
-        return new SqlFun("position", new Object[]{new RawValue(subStr), "IN", str});
+        return new SqlFun("position", new Object[]{subStr, new RawValue("IN"), str}).spaceSeparated();
     }
 
     public static <T, R> SqlFun position(Object subStr, ColumnFun<T, R> str) {
-        return new SqlFun("position", new Object[]{new RawValue(subStr), "IN", str});
+        return new SqlFun("position", new Object[]{subStr, new RawValue("IN"), str}).spaceSeparated();
     }
 
     public static <T, R> SqlFun position(ColumnFun<T, R> subStr, Object str) {
-        return new SqlFun("position", new Object[]{new RawValue(subStr), "IN", str});
+        return new SqlFun("position", new Object[]{subStr, new RawValue("IN"), str}).spaceSeparated();
     }
 
     public static <T, R> SqlFun position(ColumnFun<T, R> subStr, ColumnFun<T, R> str) {
-        return new SqlFun("position", new Object[]{new RawValue(subStr), "IN", str});
+        return new SqlFun("position", new Object[]{subStr, new RawValue("IN"), str}).spaceSeparated();
     }
 
     // ---------------- D. 日期常量（SQL 标准关键字/全方言支持，无需标注） ----------------
@@ -2612,17 +2694,19 @@ public class SqlFun extends Column {
     /**
      * 从日期/时间戳中提取指定部分（SQL 标准 EXTRACT，全方言支持）。
      * <p>等价于 year()/month()/day() 等，但支持更细粒度字段（{@code epoch/century/decade/dow/doy/...}）。</p>
+     * <p>渲染为 {@code EXTRACT(field FROM date)}（参数以空格分隔，不是逗号）；
+     * {@code field} 按原样输出（不加引号），{@code date} 按普通参数规则处理。</p>
      *
      * @param field 提取字段（如 YEAR/MONTH/DAY/HOUR/MINUTE/SECOND/EPOCH...）
-     * @param date  合法的日期/时间表达式
+     * @param date  合法的日期/时间表达式（传 {@link ColumnFun} 引用列，传 {@code String} 为字面量）
      * @return
      */
     public static SqlFun extract(Object field, Object date) {
-        return new SqlFun("extract", new Object[]{new RawValue(field), "FROM", date});
+        return new SqlFun("extract", new Object[]{new RawValue(field), new RawValue("FROM"), date}).spaceSeparated();
     }
 
     public static <T, R> SqlFun extract(Object field, ColumnFun<T, R> date) {
-        return new SqlFun("extract", new Object[]{new RawValue(field), "FROM", date});
+        return new SqlFun("extract", new Object[]{new RawValue(field), new RawValue("FROM"), date}).spaceSeparated();
     }
 
     // ---------------- E. 类型转换（SQL 标准 CAST/全方言支持，无需标注） ----------------
@@ -2630,17 +2714,19 @@ public class SqlFun extends Column {
     /**
      * 类型转换（SQL 标准 CAST AS，全方言支持）。
      * <p>等价于 SQL Server/MySQL 的 CONVERT，但参数顺序/参数风格更标准。</p>
+     * <p>渲染为 {@code CAST(value AS type)}（参数以空格分隔，不是逗号）；
+     * {@code type} 按原样输出，因此可以写 {@code INTEGER} / {@code VARCHAR(50)} / {@code DECIMAL(10,2)}。</p>
      *
-     * @param value 待转换的值
-     * @param type  目标类型（如 INTEGER / VARCHAR(50) / DATE...）
+     * @param value 待转换的值（传 {@link ColumnFun} 引用列，传 {@code String} 为字面量）
+     * @param type  目标类型（如 INTEGER / VARCHAR(50) / DATE...），原样拼入 SQL
      * @return
      */
     public static SqlFun cast(Object value, Object type) {
-        return new SqlFun("cast", new Object[]{value, "AS", type});
+        return new SqlFun("cast", new Object[]{value, new RawValue("AS"), new RawValue(type)}).spaceSeparated();
     }
 
     public static <T, R> SqlFun cast(ColumnFun<T, R> value, Object type) {
-        return new SqlFun("cast", new Object[]{value, "AS", type});
+        return new SqlFun("cast", new Object[]{value, new RawValue("AS"), new RawValue(type)}).spaceSeparated();
     }
 
     // ---------------- F. MD5（方言差异，需标注） ----------------
@@ -2691,13 +2777,15 @@ public class SqlFun extends Column {
     // ---------------- G. 日期截断（方言差异，需标注） ----------------
 
     /**
-     * 日期截断到指定精度（按指定字段向下取整）。
+     * 日期截断到指定精度（按指定字段向下取整），渲染为 {@code DATE_TRUNC('day', ts)}。
      * <ul>
-     *   <li>PG: date_trunc('day', ts)</li>
-     *   <li>MySQL 8.0+: DATE_TRUNC(ts, field)</li>
-     *   <li>SQLite: date_trunc 由部分扩展提供</li>
-     *   <li>Oracle: TRUNC(ts, 'DD')（参数风格不同，请用 {@code SqlFun.cast} 或手写）</li>
-     *   <li>SQL Server: 无原语，请用 {@link #format} 或字符串转换</li>
+     *   <li>PostgreSQL: {@code date_trunc(field, ts)}（field 为字符串字面量）</li>
+     *   <li>H2: {@code DATE_TRUNC(field, ts)}（field 为字符串字面量，实测 2.1.214 可用）</li>
+     *   <li>MySQL / MariaDB: <b>无 {@code DATE_TRUNC}</b>（MySQL 用 {@code DATE_FORMAT} / 日期算术；
+     *       MariaDB 仅 Oracle 模式提供 {@code TRUNC(date, unit)}）</li>
+     *   <li>Oracle: {@code TRUNC(ts, 'DD')}（参数风格不同，请手写）</li>
+     *   <li>SQL Server 2022+: {@code DATE_TRUNC(unit, ts)}（unit 是关键字而非字符串，参数形态不同，请手写）</li>
+     *   <li>SQLite / HSQLDB / DB2 / Derby: 无内置实现</li>
      * </ul>
      *
      * @param field 截断精度（year/month/day/hour/minute/...）
@@ -2705,16 +2793,17 @@ public class SqlFun extends Column {
      * @return
      */
     public static SqlFun dateTrunc(Object field, Object date) {
-        SqlFun f = new SqlFun("date_trunc", new Object[]{new RawValue(field), date});
+        // field 不加 RawValue：必须按字符串字面量渲染（PG/H2 的第一个参数都是 'day' 这种字符串）
+        SqlFun f = new SqlFun("date_trunc", new Object[]{field, date});
         f.dialect(DialectSupport.builder()
                 .support(cn.vonce.sql.enumerate.DbType.Postgresql)
-                .support(cn.vonce.sql.enumerate.DbType.MySQL, DbVersion.from(8, 0))
-                .support(cn.vonce.sql.enumerate.DbType.MariaDB, DbVersion.from(10, 3))
                 .support(cn.vonce.sql.enumerate.DbType.H2)
-                .support(cn.vonce.sql.enumerate.DbType.Hsql)
-                .support(cn.vonce.sql.enumerate.DbType.SQLite)
+                .unsupport(cn.vonce.sql.enumerate.DbType.MySQL)
+                .unsupport(cn.vonce.sql.enumerate.DbType.MariaDB)
                 .unsupport(cn.vonce.sql.enumerate.DbType.Oracle)
                 .unsupport(cn.vonce.sql.enumerate.DbType.SQLServer)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLite)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Hsql)
                 .unsupport(cn.vonce.sql.enumerate.DbType.Derby)
                 .unsupport(cn.vonce.sql.enumerate.DbType.DB2)
                 .build());
@@ -2722,16 +2811,17 @@ public class SqlFun extends Column {
     }
 
     public static <T, R> SqlFun dateTrunc(Object field, ColumnFun<T, R> date) {
-        SqlFun f = new SqlFun("date_trunc", new Object[]{new RawValue(field), date});
+        // field 不加 RawValue：必须按字符串字面量渲染（PG/H2 的第一个参数都是 'day' 这种字符串）
+        SqlFun f = new SqlFun("date_trunc", new Object[]{field, date});
         f.dialect(DialectSupport.builder()
                 .support(cn.vonce.sql.enumerate.DbType.Postgresql)
-                .support(cn.vonce.sql.enumerate.DbType.MySQL, DbVersion.from(8, 0))
-                .support(cn.vonce.sql.enumerate.DbType.MariaDB, DbVersion.from(10, 3))
                 .support(cn.vonce.sql.enumerate.DbType.H2)
-                .support(cn.vonce.sql.enumerate.DbType.Hsql)
-                .support(cn.vonce.sql.enumerate.DbType.SQLite)
+                .unsupport(cn.vonce.sql.enumerate.DbType.MySQL)
+                .unsupport(cn.vonce.sql.enumerate.DbType.MariaDB)
                 .unsupport(cn.vonce.sql.enumerate.DbType.Oracle)
                 .unsupport(cn.vonce.sql.enumerate.DbType.SQLServer)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLite)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Hsql)
                 .unsupport(cn.vonce.sql.enumerate.DbType.Derby)
                 .unsupport(cn.vonce.sql.enumerate.DbType.DB2)
                 .build());
@@ -2790,26 +2880,28 @@ public class SqlFun extends Column {
     // ---------------- I. 正则函数 ----------------
 
     /**
-     * 正则匹配判断（PG 全支持，Oracle 全支持，MySQL 8.0+ REGEXP_LIKE，SQL Server 不支持，SQLite 仅基础 REGEXP）。
+     * 正则匹配判断（{@code REGEXP_LIKE(text, pattern)}）。
      * <ul>
-     *   <li>MySQL 8.0+: REGEXP_LIKE(text, pattern)</li>
-     *   <li>PG: ~ 操作符包装为函数（PG 用 ~ / ~* / LIKE REGEXP）—— 框架直接生成 REGEXP_LIKE 风格（PG 11+ 支持）</li>
-     *   <li>Oracle: REGEXP_LIKE(text, pattern)</li>
-     *   <li>SQL Server: 不支持（请用 PATINDEX / LIKE）</li>
+     *   <li>MySQL 8.0+: {@code REGEXP_LIKE}</li>
+     *   <li>PostgreSQL <b>15+</b>: {@code regexp_like}（15 之前只有 {@code ~} 运算符）</li>
+     *   <li>Oracle: {@code REGEXP_LIKE}</li>
+     *   <li>H2: {@code REGEXP_LIKE}（实测 2.1.214 可用）</li>
+     *   <li>MariaDB: <b>无 {@code REGEXP_LIKE}</b>（只有 {@code REGEXP} / {@code RLIKE} 运算符）</li>
+     *   <li>SQLite: 只有 {@code REGEXP} 运算符且需自行注册函数；SQL Server / DB2 / Derby / HSQLDB 不支持</li>
      * </ul>
      */
     public static SqlFun regexpLike(Object text, Object pattern) {
         SqlFun f = new SqlFun("regexp_like", new Object[]{text, pattern});
         f.dialect(DialectSupport.builder()
                 .support(cn.vonce.sql.enumerate.DbType.MySQL, DbVersion.from(8, 0))
-                .support(cn.vonce.sql.enumerate.DbType.MariaDB, DbVersion.from(10, 0))
-                .support(cn.vonce.sql.enumerate.DbType.Postgresql)
+                .support(cn.vonce.sql.enumerate.DbType.Postgresql, DbVersion.from(15, 0))
                 .support(cn.vonce.sql.enumerate.DbType.Oracle)
-                .support(cn.vonce.sql.enumerate.DbType.SQLite, DbVersion.from(3, 0))
+                .support(cn.vonce.sql.enumerate.DbType.H2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.MariaDB)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLite)
                 .unsupport(cn.vonce.sql.enumerate.DbType.SQLServer)
                 .unsupport(cn.vonce.sql.enumerate.DbType.DB2)
                 .unsupport(cn.vonce.sql.enumerate.DbType.Derby)
-                .unsupport(cn.vonce.sql.enumerate.DbType.H2)
                 .unsupport(cn.vonce.sql.enumerate.DbType.Hsql)
                 .build());
         return f;
@@ -2819,26 +2911,26 @@ public class SqlFun extends Column {
         SqlFun f = new SqlFun("regexp_like", new Object[]{text, pattern});
         f.dialect(DialectSupport.builder()
                 .support(cn.vonce.sql.enumerate.DbType.MySQL, DbVersion.from(8, 0))
-                .support(cn.vonce.sql.enumerate.DbType.MariaDB, DbVersion.from(10, 0))
-                .support(cn.vonce.sql.enumerate.DbType.Postgresql)
+                .support(cn.vonce.sql.enumerate.DbType.Postgresql, DbVersion.from(15, 0))
                 .support(cn.vonce.sql.enumerate.DbType.Oracle)
-                .support(cn.vonce.sql.enumerate.DbType.SQLite, DbVersion.from(3, 0))
+                .support(cn.vonce.sql.enumerate.DbType.H2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.MariaDB)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLite)
                 .unsupport(cn.vonce.sql.enumerate.DbType.SQLServer)
                 .unsupport(cn.vonce.sql.enumerate.DbType.DB2)
                 .unsupport(cn.vonce.sql.enumerate.DbType.Derby)
-                .unsupport(cn.vonce.sql.enumerate.DbType.H2)
                 .unsupport(cn.vonce.sql.enumerate.DbType.Hsql)
                 .build());
         return f;
     }
 
     /**
-     * 正则替换。
+     * 正则替换（{@code REGEXP_REPLACE(text, pattern, repl)}）。
      * <ul>
-     *   <li>MySQL 8.0+: REGEXP_REPLACE(text, pattern, repl)</li>
-     *   <li>PG: REGEXP_REPLACE(text, pattern, repl, flags)</li>
-     *   <li>Oracle: REGEXP_REPLACE(text, pattern, repl)</li>
-     *   <li>SQL Server 2017+: REGEXP_REPLACE 是有限的，主流不支持（请用 STUFF/PATINDEX 自实现）</li>
+     *   <li>MySQL 8.0+ / MariaDB 10.0.5+: {@code REGEXP_REPLACE(text, pattern, repl)}</li>
+     *   <li>PostgreSQL / Oracle: {@code REGEXP_REPLACE}</li>
+     *   <li>H2: {@code REGEXP_REPLACE}（实测 2.1.214 可用）</li>
+     *   <li>SQLite 无该函数；SQL Server / DB2 / Derby / HSQLDB 不支持（请用 STUFF/PATINDEX 自实现）</li>
      * </ul>
      */
     public static SqlFun regexpReplace(Object text, Object pattern, Object replacement) {
@@ -2848,11 +2940,11 @@ public class SqlFun extends Column {
                 .support(cn.vonce.sql.enumerate.DbType.MariaDB, DbVersion.from(10, 0))
                 .support(cn.vonce.sql.enumerate.DbType.Postgresql)
                 .support(cn.vonce.sql.enumerate.DbType.Oracle)
-                .support(cn.vonce.sql.enumerate.DbType.SQLite, DbVersion.from(3, 0))
+                .support(cn.vonce.sql.enumerate.DbType.H2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLite)
                 .unsupport(cn.vonce.sql.enumerate.DbType.SQLServer)
                 .unsupport(cn.vonce.sql.enumerate.DbType.DB2)
                 .unsupport(cn.vonce.sql.enumerate.DbType.Derby)
-                .unsupport(cn.vonce.sql.enumerate.DbType.H2)
                 .unsupport(cn.vonce.sql.enumerate.DbType.Hsql)
                 .build());
         return f;
@@ -2865,21 +2957,24 @@ public class SqlFun extends Column {
                 .support(cn.vonce.sql.enumerate.DbType.MariaDB, DbVersion.from(10, 0))
                 .support(cn.vonce.sql.enumerate.DbType.Postgresql)
                 .support(cn.vonce.sql.enumerate.DbType.Oracle)
-                .support(cn.vonce.sql.enumerate.DbType.SQLite, DbVersion.from(3, 0))
+                .support(cn.vonce.sql.enumerate.DbType.H2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLite)
                 .unsupport(cn.vonce.sql.enumerate.DbType.SQLServer)
                 .unsupport(cn.vonce.sql.enumerate.DbType.DB2)
                 .unsupport(cn.vonce.sql.enumerate.DbType.Derby)
-                .unsupport(cn.vonce.sql.enumerate.DbType.H2)
                 .unsupport(cn.vonce.sql.enumerate.DbType.Hsql)
                 .build());
         return f;
     }
 
     /**
-     * 正则提取子串。
+     * 正则提取子串（{@code REGEXP_SUBSTR(text, pattern)}）。
      * <ul>
-     *   <li>Oracle / MySQL 8.0+ / PG / SQLite 3+: REGEXP_SUBSTR(text, pattern)</li>
-     *   <li>SQL Server: 不支持</li>
+     *   <li>MySQL 8.0+ / MariaDB 10.0+: {@code REGEXP_SUBSTR(text, pattern)}</li>
+     *   <li>PostgreSQL <b>15+</b>: {@code regexp_substr(...)}（15 之前请用 {@code (regexp_match(...))[1]}）</li>
+     *   <li>Oracle: {@code REGEXP_SUBSTR(text, pattern)}</li>
+     *   <li>H2: {@code REGEXP_SUBSTR(text, pattern)}（实测可用）</li>
+     *   <li>SQL Server / SQLite / DB2 / Derby / HSQLDB: 不支持</li>
      * </ul>
      */
     public static SqlFun regexpSubstr(Object text, Object pattern) {
@@ -2887,13 +2982,13 @@ public class SqlFun extends Column {
         f.dialect(DialectSupport.builder()
                 .support(cn.vonce.sql.enumerate.DbType.MySQL, DbVersion.from(8, 0))
                 .support(cn.vonce.sql.enumerate.DbType.MariaDB, DbVersion.from(10, 0))
-                .support(cn.vonce.sql.enumerate.DbType.Postgresql)
+                .support(cn.vonce.sql.enumerate.DbType.Postgresql, DbVersion.from(15, 0))
                 .support(cn.vonce.sql.enumerate.DbType.Oracle)
-                .support(cn.vonce.sql.enumerate.DbType.SQLite, DbVersion.from(3, 0))
+                .support(cn.vonce.sql.enumerate.DbType.H2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLite)
                 .unsupport(cn.vonce.sql.enumerate.DbType.SQLServer)
                 .unsupport(cn.vonce.sql.enumerate.DbType.DB2)
                 .unsupport(cn.vonce.sql.enumerate.DbType.Derby)
-                .unsupport(cn.vonce.sql.enumerate.DbType.H2)
                 .unsupport(cn.vonce.sql.enumerate.DbType.Hsql)
                 .build());
         return f;
@@ -2904,13 +2999,13 @@ public class SqlFun extends Column {
         f.dialect(DialectSupport.builder()
                 .support(cn.vonce.sql.enumerate.DbType.MySQL, DbVersion.from(8, 0))
                 .support(cn.vonce.sql.enumerate.DbType.MariaDB, DbVersion.from(10, 0))
-                .support(cn.vonce.sql.enumerate.DbType.Postgresql)
+                .support(cn.vonce.sql.enumerate.DbType.Postgresql, DbVersion.from(15, 0))
                 .support(cn.vonce.sql.enumerate.DbType.Oracle)
-                .support(cn.vonce.sql.enumerate.DbType.SQLite, DbVersion.from(3, 0))
+                .support(cn.vonce.sql.enumerate.DbType.H2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.SQLite)
                 .unsupport(cn.vonce.sql.enumerate.DbType.SQLServer)
                 .unsupport(cn.vonce.sql.enumerate.DbType.DB2)
                 .unsupport(cn.vonce.sql.enumerate.DbType.Derby)
-                .unsupport(cn.vonce.sql.enumerate.DbType.H2)
                 .unsupport(cn.vonce.sql.enumerate.DbType.Hsql)
                 .build());
         return f;
@@ -3003,9 +3098,10 @@ public class SqlFun extends Column {
     /**
      * SHA-1 摘要（十六进制字符串）。
      * <ul>
-     *   <li>MySQL / MariaDB: SHA1(str)</li>
-     *   <li>PG: encode(digest(str, 'sha1'), 'hex')</li>
-     *   <li>SQL Server: HASHBYTES('SHA1', str)（参数风格不同，请手写）</li>
+     *   <li>MySQL / MariaDB: {@code SHA1(str)}</li>
+     *   <li>PG: {@code encode(digest(str, 'sha1'), 'hex')}（需 pgcrypto，函数名不同，请手写）</li>
+     *   <li>SQL Server: {@code HASHBYTES('SHA1', str)}（参数风格不同，请手写）</li>
+     *   <li>H2 / HSQLDB / Derby / Oracle / SQLite / DB2: <b>无 {@code SHA1}</b>（H2 实测无此函数）</li>
      * </ul>
      */
     public static SqlFun sha1(Object str) {
@@ -3013,14 +3109,14 @@ public class SqlFun extends Column {
         f.dialect(DialectSupport.builder()
                 .support(cn.vonce.sql.enumerate.DbType.MySQL)
                 .support(cn.vonce.sql.enumerate.DbType.MariaDB)
-                .support(cn.vonce.sql.enumerate.DbType.H2)
-                .support(cn.vonce.sql.enumerate.DbType.Hsql)
-                .support(cn.vonce.sql.enumerate.DbType.Derby)
                 .unsupport(cn.vonce.sql.enumerate.DbType.Postgresql)
                 .unsupport(cn.vonce.sql.enumerate.DbType.SQLServer)
                 .unsupport(cn.vonce.sql.enumerate.DbType.Oracle)
                 .unsupport(cn.vonce.sql.enumerate.DbType.SQLite)
                 .unsupport(cn.vonce.sql.enumerate.DbType.DB2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.H2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Hsql)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Derby)
                 .build());
         return f;
     }
@@ -3030,14 +3126,14 @@ public class SqlFun extends Column {
         f.dialect(DialectSupport.builder()
                 .support(cn.vonce.sql.enumerate.DbType.MySQL)
                 .support(cn.vonce.sql.enumerate.DbType.MariaDB)
-                .support(cn.vonce.sql.enumerate.DbType.H2)
-                .support(cn.vonce.sql.enumerate.DbType.Hsql)
-                .support(cn.vonce.sql.enumerate.DbType.Derby)
                 .unsupport(cn.vonce.sql.enumerate.DbType.Postgresql)
                 .unsupport(cn.vonce.sql.enumerate.DbType.SQLServer)
                 .unsupport(cn.vonce.sql.enumerate.DbType.Oracle)
                 .unsupport(cn.vonce.sql.enumerate.DbType.SQLite)
                 .unsupport(cn.vonce.sql.enumerate.DbType.DB2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.H2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Hsql)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Derby)
                 .build());
         return f;
     }
@@ -3055,8 +3151,8 @@ public class SqlFun extends Column {
         f.dialect(DialectSupport.builder()
                 .support(cn.vonce.sql.enumerate.DbType.MySQL, DbVersion.from(5, 5))
                 .support(cn.vonce.sql.enumerate.DbType.MariaDB)
-                .support(cn.vonce.sql.enumerate.DbType.H2)
-                .support(cn.vonce.sql.enumerate.DbType.Hsql)
+                .unsupport(cn.vonce.sql.enumerate.DbType.H2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Hsql)
                 .unsupport(cn.vonce.sql.enumerate.DbType.Postgresql)
                 .unsupport(cn.vonce.sql.enumerate.DbType.SQLServer)
                 .unsupport(cn.vonce.sql.enumerate.DbType.Oracle)
@@ -3072,8 +3168,8 @@ public class SqlFun extends Column {
         f.dialect(DialectSupport.builder()
                 .support(cn.vonce.sql.enumerate.DbType.MySQL, DbVersion.from(5, 5))
                 .support(cn.vonce.sql.enumerate.DbType.MariaDB)
-                .support(cn.vonce.sql.enumerate.DbType.H2)
-                .support(cn.vonce.sql.enumerate.DbType.Hsql)
+                .unsupport(cn.vonce.sql.enumerate.DbType.H2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Hsql)
                 .unsupport(cn.vonce.sql.enumerate.DbType.Postgresql)
                 .unsupport(cn.vonce.sql.enumerate.DbType.SQLServer)
                 .unsupport(cn.vonce.sql.enumerate.DbType.Oracle)
@@ -3087,112 +3183,117 @@ public class SqlFun extends Column {
     // ---------------- K. 位运算 ----------------
 
     /**
-     * 位与（PG/MySQL/MariaDB/Hsql 全支持；SQL Server 用 {@code &} 运算符）。
+     * 位与，渲染为运算符形式 {@code (a & b)}。
+     * <p>MySQL / MariaDB / PostgreSQL / SQL Server / SQLite 原生支持 {@code &} 运算符；
+     * Oracle / DB2 只提供 {@code BITAND} 函数，H2 也只有 {@code BITAND}（实测 {@code &} 报语法错误），
+     * HSQLDB 仅 {@code BITAND} 函数，Derby 无位运算 —— 均不通过校验。</p>
      */
     public static SqlFun bitAnd(Object a, Object b) {
-        SqlFun f = new SqlFun("bit_and", new Object[]{a, b});
+        SqlFun f = new SqlFun("", new Object[]{a, new RawValue("&"), b}).spaceSeparated();
         f.dialect(DialectSupport.builder()
-                .support(cn.vonce.sql.enumerate.DbType.Postgresql)
                 .support(cn.vonce.sql.enumerate.DbType.MySQL)
                 .support(cn.vonce.sql.enumerate.DbType.MariaDB)
-                .support(cn.vonce.sql.enumerate.DbType.Hsql)
+                .support(cn.vonce.sql.enumerate.DbType.Postgresql)
+                .support(cn.vonce.sql.enumerate.DbType.SQLServer)
+                .support(cn.vonce.sql.enumerate.DbType.SQLite)
                 .unsupport(cn.vonce.sql.enumerate.DbType.Oracle)
-                .unsupport(cn.vonce.sql.enumerate.DbType.SQLServer)
-                .unsupport(cn.vonce.sql.enumerate.DbType.SQLite)
                 .unsupport(cn.vonce.sql.enumerate.DbType.DB2)
-                .unsupport(cn.vonce.sql.enumerate.DbType.Derby)
                 .unsupport(cn.vonce.sql.enumerate.DbType.H2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Hsql)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Derby)
                 .build());
         return f;
     }
 
     public static <T, R> SqlFun bitAnd(ColumnFun<T, R> a, Object b) {
-        SqlFun f = new SqlFun("bit_and", new Object[]{a, b});
+        SqlFun f = new SqlFun("", new Object[]{a, new RawValue("&"), b}).spaceSeparated();
         f.dialect(DialectSupport.builder()
-                .support(cn.vonce.sql.enumerate.DbType.Postgresql)
                 .support(cn.vonce.sql.enumerate.DbType.MySQL)
                 .support(cn.vonce.sql.enumerate.DbType.MariaDB)
-                .support(cn.vonce.sql.enumerate.DbType.Hsql)
+                .support(cn.vonce.sql.enumerate.DbType.Postgresql)
+                .support(cn.vonce.sql.enumerate.DbType.SQLServer)
+                .support(cn.vonce.sql.enumerate.DbType.SQLite)
                 .unsupport(cn.vonce.sql.enumerate.DbType.Oracle)
-                .unsupport(cn.vonce.sql.enumerate.DbType.SQLServer)
-                .unsupport(cn.vonce.sql.enumerate.DbType.SQLite)
                 .unsupport(cn.vonce.sql.enumerate.DbType.DB2)
-                .unsupport(cn.vonce.sql.enumerate.DbType.Derby)
                 .unsupport(cn.vonce.sql.enumerate.DbType.H2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Hsql)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Derby)
                 .build());
         return f;
     }
 
     /**
-     * 位或（PG/MySQL/MariaDB/Hsql 全支持；SQL Server 用 {@code |} 运算符）。
+     * 位或，渲染为运算符形式 {@code (a | b)}。支持的方言同 {@link #bitAnd}。
      */
     public static SqlFun bitOr(Object a, Object b) {
-        SqlFun f = new SqlFun("bit_or", new Object[]{a, b});
+        SqlFun f = new SqlFun("", new Object[]{a, new RawValue("|"), b}).spaceSeparated();
         f.dialect(DialectSupport.builder()
-                .support(cn.vonce.sql.enumerate.DbType.Postgresql)
                 .support(cn.vonce.sql.enumerate.DbType.MySQL)
                 .support(cn.vonce.sql.enumerate.DbType.MariaDB)
-                .support(cn.vonce.sql.enumerate.DbType.Hsql)
+                .support(cn.vonce.sql.enumerate.DbType.Postgresql)
+                .support(cn.vonce.sql.enumerate.DbType.SQLServer)
+                .support(cn.vonce.sql.enumerate.DbType.SQLite)
                 .unsupport(cn.vonce.sql.enumerate.DbType.Oracle)
-                .unsupport(cn.vonce.sql.enumerate.DbType.SQLServer)
-                .unsupport(cn.vonce.sql.enumerate.DbType.SQLite)
                 .unsupport(cn.vonce.sql.enumerate.DbType.DB2)
-                .unsupport(cn.vonce.sql.enumerate.DbType.Derby)
                 .unsupport(cn.vonce.sql.enumerate.DbType.H2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Hsql)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Derby)
                 .build());
         return f;
     }
 
     public static <T, R> SqlFun bitOr(ColumnFun<T, R> a, Object b) {
-        SqlFun f = new SqlFun("bit_or", new Object[]{a, b});
+        SqlFun f = new SqlFun("", new Object[]{a, new RawValue("|"), b}).spaceSeparated();
         f.dialect(DialectSupport.builder()
-                .support(cn.vonce.sql.enumerate.DbType.Postgresql)
                 .support(cn.vonce.sql.enumerate.DbType.MySQL)
                 .support(cn.vonce.sql.enumerate.DbType.MariaDB)
-                .support(cn.vonce.sql.enumerate.DbType.Hsql)
+                .support(cn.vonce.sql.enumerate.DbType.Postgresql)
+                .support(cn.vonce.sql.enumerate.DbType.SQLServer)
+                .support(cn.vonce.sql.enumerate.DbType.SQLite)
                 .unsupport(cn.vonce.sql.enumerate.DbType.Oracle)
-                .unsupport(cn.vonce.sql.enumerate.DbType.SQLServer)
-                .unsupport(cn.vonce.sql.enumerate.DbType.SQLite)
                 .unsupport(cn.vonce.sql.enumerate.DbType.DB2)
-                .unsupport(cn.vonce.sql.enumerate.DbType.Derby)
                 .unsupport(cn.vonce.sql.enumerate.DbType.H2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Hsql)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Derby)
                 .build());
         return f;
     }
 
     /**
-     * 位异或（PG/MySQL/MariaDB/Hsql 全支持；SQL Server 用 {@code ^} 运算符）。
+     * 位异或，渲染为运算符形式 {@code (a ^ b)}。
+     * <p>仅 MySQL / MariaDB / SQL Server 使用 {@code ^}；<b>PostgreSQL 的位异或是 {@code #}</b>（不是 {@code ^}），
+     * SQLite 无位异或运算符，Oracle / DB2 / H2 / HSQLDB / Derby 无位运算符，故均不通过校验。</p>
      */
     public static SqlFun bitXor(Object a, Object b) {
-        SqlFun f = new SqlFun("bit_xor", new Object[]{a, b});
+        SqlFun f = new SqlFun("", new Object[]{a, new RawValue("^"), b}).spaceSeparated();
         f.dialect(DialectSupport.builder()
-                .support(cn.vonce.sql.enumerate.DbType.Postgresql)
                 .support(cn.vonce.sql.enumerate.DbType.MySQL)
                 .support(cn.vonce.sql.enumerate.DbType.MariaDB)
-                .support(cn.vonce.sql.enumerate.DbType.Hsql)
-                .unsupport(cn.vonce.sql.enumerate.DbType.Oracle)
-                .unsupport(cn.vonce.sql.enumerate.DbType.SQLServer)
+                .support(cn.vonce.sql.enumerate.DbType.SQLServer)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Postgresql)
                 .unsupport(cn.vonce.sql.enumerate.DbType.SQLite)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Oracle)
                 .unsupport(cn.vonce.sql.enumerate.DbType.DB2)
-                .unsupport(cn.vonce.sql.enumerate.DbType.Derby)
                 .unsupport(cn.vonce.sql.enumerate.DbType.H2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Hsql)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Derby)
                 .build());
         return f;
     }
 
     public static <T, R> SqlFun bitXor(ColumnFun<T, R> a, Object b) {
-        SqlFun f = new SqlFun("bit_xor", new Object[]{a, b});
+        SqlFun f = new SqlFun("", new Object[]{a, new RawValue("^"), b}).spaceSeparated();
         f.dialect(DialectSupport.builder()
-                .support(cn.vonce.sql.enumerate.DbType.Postgresql)
                 .support(cn.vonce.sql.enumerate.DbType.MySQL)
                 .support(cn.vonce.sql.enumerate.DbType.MariaDB)
-                .support(cn.vonce.sql.enumerate.DbType.Hsql)
-                .unsupport(cn.vonce.sql.enumerate.DbType.Oracle)
-                .unsupport(cn.vonce.sql.enumerate.DbType.SQLServer)
+                .support(cn.vonce.sql.enumerate.DbType.SQLServer)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Postgresql)
                 .unsupport(cn.vonce.sql.enumerate.DbType.SQLite)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Oracle)
                 .unsupport(cn.vonce.sql.enumerate.DbType.DB2)
-                .unsupport(cn.vonce.sql.enumerate.DbType.Derby)
                 .unsupport(cn.vonce.sql.enumerate.DbType.H2)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Hsql)
+                .unsupport(cn.vonce.sql.enumerate.DbType.Derby)
                 .build());
         return f;
     }

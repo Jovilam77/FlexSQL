@@ -82,6 +82,15 @@ public class Select extends CommonCondition<Select> implements Serializable {
      */
     private List<String> lockOfTables = null;
     /**
+     * 行锁作用的目标<b>列</b>（FOR UPDATE OF ... / FOR SHARE OF ...）
+     * <p>
+     * Oracle / DB2 的 {@code FOR UPDATE OF} 只接受<b>列名</b>，而 MySQL / PostgreSQL 接受<b>表名</b>。
+     * 为兼容两者，Select 同时提供 {@code lockOfTables} / {@code lockOfColumns} 两个入口：
+     * 由各方言自行选择读取哪一个；若用户提供了当前方言不支持的那种，方言实现会给出警告并忽略。
+     * </p>
+     */
+    private List<String> lockOfColumns = null;
+    /**
      * CTE（WITH 子句）列表
      */
     private List<Cte> ctes = new ArrayList<>();
@@ -846,6 +855,24 @@ public class Select extends CommonCondition<Select> implements Serializable {
     }
 
     /**
+     * 获取行锁作用的列列表（Oracle / DB2 的 {@code FOR UPDATE OF column}）
+     *
+     * @return 目标列名集合，为 null 时不限定列
+     */
+    public List<String> getLockOfColumns() {
+        return lockOfColumns;
+    }
+
+    /**
+     * 设置行锁作用的列列表（Oracle / DB2）
+     *
+     * @param lockOfColumns 目标列名集合
+     */
+    public void setLockOfColumns(List<String> lockOfColumns) {
+        this.lockOfColumns = lockOfColumns;
+    }
+
+    /**
      * 设置行锁为 FOR UPDATE（悲观行锁）
      * <p>
      * 对已读取的行加排他锁，直到当前事务结束。适用于 MySQL / MariaDB / PostgreSQL / Oracle 等主流数据库。
@@ -925,11 +952,17 @@ public class Select extends CommonCondition<Select> implements Serializable {
     }
 
     /**
-     * 限定行锁仅作用于指定表（FOR UPDATE OF ... / FOR SHARE OF ...）
+     * 限定行锁仅作用于指定表（{@code FOR UPDATE OF table} / {@code FOR SHARE OF table}）
      * <p>
      * 用于多表 JOIN 场景，仅锁定列出的表所对应的行；不调用本方法则锁定所有涉及的表。
+     * <p><b>方言差异（参数是表名/别名，不是列名）</b>：
+     * <ul>
+     *   <li>MySQL 8.0+ / PostgreSQL：接受表名/别名，本方法有效；</li>
+     *   <li>Oracle / DB2：{@code FOR UPDATE OF} 要求<b>列名</b>，本方法会被忽略并告警，请改用 {@link #ofColumns};</li>
+     *   <li>H2 / HSQLDB：没有 {@code OF} 子句，本方法会被忽略并告警（{@code FOR UPDATE} 本身仍生效）。</li>
+     * </ul>
      *
-     * @param tables 目标表名（可多个）
+     * @param tables 目标表名/别名（可多个）
      * @return
      */
     public Select of(String... tables) {
@@ -940,13 +973,42 @@ public class Select extends CommonCondition<Select> implements Serializable {
     }
 
     /**
-     * 限定行锁仅作用于指定表（FOR UPDATE OF ... / FOR SHARE OF ...）
+     * 限定行锁仅作用于指定表（{@code FOR UPDATE OF table}）
      *
-     * @param tables 目标表名集合
+     * @param tables 目标表名/别名集合
      * @return
      */
     public Select of(List<String> tables) {
         this.lockOfTables = tables;
+        return this;
+    }
+
+    /**
+     * 限定行锁仅作用于指定<b>列</b>所属的表（{@code FOR UPDATE OF column}），供 Oracle / DB2 使用。
+     * <p>
+     * Oracle 官方文档：{@code FOR UPDATE OF [[owner.]table.]column}，
+     * <i>Rows in a table are locked only if the FOR UPDATE OF clause refers to a column in that table</i>
+     * —— 因此对这两个库必须传<b>列名</b>而非表名（传表名会报 {@code ORA-00904: invalid identifier}）。
+     * <p>MySQL / PostgreSQL 请使用 {@link #of}（它们要求表名/别名）。
+     *
+     * @param columns 目标列名（可多个）
+     * @return
+     */
+    public Select ofColumns(String... columns) {
+        if (columns != null && columns.length > 0) {
+            this.lockOfColumns = Arrays.asList(columns);
+        }
+        return this;
+    }
+
+    /**
+     * 限定行锁仅作用于指定<b>列</b>所属的表（{@code FOR UPDATE OF column}），供 Oracle / DB2 使用。
+     *
+     * @param columns 目标列名集合
+     * @return
+     */
+    public Select ofColumns(List<String> columns) {
+        this.lockOfColumns = columns;
         return this;
     }
 

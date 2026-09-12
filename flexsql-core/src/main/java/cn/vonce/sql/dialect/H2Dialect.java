@@ -257,10 +257,11 @@ public class H2Dialect extends AbstractDialect<JavaMapH2Type> {
         }
         StringBuilder lockSb = new StringBuilder();
         lockSb.append(SqlConstant.SPACES).append(base);
-        // OF 表限制：仅锁定指定表（多表 JOIN 场景）
-        List<String> ofTables = select.getLockOfTables();
-        if (ofTables != null && !ofTables.isEmpty()) {
-            lockSb.append(" OF ").append(String.join(", ", ofTables));
+        // H2 的 SELECT 语法只有 FOR UPDATE [NOWAIT | WAIT n | SKIP LOCKED]，没有 OF 子句，
+        // 生成 "FOR UPDATE OF x" 会直接语法错误（已实测）。忽略 OF 并告警。
+        if ((select.getLockOfTables() != null && !select.getLockOfTables().isEmpty())
+                || (select.getLockOfColumns() != null && !select.getLockOfColumns().isEmpty())) {
+            logger.warning("H2 不支持 FOR UPDATE OF 子句（仅 FOR UPDATE），of(...)/ofColumns(...) 已被忽略");
         }
         // 等待模式
         LockWaitMode waitMode = select.getLockWaitMode();

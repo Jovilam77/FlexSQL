@@ -86,6 +86,34 @@ public class SqlHelper {
         String groupBySql = groupBySql(select);
         sqlSb.append(groupBySql);
         sqlSb.append(havingSql(select));
+        // UNION / UNION ALL 子查询：必须紧接主体 SELECT、位于 ORDER BY / 分页 / 行锁之前。
+        // 原实现把它们放在 ORDER BY/LIMIT/行锁之后，会生成
+        //   "... WHERE ... ORDER BY x LIMIT 0,10 FOR UPDATE UNION SELECT ..."
+        // → MySQL 报 Incorrect usage of UNION and ORDER BY/LIMIT，PostgreSQL 报 syntax error at or near "UNION"。
+        // ORDER BY / LIMIT / OFFSET 按 SQL 标准语义属于整条 UNION 结果，故排在所有分支之后；
+        // 分支只有在自身带 ORDER BY/分页/行锁时才补括号（SQLite 的复合查询 grammar 不接受带括号的操作数）。
+        // 关联子查询主表同样覆盖动态 schema（与 setSchema 主表逻辑一致，纯渲染期覆盖）
+        boolean hasUnion = !select.isCount() && select.getUnionSelects() != null && !select.getUnionSelects().isEmpty();
+        if (hasUnion) {
+            for (int i = 0; i < select.getUnionSelects().size(); i++) {
+                Select unionSelect = select.getUnionSelects().get(i);
+                if (unionSelect.getSqlBeanMeta() == null) {
+                    unionSelect.setSqlBeanMeta(select.getSqlBeanMeta());
+                }
+                if (dynSchema != null && unionSelect.getTable() != null) {
+                    unionSelect.getTable().setSchema(dynSchema);
+                }
+                boolean wrap = needsUnionBranchParens(unionSelect);
+                sqlSb.append(select.getUnionAlls().get(i) ? SqlConstant.UNION_ALL : SqlConstant.UNION);
+                if (wrap) {
+                    sqlSb.append(SqlConstant.BEGIN_BRACKET);
+                }
+                sqlSb.append(SqlHelper.buildSelectSql(unionSelect));
+                if (wrap) {
+                    sqlSb.append(SqlConstant.END_BRACKET);
+                }
+            }
+        }
         if (!select.isCount()) {
             sqlSb.append(orderSql);
         }
@@ -95,21 +123,12 @@ public class SqlHelper {
         }
         //行锁子句（必须在 LIMIT/OFFSET 之后、COUNT 包裹之前追加；count 查询不加锁）
         if (!select.isCount()) {
-            dialect.appendLockClause(sqlSb, select);
-        }
-        // UNION / UNION ALL 子查询（追加在主体 SELECT 之后、COUNT 包裹之前）
-        // 关联子查询主表同样覆盖动态 schema（与 setSchema 主表逻辑一致，纯渲染期覆盖）
-        if (!select.isCount() && select.getUnionSelects() != null && !select.getUnionSelects().isEmpty()) {
-            for (int i = 0; i < select.getUnionSelects().size(); i++) {
-                Select unionSelect = select.getUnionSelects().get(i);
-                if (unionSelect.getSqlBeanMeta() == null) {
-                    unionSelect.setSqlBeanMeta(select.getSqlBeanMeta());
-                }
-                if (dynSchema != null && unionSelect.getTable() != null) {
-                    unionSelect.getTable().setSchema(dynSchema);
-                }
-                sqlSb.append(select.getUnionAlls().get(i) ? SqlConstant.UNION_ALL : SqlConstant.UNION);
-                sqlSb.append(SqlHelper.buildSelectSql(unionSelect));
+            if (hasUnion && select.getLockType() != null && select.getLockType() != LockType.NONE) {
+                // PostgreSQL 明确禁止 FOR UPDATE/FOR SHARE 与 UNION 同用；MySQL 也无法对 UNION 结果加锁。
+                // 直接忽略锁子句，避免生成必然报错的 SQL。
+                logger.warning("UNION 查询不支持行锁（FOR UPDATE / FOR SHARE），已忽略该锁子句");
+            } else {
+                dialect.appendLockClause(sqlSb, select);
             }
         }
         //标准Sql 如果是克隆的select则为分页时的count
@@ -118,6 +137,27 @@ public class SqlHelper {
             sqlSb.append(SqlConstant.END_BRACKET + SqlConstant.AS + SqlConstant.T);
         }
         return sqlSb.toString();
+    }
+
+    /**
+     * UNION 分支是否需要括号包裹。
+     * <p>SQL 标准规定 ORDER BY / LIMIT 只能出现在整条复合查询的末尾，但各数据库对「分支自带
+     * ORDER BY / LIMIT」的容忍度不同：MySQL / PostgreSQL 接受 {@code (SELECT ... ORDER BY ...)}，
+     * 而 SQLite 的复合查询 grammar 只允许 {@code select-core} 作为操作数，完全不允许括号。
+     * 因此只在分支自身确实带排序 / 分页 / 行锁时才加括号，其余情况输出最朴素的 {@code a UNION b} 形式，
+     * 保证 SQLite 也能通过。</p>
+     *
+     * @param unionSelect UNION 分支
+     * @return 是否需要括号包裹
+     */
+    private static boolean needsUnionBranchParens(Select unionSelect) {
+        if (unionSelect == null) {
+            return false;
+        }
+        boolean hasOrder = unionSelect.getOrderBy() != null && !unionSelect.getOrderBy().isEmpty();
+        boolean hasPage = unionSelect.getPage() != null;
+        boolean hasLock = unionSelect.getLockType() != null && unionSelect.getLockType() != LockType.NONE;
+        return hasOrder || hasPage || hasLock;
     }
 
     /**
@@ -815,7 +855,7 @@ public class SqlHelper {
         List<String> assigns = new ArrayList<>();
         String escape = SqlBeanUtil.getEscape(upsert);
         boolean toUpper = SqlBeanUtil.isToUpperCase(upsert);
-        // 1) 显式字面量赋值
+        // 1) 显式字面量赋值（用户显式声明的目标列，不做过滤）
         for (SetInfo setInfo : upsert.getUpdateSetList()) {
             String col = escape + setInfo.getName(toUpper) + escape;
             Object val = SqlBeanUtil.getActualValue(upsert, setInfo.getValue());
@@ -837,10 +877,53 @@ public class SqlHelper {
         for (Column c : upsert.getReferenceColumns()) {
             refCols.add(escape + c.getName(toUpper) + escape);
         }
+        // 3) 过滤只读审计字段与租户字段（口径与常规 UPDATE 的 SET 子句一致，见 setSql）。
+        //    否则 setAll() 会生成 create_by = SRC.create_by / create_time = SRC.create_time，
+        //    导致每次 upsert 已存在的行都覆盖创建人/创建时间，并可能写入租户列。
+        Set<String> skipped = upsertSkippedRefColumns(upsert, escape, toUpper);
         for (String f : refCols) {
+            if (skipped.contains(f)) {
+                continue;
+            }
             assigns.add(targetPrefix + f + SqlConstant.EQUAL_TO + refExpr.apply(f));
         }
         return assigns;
+    }
+
+    /**
+     * 收集 UPSERT 冲突更新分支中应跳过的列（返回已转义的列名，便于与 fieldNames 直接比较）。
+     * <p>只读审计字段（{@code @SqlDefaultValue(readonly = true)}）与租户字段（{@code @SqlTenantId}）
+     * 不应被「待插入值」覆盖，与 {@link #setSql(Update)} 中常规 UPDATE 的过滤口径保持一致。</p>
+     *
+     * @param upsert  UPSERT 对象
+     * @param escape  转义符
+     * @param toUpper 是否转大写
+     * @return 应跳过的已转义列名集合；无实体类信息时返回空集合
+     */
+    private static Set<String> upsertSkippedRefColumns(Upsert<?> upsert, String escape, boolean toUpper) {
+        Set<String> skipped = new LinkedHashSet<>();
+        Class<?> beanClass = upsert.getBeanClass();
+        if (beanClass == null) {
+            return skipped;
+        }
+        Table table = SqlBeanUtil.getTable(beanClass);
+        SqlTable sqlTable = SqlBeanUtil.getSqlTable(beanClass);
+        for (Field field : SqlBeanUtil.getBeanAllField(beanClass)) {
+            if (SqlBeanUtil.isIgnore(field)) {
+                continue;
+            }
+            SqlDefaultValue sqlDefaultValue = field.getAnnotation(SqlDefaultValue.class);
+            boolean readonly = sqlDefaultValue != null && sqlDefaultValue.readonly();
+            boolean tenant = field.isAnnotationPresent(SqlTenantId.class);
+            if (!readonly && !tenant) {
+                continue;
+            }
+            Column column = SqlBeanUtil.getTableColumn(field, table, sqlTable);
+            if (column != null) {
+                skipped.add(escape + column.getName(toUpper) + escape);
+            }
+        }
+        return skipped;
     }
 
     /**

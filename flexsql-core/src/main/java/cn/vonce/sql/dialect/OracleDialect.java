@@ -249,10 +249,14 @@ public class OracleDialect extends AbstractDialect<JavaMapOracleType> {
         }
         StringBuilder lockSb = new StringBuilder();
         lockSb.append(SqlConstant.SPACES).append(base);
-        // Oracle 的 FOR UPDATE OF 指定需锁定的表（多表 JOIN 场景）
-        List<String> ofTables = select.getLockOfTables();
-        if (ofTables != null && !ofTables.isEmpty()) {
-            lockSb.append(" OF ").append(String.join(", ", ofTables));
+        // Oracle 的 FOR UPDATE OF 要求【列名】（语法为 FOR UPDATE OF [[owner.]table.]column），
+        // 传表名（如 FOR UPDATE OF d_user）会报 ORA-00904: invalid identifier。
+        // 故这里只接受 ofColumns(...)；若用户误用 of(表名)，告警并忽略 OF 子句（退化为锁所有表，更安全）。
+        List<String> ofColumns = select.getLockOfColumns();
+        if (ofColumns != null && !ofColumns.isEmpty()) {
+            lockSb.append(" OF ").append(String.join(", ", ofColumns));
+        } else if (select.getLockOfTables() != null && !select.getLockOfTables().isEmpty()) {
+            logger.warning("Oracle 的 FOR UPDATE OF 需要【列名】而非表名，of(...) 已被忽略；请改用 ofColumns(列名...)");
         }
         LockWaitMode waitMode = select.getLockWaitMode();
         if (waitMode == LockWaitMode.NOWAIT) {

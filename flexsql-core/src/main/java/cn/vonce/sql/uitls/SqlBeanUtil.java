@@ -1074,12 +1074,19 @@ public class SqlBeanUtil {
         StringBuilder fun = new StringBuilder();
         fun.append(sqlFun.getFunName());
         fun.append(SqlConstant.BEGIN_BRACKET);
-        if (sqlFun.getValues() != null && sqlFun.getValues().length > 0) {
-            for (Object value : sqlFun.getValues()) {
-                fun.append(SqlBeanUtil.getActualValue(common, value));
-                fun.append(SqlConstant.COMMA);
+        Object[] funValues = sqlFun.getValues();
+        if (funValues != null && funValues.length > 0) {
+            // 参数分隔符：默认 ", "；CAST/EXTRACT/POSITION 等标准语法用 " "（见 SqlFun#spaceSeparated）
+            String separator = sqlFun.getSeparator();
+            if (separator == null || separator.isEmpty()) {
+                separator = SqlConstant.COMMA;
             }
-            fun.deleteCharAt(fun.length() - SqlConstant.COMMA.length());
+            for (Object value : funValues) {
+                fun.append(SqlBeanUtil.getActualValue(common, value));
+                fun.append(separator);
+            }
+            // 去掉最后一个分隔符：用 setLength 精确截断，避免 ", " 只删逗号、留下尾随空格（如 md5('x' )）
+            fun.setLength(fun.length() - separator.length());
         }
         fun.append(SqlConstant.END_BRACKET);
         String windowSpec = getWindowSpec(common, sqlFun);

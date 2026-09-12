@@ -224,10 +224,10 @@ public class HsqlDialect extends AbstractDialect<JavaMapHsqlType> {
         }
         StringBuilder lockSb = new StringBuilder();
         lockSb.append(SqlConstant.SPACES).append(base);
-        // OF 表限制：仅锁定指定表（多表 JOIN 场景）
-        List<String> ofTables = select.getLockOfTables();
-        if (ofTables != null && !ofTables.isEmpty()) {
-            lockSb.append(" OF ").append(String.join(", ", ofTables));
+        // HSQLDB 的 FOR UPDATE 不接 OF 子句，生成 "FOR UPDATE OF x" 会语法错误。忽略 OF 并告警。
+        if ((select.getLockOfTables() != null && !select.getLockOfTables().isEmpty())
+                || (select.getLockOfColumns() != null && !select.getLockOfColumns().isEmpty())) {
+            logger.warning("HSQLDB 不支持 FOR UPDATE OF 子句（仅 FOR UPDATE），of(...)/ofColumns(...) 已被忽略");
         }
         // 等待模式
         LockWaitMode waitMode = select.getLockWaitMode();

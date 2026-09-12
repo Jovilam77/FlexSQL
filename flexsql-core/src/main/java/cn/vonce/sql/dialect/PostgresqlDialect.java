@@ -264,10 +264,12 @@ public class PostgresqlDialect extends AbstractDialect<JavaMapPostgresqlType> {
         }
         StringBuilder lockSb = new StringBuilder();
         lockSb.append(SqlConstant.SPACES).append(base);
-        // OF 表限制：仅锁定指定表（多表 JOIN 场景）
+        // PostgreSQL 的 FOR UPDATE / FOR SHARE OF 接受【表名/别名】
         List<String> ofTables = select.getLockOfTables();
         if (ofTables != null && !ofTables.isEmpty()) {
             lockSb.append(" OF ").append(String.join(", ", ofTables));
+        } else if (select.getLockOfColumns() != null && !select.getLockOfColumns().isEmpty()) {
+            logger.warning("PostgreSQL 的 OF 子句需要【表名/别名】，ofColumns(...) 已被忽略；请改用 of(表名...)");
         }
         // 等待模式
         LockWaitMode waitMode = select.getLockWaitMode();
