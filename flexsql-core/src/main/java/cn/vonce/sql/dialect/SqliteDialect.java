@@ -7,6 +7,7 @@ import cn.vonce.sql.config.SqlBeanMeta;
 import cn.vonce.sql.constant.SqlConstant;
 import cn.vonce.sql.enumerate.AlterType;
 import cn.vonce.sql.enumerate.JavaMapSqliteType;
+import cn.vonce.sql.enumerate.LockType;
 import cn.vonce.sql.exception.SqlBeanException;
 import cn.vonce.sql.helper.SqlHelper;
 import cn.vonce.sql.uitls.DateUtil;
@@ -150,6 +151,19 @@ public class SqliteDialect extends AbstractDialect<JavaMapSqliteType> {
         sqlSb.append(pageParam[1]);
         sqlSb.append(SqlConstant.OFFSET);
         sqlSb.append(pageParam[0]);
+    }
+
+    @Override
+    public void appendLockClause(StringBuilder sqlSb, Select select) {
+        LockType lockType = select.getLockType();
+        if (lockType == null || lockType == LockType.NONE) {
+            return;
+        }
+        // SQLite 没有 SELECT ... FOR UPDATE / FOR SHARE 语法（其事务本身就是库级/表级锁），
+        // 也没有表提示钩子可替代。这里显式告警而不是静默丢弃，
+        // 否则用户调用 forUpdate()/forShare() 会误以为已加上悲观锁。
+        logger.warning("SQLite 不支持行锁子句（FOR UPDATE / FOR SHARE），"
+                + lockType.name() + " 已被忽略；SQLite 的并发控制请依赖事务（如 BEGIN IMMEDIATE）或应用层锁");
     }
 
     @Override

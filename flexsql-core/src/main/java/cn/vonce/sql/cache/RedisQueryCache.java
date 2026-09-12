@@ -1,6 +1,7 @@
 package cn.vonce.sql.cache;
 
 import java.util.Set;
+import java.util.logging.Logger;
 
 /**
  * 基于 Redis 的分布式查询缓存实现（兼容 Redis）。
@@ -14,12 +15,17 @@ import java.util.Set;
  *       若实体不便实现 Serializable，请注入 JSON 序列化器（或自定义 {@link CacheSerializer}）。</li>
  *   <li>{@link #clear()} 故意抛出 {@link UnsupportedOperationException}：Redis 全局清空风险极高，
  *       可能误删其它业务数据，请改用 SCAN + DEL 或 FLUSHDB 等可控方式。</li>
+ *   <li><b>序列化异常一律降级，绝不阻断查询</b>：读路径反序列化失败（脏键、实体结构变更、序列化器不兼容）
+ *       按「未命中」处理并删除坏键，让调用方回源 DB；写路径序列化失败则跳过本次缓存写入。
+ *       否则一个坏键会让读请求持续抛错，且只能等 TTL 过期。</li>
  * </ul>
  *
  * @author Jovi
  * @version 1.1
  */
 public class RedisQueryCache implements QueryCache {
+
+    private static final Logger logger = Logger.getLogger(RedisQueryCache.class.getName());
 
     private final RedisOps redisOps;
     private final CacheSerializer serializer;
@@ -37,14 +43,37 @@ public class RedisQueryCache implements QueryCache {
 
     @Override
     public Object get(QueryCacheKey key) {
-        byte[] bytes = redisOps.get(key.toStoreKey());
-        return serializer.deserialize(bytes);
+        String storeKey = key.toStoreKey();
+        byte[] bytes = redisOps.get(storeKey);
+        if (bytes == null) {
+            return null;
+        }
+        try {
+            return serializer.deserialize(bytes);
+        } catch (RuntimeException e) {
+            // 脏键 / 实体结构变更 / 序列化器不兼容：降级为 cache miss，并删除坏键，避免每次读都抛错。
+            logger.warning("Redis 缓存值反序列化失败，已按未命中处理并删除该键（key=" + storeKey + "）：" + e);
+            try {
+                redisOps.delete(storeKey);
+            } catch (RuntimeException ignore) {
+                // 删除失败不影响主流程，最坏情况等 TTL 自然过期
+            }
+            return null;
+        }
     }
 
     @Override
     public void put(QueryCacheKey key, Object value, String table, Object tenantId) {
         String storeKey = key.toStoreKey();
-        redisOps.set(storeKey, serializer.serialize(value), ttlMillis);
+        byte[] payload;
+        try {
+            payload = serializer.serialize(value);
+        } catch (RuntimeException e) {
+            // 序列化失败（最常见：实体未实现 Serializable）不应让查询整体失败，跳过本次缓存写入即可。
+            logger.warning("Redis 缓存值序列化失败，本次结果不写入缓存（key=" + storeKey + "）：" + e);
+            return;
+        }
+        redisOps.set(storeKey, payload, ttlMillis);
         if (table != null) {
             // 失效索引键含 schema 与 dataSource，与本地实现保持一致，避免跨 schema / 跨数据源同表名被过度失效
             String indexKey = "flexsql:tbl:" + table + "@" + (key.getSchema() == null ? "" : key.getSchema())

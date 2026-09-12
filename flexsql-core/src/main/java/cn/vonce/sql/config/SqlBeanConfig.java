@@ -224,6 +224,14 @@ public class SqlBeanConfig implements Serializable {
                 }
                 long redisTtl = redisExpireAfterWrite == null ? 0 : redisExpireAfterWrite;
                 return QueryCacheConfig.redis(redisOps, redisTtl);
+            case CUSTOM:
+                // CUSTOM 无法仅靠本 Bean 完成：QueryCache 实例必须由用户编程式提供
+                // （SqlBeanServices.setCacheConfig(QueryCacheConfig.custom(cache)) 或 caching(service, cache)）。
+                // 这里明确告警而不是静默 return null，否则用户会以为已按 CUSTOM 开启缓存。
+                System.err.println("[FlexSQL WARN] cache.mode=CUSTOM 需要通过编程式注册 QueryCache 实例"
+                        + "（SqlBeanServices.setCacheConfig(QueryCacheConfig.custom(cache)) 或 SqlBeanServices.caching(service, cache)），"
+                        + "SqlBeanConfig 无法单独启用 CUSTOM 缓存；本次 cache 配置已被忽略。");
+                return null;
             default:
                 return null;
         }

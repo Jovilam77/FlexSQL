@@ -68,8 +68,14 @@ public class SqlHelper {
             dialect.appendPageAfterSelect(sqlSb, select, orderSql, pageParam);
         }
 
+        // 是否含 UNION / UNION ALL 分支。count 查询同样需要保留分支，否则分页总数只统计主查询。
+        boolean hasUnionBranches = select.getUnionSelects() != null && !select.getUnionSelects().isEmpty();
+        // count + union：内层必须渲染原始列（而不是 COUNT(*)），再由最外层包一层 COUNT(*)，
+        // 与 count+distinct 的包裹方式同构；否则会退化成「两个 COUNT(*) 的 UNION」→ 返回多行而非总数。
+        boolean countOverUnion = select.isCount() && hasUnionBranches && !select.isDistinct();
+
         //标准Sql
-        if (select.isCount() && !select.isDistinct()) {
+        if (select.isCount() && !select.isDistinct() && !countOverUnion) {
             sqlSb.append(SqlConstant.COUNT + SqlConstant.BEGIN_BRACKET + SqlConstant.ALL + SqlConstant.END_BRACKET);
         } else {
             sqlSb.append(column(select));
@@ -80,8 +86,23 @@ public class SqlHelper {
             sqlSb.append(SqlBeanUtil.fromFullName(baseSchema, select.getTable().getName(), select.getTable().getAlias(), select));
             // 表级锁提示（如 SQL Server 的 WITH (UPDLOCK, READPAST)），紧贴主表名之后注入
             dialect.appendTableHint(sqlSb, select);
-            sqlSb.append(joinSql(select, dialect));
-            sqlSb.append(whereSql(select, null));
+            // RIGHT / FULL JOIN 的「行保留侧」租户条件不能放进 ON（不匹配行仍会被保留，导致其它租户行泄漏），
+            // 由 joinSql 收集后并入外层 WHERE
+            StringBuilder joinTenantWhere = new StringBuilder();
+            sqlSb.append(joinSql(select, dialect, joinTenantWhere));
+            String where = whereSql(select, null);
+            if (joinTenantWhere.length() > 0) {
+                if (where.isEmpty()) {
+                    sqlSb.append(SqlConstant.WHERE);
+                    sqlSb.append(joinTenantWhere);
+                } else {
+                    sqlSb.append(where);
+                    sqlSb.append(SqlConstant.AND);
+                    sqlSb.append(joinTenantWhere);
+                }
+            } else {
+                sqlSb.append(where);
+            }
         }
         String groupBySql = groupBySql(select);
         sqlSb.append(groupBySql);
@@ -93,8 +114,7 @@ public class SqlHelper {
         // ORDER BY / LIMIT / OFFSET 按 SQL 标准语义属于整条 UNION 结果，故排在所有分支之后；
         // 分支只有在自身带 ORDER BY/分页/行锁时才补括号（SQLite 的复合查询 grammar 不接受带括号的操作数）。
         // 关联子查询主表同样覆盖动态 schema（与 setSchema 主表逻辑一致，纯渲染期覆盖）
-        boolean hasUnion = !select.isCount() && select.getUnionSelects() != null && !select.getUnionSelects().isEmpty();
-        if (hasUnion) {
+        if (hasUnionBranches) {
             for (int i = 0; i < select.getUnionSelects().size(); i++) {
                 Select unionSelect = select.getUnionSelects().get(i);
                 if (unionSelect.getSqlBeanMeta() == null) {
@@ -123,7 +143,7 @@ public class SqlHelper {
         }
         //行锁子句（必须在 LIMIT/OFFSET 之后、COUNT 包裹之前追加；count 查询不加锁）
         if (!select.isCount()) {
-            if (hasUnion && select.getLockType() != null && select.getLockType() != LockType.NONE) {
+            if (hasUnionBranches && select.getLockType() != null && select.getLockType() != LockType.NONE) {
                 // PostgreSQL 明确禁止 FOR UPDATE/FOR SHARE 与 UNION 同用；MySQL 也无法对 UNION 结果加锁。
                 // 直接忽略锁子句，避免生成必然报错的 SQL。
                 logger.warning("UNION 查询不支持行锁（FOR UPDATE / FOR SHARE），已忽略该锁子句");
@@ -132,7 +152,9 @@ public class SqlHelper {
             }
         }
         //标准Sql 如果是克隆的select则为分页时的count
-        if ((select.isCount() && select.isDistinct()) || (select.isCount() && StringUtil.isNotEmpty(groupBySql))) {
+        if ((select.isCount() && select.isDistinct())
+                || (select.isCount() && StringUtil.isNotEmpty(groupBySql))
+                || countOverUnion) {
             sqlSb.insert(0, SqlConstant.SELECT + SqlConstant.COUNT + SqlConstant.BEGIN_BRACKET + SqlConstant.ALL + SqlConstant.END_BRACKET + SqlConstant.FROM + SqlConstant.BEGIN_BRACKET);
             sqlSb.append(SqlConstant.END_BRACKET + SqlConstant.AS + SqlConstant.T);
         }
@@ -454,10 +476,13 @@ public class SqlHelper {
     /**
      * 返回innerJoin语句
      *
-     * @param select
-     * @return
+     * @param select         查询对象
+     * @param dialect        方言
+     * @param deferredWhere  OUT 参数：无法放进 ON 的租户条件（RIGHT/FULL JOIN 的行保留侧），
+     *                       由调用方并入外层 WHERE；不需要时传 null
+     * @return JOIN 子句
      */
-    private static String joinSql(Select select, SqlDialect dialect) {
+    private static String joinSql(Select select, SqlDialect dialect, StringBuilder deferredWhere) {
         StringBuilder joinSql = new StringBuilder();
         if (select != null && select.getJoin().size() != 0) {
             // 动态Schema（多租户）优先级最高，覆盖关联表 schema（与 setSchema 主表逻辑一致）
@@ -503,11 +528,24 @@ public class SqlHelper {
                         joinSql.append(SqlConstant.SPACES);
                     }
                 }
-                // 关联表行级多租户隔离：在 ON 子句追加租户过滤（LEFT JOIN 也不会破坏左表行，比放 WHERE 安全）
+                // 关联表行级多租户隔离。放置位置取决于该关联表是否为「行保留侧」：
+                //   - INNER / LEFT JOIN：关联表是非保留侧，条件放 ON 既完成过滤、又不破坏保留侧的行（放 WHERE 反而会退化成内连接语义）；
+                //   - RIGHT JOIN：关联表是保留侧；ON 只决定匹配与否，不匹配的关联表行仍会保留（左表列补 NULL），
+                //     其它租户的行会因此出现在结果里 → 必须并入外层 WHERE 才能真正过滤；
+                //   - FULL JOIN：两侧都是保留侧，同理必须放 WHERE。
                 String joinTenantSql = joinTenantCondition(join, select);
                 if (!joinTenantSql.isEmpty()) {
-                    joinSql.append(SqlConstant.AND);
-                    joinSql.append(joinTenantSql);
+                    boolean preservingSide = join.getJoinType() == JoinType.RIGHT_JOIN
+                            || join.getJoinType() == JoinType.FULL_JOIN;
+                    if (preservingSide && deferredWhere != null) {
+                        if (deferredWhere.length() > 0) {
+                            deferredWhere.append(SqlConstant.AND);
+                        }
+                        deferredWhere.append(joinTenantSql);
+                    } else {
+                        joinSql.append(SqlConstant.AND);
+                        joinSql.append(joinTenantSql);
+                    }
                 }
             }
         }
@@ -1433,17 +1471,26 @@ public class SqlHelper {
     }
 
     /**
-     * 租户隔离处理（SELECT / UPDATE / DELETE）
+     * 租户隔离处理（SELECT / UPDATE / DELETE / BACKUP / COPY）
      * <p>
      * 若实体声明了 @SqlTenantId 字段且当前租户上下文存在，则生成 {@code (tableAlias.tenant_id = <值>)} 条件片段。
      * 返回值不带 WHERE 关键字，由调用方在 conditionHandle 中按需用 AND 连接。
+     * <p>
+     * BACKUP / COPY 同样参与隔离：两者都会把源表数据整表/按条件搬走，若不注入租户条件会跨租户搬运数据。
+     * 注意这两者的 FROM 子句只输出表名、<b>不输出别名</b>（见 {@link #buildBackup} / {@link #buildCopy}），
+     * 因此这里使用不带限定符的列名（单表语句下不会产生歧义），避免生成 {@code alias.col} 这种必报错的引用。
      *
      * @param common
      * @return 租户过滤条件片段；不满足注入条件时返回空串
      */
     private static String tenantCondition(Common common) {
         Class<?> clazz = common.getBeanClass();
-        if (clazz == null || !(common instanceof Select || common instanceof Update || common instanceof Delete)) {
+        boolean supported = common instanceof Select || common instanceof Update || common instanceof Delete
+                || common instanceof Backup || common instanceof Copy;
+        if (clazz == null || !supported) {
+            return "";
+        }
+        if (common.getTable() == null) {
             return "";
         }
         if (!SqlBeanUtil.checkTenant(clazz)) {
@@ -1459,9 +1506,12 @@ public class SqlHelper {
         }
         SqlTable sqlTable = SqlBeanUtil.getSqlTable(clazz);
         String columnName = SqlBeanUtil.getTableFieldName(tenantField, sqlTable);
+        // BACKUP / COPY 的 FROM 没有别名，只能使用非限定列名
+        String qualifier = (common instanceof Backup || common instanceof Copy)
+                ? null : common.getTable().getAlias();
         StringBuilder tenantSql = new StringBuilder();
         tenantSql.append(SqlConstant.BEGIN_BRACKET);
-        tenantSql.append(SqlBeanUtil.getTableFieldFullName(common, common.getTable().getAlias(), columnName));
+        tenantSql.append(SqlBeanUtil.getTableFieldFullName(common, qualifier, columnName));
         tenantSql.append(SqlConstant.EQUAL_TO);
         tenantSql.append(SqlBeanUtil.getSqlValue(common, tenantId));
         tenantSql.append(SqlConstant.END_BRACKET);

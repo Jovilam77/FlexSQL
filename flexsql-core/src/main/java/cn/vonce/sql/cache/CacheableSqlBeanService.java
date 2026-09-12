@@ -20,7 +20,6 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 查询缓存装饰器（基于 JDK 动态代理，后端无关）。
@@ -151,7 +150,15 @@ public final class CacheableSqlBeanService {
         private final Class<?> beanClass;
         /** 主表名（构造时解析一次并缓存，避免每次查询都 new Table 对象）。用于指标按表统计。 */
         private final String statsTable;
-        private final ConcurrentHashMap<QueryCacheKey, Object> loadLocks = new ConcurrentHashMap<>();
+        /**
+         * 缓存击穿保护用的分段锁条带（stripe）。
+         * <p>旧实现用 {@code Map<QueryCacheKey, Object>} + {@code computeIfAbsent} 且从不清理：
+         * 键里内联了参数值（见 {@code SqlBeanUtil.getCondition} 把 {@code ?} 换成字面量），distinct 键随数据量增长
+         * → 内存持续增长。而"用完即删"又会引入竞态（A 持旧锁、C 从 map 取到新建的锁 → 同键双回源）。
+         * 固定条带锁内存 O(1)、无清理动作、无竞态，代价仅是不相关键可能共享同一把锁（短暂串行，不影响正确性）。</p>
+         */
+        private static final int LOAD_LOCK_STRIPES = 64;
+        private final Object[] loadLocks = new Object[LOAD_LOCK_STRIPES];
 
         Handler(SqlBeanService<?, ?> delegate, QueryCache cache) {
             this.delegate = delegate;
@@ -160,6 +167,9 @@ public final class CacheableSqlBeanService {
             this.meta = CacheableSqlBeanService.resolveMeta(delegate);
             Table table = SqlBeanUtil.getTable(beanClass);
             this.statsTable = table == null ? null : table.getName();
+            for (int i = 0; i < loadLocks.length; i++) {
+                loadLocks[i] = new Object();
+            }
         }
 
         @Override
@@ -180,7 +190,7 @@ public final class CacheableSqlBeanService {
                 // 未命中：此处记为 miss；是否真的回源看下方（并发等待复用时只 miss 不 load）
                 CacheMetrics.recordMiss(statsTable);
                 // 缓存击穿保护：同一 key 同一时刻仅一个线程回源，其余线程复用重建结果（Double-Checked Locking）
-                Object lock = loadLocks.computeIfAbsent(key, k -> new Object());
+                Object lock = loadLocks[(key.hashCode() & 0x7fffffff) % LOAD_LOCK_STRIPES];
                 synchronized (lock) {
                     Object re = cache.get(key);
                     if (re != null) {
