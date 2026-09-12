@@ -58,9 +58,13 @@ public class JavaSqlConstantProcessor extends SqlConstantProcessor {
                 path = new File("").getAbsolutePath();
             }
             String sourceRoot = path + File.separator + "src" + File.separator + "main" + File.separator + "java" + File.separator;
-            String javaFilePath = sourceRoot + ((PackageElement) element.getEnclosingElement()).getQualifiedName().toString().replace(".", File.separator) + File.separator + element.getSimpleName().toString() + ".java";
+            TypeElement typeElement = (TypeElement) element;
+            // 嵌套类与顶层类共用同一个源文件，因此包路径与文件名都必须取自最外层类型
+            TypeElement topLevelType = getTopLevelType(typeElement);
+            String packagePath = ((PackageElement) topLevelType.getEnclosingElement()).getQualifiedName().toString().replace(".", File.separator);
+            String javaFilePath = sourceRoot + packagePath + File.separator + topLevelType.getSimpleName().toString() + ".java";
             if (new File(javaFilePath).exists()) {
-                JavaParserUtil.Declaration declaration = JavaParserUtil.getFieldDeclarationList(sourceRoot, javaFilePath);
+                JavaParserUtil.Declaration declaration = JavaParserUtil.getFieldDeclarationList(sourceRoot, javaFilePath, getSimpleNamePath(typeElement));
                 TypeDeclaration<?> typeDeclaration = declaration.getTypeDeclaration();
                 fieldDeclarationList = declaration.getFieldDeclarationList();
                 if (typeDeclaration != null && typeDeclaration.getComment().isPresent()) {

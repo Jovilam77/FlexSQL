@@ -1931,16 +1931,30 @@ public class SqlBeanUtil {
 
     /**
      * 获得实体类对应的常量类
+     * <p>常量类由注解处理器生成在 {@code <实体类所在包>.sql} 包下，顶层类为 {@code User$}，
+     * 嵌套类会把嵌套层级用下划线拍平为 {@code Outer_Inner$}（见 {@code SqlConstantProcessor}）。</p>
      *
      * @param clazz
      * @return
      * @throws ClassNotFoundException
      */
     public static Class<?> getConstantClass(Class<?> clazz) {
-        String name = clazz.getName();
-        String constantClassName = name.substring(0, name.indexOf(clazz.getSimpleName())) + "sql." + clazz.getSimpleName() + "$";
+        // 收集嵌套层级上的简单类名，如 Outer.Inner → [Outer, Inner]
+        List<String> simpleNames = new ArrayList<>();
+        Class<?> current = clazz;
+        while (current != null) {
+            simpleNames.add(current.getSimpleName());
+            current = current.getEnclosingClass();
+        }
+        Collections.reverse(simpleNames);
+        StringBuilder constantClassName = new StringBuilder();
+        Package clazzPackage = clazz.getPackage();
+        if (clazzPackage != null && StringUtil.isNotEmpty(clazzPackage.getName())) {
+            constantClassName.append(clazzPackage.getName()).append(".");
+        }
+        constantClassName.append("sql.").append(String.join("_", simpleNames)).append("$");
         try {
-            return Class.forName(constantClassName);
+            return Class.forName(constantClassName.toString());
         } catch (ClassNotFoundException e) {
             logger.warning("ClassNotFoundException [" + e.getMessage() + "]");
         }

@@ -6,6 +6,7 @@ import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.ImportDeclaration;
 import com.github.javaparser.ast.NodeList;
 import com.github.javaparser.ast.PackageDeclaration;
+import com.github.javaparser.ast.body.BodyDeclaration;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.FieldDeclaration;
 import com.github.javaparser.ast.body.TypeDeclaration;
@@ -87,9 +88,9 @@ public class JavaParserUtil {
     public static List<FieldDeclaration> getAllFieldDeclaration(String sourceRoot, CompilationUnit compilationUnit, TypeDeclaration<?> typeDeclaration) {
         List<FieldDeclaration> fieldDeclarationList = new ArrayList<>(typeDeclaration.getFields());
         String superClassName = null;
-        List<ClassOrInterfaceDeclaration> classOrInterfaceDeclarationList = compilationUnit.findAll(ClassOrInterfaceDeclaration.class);
-        if (classOrInterfaceDeclarationList != null && !classOrInterfaceDeclarationList.isEmpty()) {
-            NodeList<ClassOrInterfaceType> classOrInterfaceTypeNodeList = classOrInterfaceDeclarationList.get(0).getExtendedTypes();
+        // 取该类型自身的父类（嵌套类必须取自身声明的父类，不能取文件中第一个类的父类）
+        if (typeDeclaration instanceof ClassOrInterfaceDeclaration) {
+            NodeList<ClassOrInterfaceType> classOrInterfaceTypeNodeList = ((ClassOrInterfaceDeclaration) typeDeclaration).getExtendedTypes();
             if (classOrInterfaceTypeNodeList != null && !classOrInterfaceTypeNodeList.isEmpty()) {
                 superClassName = classOrInterfaceTypeNodeList.get(0).getNameAsString();
             }
@@ -158,13 +159,27 @@ public class JavaParserUtil {
     }
 
     public static Declaration getFieldDeclarationList(String sourceRoot, String javaFilePath) throws FileNotFoundException {
+        return getFieldDeclarationList(sourceRoot, javaFilePath, null);
+    }
+
+    /**
+     * 获取指定类型的字段声明及类声明
+     *
+     * @param sourceRoot      源码根目录
+     * @param javaFilePath    实体类源码文件路径
+     * @param simpleNamePath  目标类型由外到内的简单类名路径（如 {@code [Outer, Inner]}）；为空时取文件中的第一个类型
+     */
+    public static Declaration getFieldDeclarationList(String sourceRoot, String javaFilePath, List<String> simpleNamePath) throws FileNotFoundException {
         List<FieldDeclaration> fieldDeclarationList = new ArrayList<>();
         TypeDeclaration<?> typeDeclaration = null;
         //获取编译单元
         CompilationUnit compilationUnit = getCompilationUnit(javaFilePath);
         if (compilationUnit != null && compilationUnit.getTypes() != null && !compilationUnit.getTypes().isEmpty()) {
-            NodeList<TypeDeclaration<?>> typeDeclarations = compilationUnit.getTypes();
-            typeDeclaration = typeDeclarations.get(0);
+            if (simpleNamePath == null || simpleNamePath.isEmpty()) {
+                typeDeclaration = compilationUnit.getTypes().get(0);
+            } else {
+                typeDeclaration = findTypeDeclaration(compilationUnit.getTypes(), simpleNamePath, 0);
+            }
         }
         if (typeDeclaration != null) {
             fieldDeclarationList = JavaParserUtil.getAllFieldDeclaration(sourceRoot, compilationUnit, typeDeclaration);
@@ -173,6 +188,38 @@ public class JavaParserUtil {
         declaration.typeDeclaration = typeDeclaration;
         declaration.fieldDeclarationList = fieldDeclarationList;
         return declaration;
+    }
+
+    /**
+     * 按简单类名路径逐层查找类型声明（支持嵌套类）
+     */
+    private static TypeDeclaration<?> findTypeDeclaration(NodeList<TypeDeclaration<?>> candidates, List<String> simpleNamePath, int index) {
+        if (candidates == null || index >= simpleNamePath.size()) {
+            return null;
+        }
+        String targetName = simpleNamePath.get(index);
+        for (TypeDeclaration<?> candidate : candidates) {
+            if (targetName.equals(candidate.getNameAsString())) {
+                if (index == simpleNamePath.size() - 1) {
+                    return candidate;
+                }
+                return findTypeDeclaration(getNestedTypes(candidate), simpleNamePath, index + 1);
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 获取类型中直接声明的嵌套类型
+     */
+    private static NodeList<TypeDeclaration<?>> getNestedTypes(TypeDeclaration<?> typeDeclaration) {
+        NodeList<TypeDeclaration<?>> nestedTypes = new NodeList<>();
+        for (BodyDeclaration<?> member : typeDeclaration.getMembers()) {
+            if (member instanceof TypeDeclaration) {
+                nestedTypes.add((TypeDeclaration<?>) member);
+            }
+        }
+        return nestedTypes;
     }
 
     private static CompilationUnit getCompilationUnit(String javaFilePath) throws FileNotFoundException {

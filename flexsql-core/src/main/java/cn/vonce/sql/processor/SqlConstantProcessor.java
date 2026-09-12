@@ -41,16 +41,16 @@ public abstract class SqlConstantProcessor extends AbstractProcessor {
             return true;
         }
 
-        try {
-            for (TypeElement typeElement : annotations) {
-                // 一次性获取所有带注解的元素
-                Set<? extends Element> annotatedElements = env.getElementsAnnotatedWith(typeElement);
-                for (Element element : annotatedElements) {
-                    // 只处理类元素
-                    if (element.getKind() != ElementKind.CLASS) {
-                        continue;
-                    }
-
+        for (TypeElement typeElement : annotations) {
+            // 一次性获取所有带注解的元素
+            Set<? extends Element> annotatedElements = env.getElementsAnnotatedWith(typeElement);
+            for (Element element : annotatedElements) {
+                // 只处理类元素
+                if (element.getKind() != ElementKind.CLASS) {
+                    continue;
+                }
+                // 单个实体失败只影响自身，不应中断其余实体的处理
+                try {
                     TypeElement typeEl = (TypeElement) element;
                     SqlTable sqlTable = typeEl.getAnnotation(SqlTable.class);
 
@@ -59,22 +59,85 @@ public abstract class SqlConstantProcessor extends AbstractProcessor {
                         continue;
                     }
 
+                    // 获取包名（嵌套类会向上查找所在包）
+                    PackageElement packageElement = getPackageElement(element);
+                    if (packageElement == null) {
+                        messager.printMessage(Diagnostic.Kind.WARNING,
+                                "无法为没有包声明的类生成字段常量: " + element.getSimpleName(), element);
+                        continue;
+                    }
+                    String packageName = packageElement.getQualifiedName().toString();
+                    packageName = StringUtil.isEmpty(packageName) ? "sql" : packageName + ".sql";
+
+                    // 获取类名（常量类始终生成在 <包>.sql 下的顶层类，嵌套类按层级拍平）
+                    String className = getConstantClassName(typeEl);
+
                     // 收集所有字段（包括父类）
                     List<Element> fieldElements = collectFields(typeEl);
 
-                    // 获取包名和类名
-                    PackageElement packageElement = (PackageElement) element.getEnclosingElement();
-                    String packageName = packageElement.getQualifiedName().toString() + ".sql";
-                    String className = element.getSimpleName().toString() + PREFIX;
-
                     // 生成代码
                     generateJavaFile(packageName, className, element, fieldElements, sqlTable);
+                } catch (Exception e) {
+                    messager.printMessage(Diagnostic.Kind.ERROR,
+                            "生成字段常量失败[" + element + "]: " + e, element);
                 }
             }
-        } catch (Exception e) {
-            messager.printMessage(Diagnostic.Kind.ERROR, "处理异常: " + e.getMessage());
         }
         return true;
+    }
+
+    /**
+     * 获取元素所在的包，嵌套类会逐层向上查找；无包声明（如局部类）时返回 null
+     */
+    protected PackageElement getPackageElement(Element element) {
+        Element enclosing = element;
+        while (enclosing != null && enclosing.getKind() != ElementKind.PACKAGE) {
+            enclosing = enclosing.getEnclosingElement();
+        }
+        return (PackageElement) enclosing;
+    }
+
+    /**
+     * 获取元素所在的最外层类型，顶层类返回其自身
+     */
+    protected TypeElement getTopLevelType(TypeElement typeElement) {
+        TypeElement topLevelType = typeElement;
+        Element enclosing = typeElement.getEnclosingElement();
+        while (enclosing != null && enclosing.getKind() != ElementKind.PACKAGE) {
+            if (enclosing instanceof TypeElement) {
+                topLevelType = (TypeElement) enclosing;
+            }
+            enclosing = enclosing.getEnclosingElement();
+        }
+        return topLevelType;
+    }
+
+    /**
+     * 获取常量类的类名：
+     * <p>顶层类 → {@code User$}；嵌套类 → {@code Outer_Inner$}。
+     * 常量类固定生成在 {@code <实体类所在包>.sql} 包下且必须是顶层类，
+     * 因此嵌套类需要把嵌套层级用下划线拍平，避免与顶层类同名冲突。</p>
+     */
+    protected String getConstantClassName(TypeElement typeElement) {
+        return String.join("_", getSimpleNamePath(typeElement)) + PREFIX;
+    }
+
+    /**
+     * 获取类型自外向内各层的简单类名路径，如 {@code Outer.Inner → [Outer, Inner]}；顶层类返回单元素列表
+     */
+    protected List<String> getSimpleNamePath(TypeElement typeElement) {
+        List<String> simpleNames = new ArrayList<>();
+        TypeElement current = typeElement;
+        while (current != null) {
+            simpleNames.add(current.getSimpleName().toString());
+            Element enclosing = current.getEnclosingElement();
+            if (!(enclosing instanceof TypeElement)) {
+                break;
+            }
+            current = (TypeElement) enclosing;
+        }
+        Collections.reverse(simpleNames);
+        return simpleNames;
     }
 
     /**

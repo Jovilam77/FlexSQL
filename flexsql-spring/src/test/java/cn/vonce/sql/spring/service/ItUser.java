@@ -7,7 +7,7 @@ import cn.vonce.sql.enumerate.IdType;
 
 /**
  * 「插入并回填自增id」集成测试用的实体。
- * <p>注意：必须是顶层类——框架的 {@code SqlConstantProcessor} 只处理顶层类，嵌套类会导致编译期异常。</p>
+ * <p>顶层类。注解处理器现已支持嵌套实体（见 {@link NestedEntityConstantTest}），此处保持顶层写法以覆盖常规场景。</p>
  */
 @SqlTable("it_user")
 public class ItUser {
