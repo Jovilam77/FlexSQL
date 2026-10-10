@@ -105,15 +105,26 @@ public class JavaParserUtil {
                 return fieldDeclarationList;
             }
             try {
-                JavaParser javaParser = new JavaParser();
-                ParseResult<CompilationUnit> result = javaParser.parse(new File(sourceRoot + superClassPath));
-                if (result != null && result.isSuccessful() && result.getResult().isPresent()) {
-                    CompilationUnit superCompilationUnit = result.getResult().get();
-                    NodeList<TypeDeclaration<?>> types = superCompilationUnit.getTypes();
-                    if (types != null && !types.isEmpty()) {
-                        List<FieldDeclaration> superFieldDeclarations = getAllFieldDeclaration(sourceRoot, superCompilationUnit, types.get(0));
-                        if (superFieldDeclarations != null) {
-                            fieldDeclarationList.addAll(superFieldDeclarations);
+                // 解析父类源文件：优先当前模块，其次兄弟模块（多模块工程下父类/爷爷类可能在其它模块中）
+                File superSourceFile = resolveSuperSourceFile(sourceRoot, superClassPath);
+                if (superSourceFile != null) {
+                    // 递归时下传父类源文件实际所在的 sourceRoot，
+                    // 使更上层的继承链也能在正确的模块中继续解析
+                    String superSourceRoot = superSourceFile.getAbsolutePath();
+                    superSourceRoot = superSourceRoot.substring(0, superSourceRoot.length() - superClassPath.length());
+                    if (!superSourceRoot.endsWith(File.separator)) {
+                        superSourceRoot = superSourceRoot + File.separator;
+                    }
+                    JavaParser javaParser = new JavaParser();
+                    ParseResult<CompilationUnit> result = javaParser.parse(superSourceFile);
+                    if (result != null && result.isSuccessful() && result.getResult().isPresent()) {
+                        CompilationUnit superCompilationUnit = result.getResult().get();
+                        NodeList<TypeDeclaration<?>> types = superCompilationUnit.getTypes();
+                        if (types != null && !types.isEmpty()) {
+                            List<FieldDeclaration> superFieldDeclarations = getAllFieldDeclaration(superSourceRoot, superCompilationUnit, types.get(0));
+                            if (superFieldDeclarations != null) {
+                                fieldDeclarationList.addAll(superFieldDeclarations);
+                            }
                         }
                     }
                 }
@@ -122,6 +133,50 @@ public class JavaParserUtil {
             }
         }
         return fieldDeclarationList;
+    }
+
+    /**
+     * 解析父类源文件位置：优先在当前模块的 sourceRoot 下查找；
+     * 找不到时按多模块布局向上取聚合工程根，遍历兄弟模块的 {@code src/main/java} 查找。
+     *
+     * <p>典型多模块布局：{@code 聚合根/模块A/src/main/java}、{@code 聚合根/模块B/src/main/java}。
+     * 实体在模块 A，而父类/爷爷类在模块 B 时，仅靠当前 sourceRoot 无法命中，导致继承链断裂、注释丢失。
+     * 找不到时返回 null（行为与旧实现一致：跳过 + 告警，不影响字段名收集）。</p>
+     *
+     * @param sourceRoot     当前模块源码根（{@code .../src/main/java/}）
+     * @param superClassPath 父类源文件相对路径（含 {@code .java} 后缀，使用 {@link File#separator}）
+     * @return 命中的源文件；未命中返回 null
+     */
+    public static File resolveSuperSourceFile(String sourceRoot, String superClassPath) {
+        File direct = new File(sourceRoot, superClassPath);
+        if (direct.exists()) {
+            return direct;
+        }
+        // 向上取模块目录：sourceRoot 形如 <模块>/src/main/java/（允许末尾带或不带分隔符）
+        String normalized = sourceRoot.endsWith(File.separator) ? sourceRoot.substring(0, sourceRoot.length() - 1) : sourceRoot;
+        String suffix = "src" + File.separator + "main" + File.separator + "java";
+        if (!normalized.endsWith(suffix)) {
+            return null;
+        }
+        File moduleDir = new File(normalized.substring(0, normalized.length() - suffix.length()));
+        File projectRoot = moduleDir.getParentFile();
+        if (projectRoot == null || !projectRoot.exists() || !projectRoot.isDirectory()) {
+            return null;
+        }
+        File[] children = projectRoot.listFiles(File::isDirectory);
+        if (children == null) {
+            return null;
+        }
+        for (File child : children) {
+            if (child.getAbsolutePath().equals(moduleDir.getAbsolutePath())) {
+                continue;
+            }
+            File candidate = new File(child, suffix + File.separator + superClassPath);
+            if (candidate.exists() && candidate.isFile()) {
+                return candidate;
+            }
+        }
+        return null;
     }
 
     public static String getSuperClassPath(String sourceRoot, String packageName, String superClassName, List<ImportDeclaration> importDeclarationList) {
@@ -147,7 +202,9 @@ public class JavaParserUtil {
                     if (directory.exists() && directory.isDirectory()) {
                         for (File file : Objects.requireNonNull(directory.listFiles())) {
                             if (file.exists() && file.isFile() && file.getName().equals(superClassName + ".java")) {
-                                return packPath + File.separator + superClassName;
+                                // 注意：必须带 ".java" 后缀，否则后续 parse 直接 FileNotFoundException，
+                                // 导致继承链在此断裂（父类注释能拿到、爷爷类注释丢失）
+                                return packPath + File.separator + superClassName + ".java";
                             }
                         }
                     }
