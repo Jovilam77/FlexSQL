@@ -1293,6 +1293,11 @@ public class SqlHelper {
     private static String conditionHandle(ConditionType conditionType, Common common, String conditionString, Object[] args, Object bean, Condition condition, Wrapper wrapper) {
         StringBuilder conditionSql = new StringBuilder();
         if (ConditionType.WHERE == conditionType) {
+            // 仅当未显式传入原生字符串 where 时，才自动追加乐观锁 / 逻辑删除过滤。
+            // 一旦用户调用 where(String) 传入原生 SQL，即视为其有意自行掌控过滤条件
+            // （例如主动查询已被逻辑删除的数据），框架刻意跳过上述自动条件——这是保留的「口子」。
+            // 与之相对，where(Condition) / where(Wrapper) 等类型安全条件仍会保留自动过滤。
+            // 注意：租户隔离过滤不受此影响，无论是否传入字符串 where 都始终生效。
             if (StringUtil.isBlank(conditionString)) {
                 conditionSql.append(versionCondition(common, bean));
                 conditionSql.append(logicallyDeleteCondition(common));
